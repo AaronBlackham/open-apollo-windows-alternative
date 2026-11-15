@@ -1,0 +1,67 @@
+[
+ {
+  "feature": "Windows sound devices",
+  "status": "verified",
+  "detail": "12 playback and 11 recording devices in Windows Sound across both units; 30-minute WASAPI run with no glitches"
+ },
+ {
+  "feature": "ASIO driver",
+  "status": "verified",
+  "detail": "One unit at 128 samples, loopback bit-exact; for Ableton and Avium Measure"
+ },
+ {
+  "feature": "Both units as one device",
+  "status": "verified",
+  "detail": "x8p and Twin X as one ASIO device (60 in, 56 out) with drift correction over Thunderbolt, 0 underruns"
+ },
+ {
+  "feature": "Mic inputs survive a driver reload",
+  "status": "verified",
+  "detail": "The x8p keeps all 8 input strips running across a reload with nothing re-sent; the Twin X rebuilds its 2"
+ },
+ {
+  "feature": "Twin X Gen 1",
+  "status": "verified",
+  "detail": "Bring-up, input strips and audio on the model open-apollo lists as unverified"
+ },
+ {
+  "feature": "Sample rates 44.1 to 192 kHz",
+  "status": "done",
+  "detail": "Per unit and for the combined device"
+ },
+ {
+  "feature": "Speaker correction in the driver",
+  "status": "done",
+  "detail": "Avium Measure correction profiles run in the 1 ms engine"
+ },
+ {
+  "feature": "Apollo Control",
+  "status": "done",
+  "detail": "Six themes, both units side by side, drag-and-drop plug-ins, 4 inserts per input, REC/MON, aux buses"
+ },
+ {
+  "feature": "Plug-ins on the Twin X",
+  "status": "done",
+  "detail": "Per-unit plug-in hosting on its own DSP and licence"
+ },
+ {
+  "feature": "Sphere plug-ins from your own build",
+  "status": "done",
+  "detail": "Sphere Mic Collection and Sphere 180, which open-apollo's mapper does not match to this DLL build"
+ },
+ {
+  "feature": "Plug-ins after a PC restart, DAW latency",
+  "status": "in progress",
+  "detail": "No power cycle needed for plug-ins after a reload; true latency reported to DAWs"
+ },
+ {
+  "feature": "Clock, digital I/O, Twin X knob, talkback",
+  "status": "in progress",
+  "detail": "Clock source, ADAT/S/PDIF formats, the front-panel knob as master volume, the talkback mic"
+ },
+ {
+  "feature": "Sessions, start with Windows",
+  "status": "in progress",
+  "detail": "Save and recall everything per unit; tray app"
+ }
+]

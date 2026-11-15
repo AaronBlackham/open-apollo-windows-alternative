@@ -1,0 +1,127 @@
+[
+ {
+  "model": "Apollo 16 MkII",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo 16",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo 8",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo 8p",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo (FireWire/Thunderbolt, silver)",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo Solo USB",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo Solo",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo Twin MkII",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo Twin X Gen 2",
+  "open_apollo": "verified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo Twin X USB",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo Twin X (Gen 1)",
+  "open_apollo": "unverified",
+  "ours": "verified"
+ },
+ {
+  "model": "Apollo Twin",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x16 Gen 2",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x16",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x16D",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x4 Gen 2",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x4",
+  "open_apollo": "verified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x6 Gen 2",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x6",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x8 Gen 2",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x8",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x8p Gen 2",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Apollo x8p",
+  "open_apollo": "verified",
+  "ours": "verified"
+ },
+ {
+  "model": "Arrow",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ },
+ {
+  "model": "Realtime Rack (MADI)",
+  "open_apollo": "unverified",
+  "ours": "not targeted"
+ }
+]

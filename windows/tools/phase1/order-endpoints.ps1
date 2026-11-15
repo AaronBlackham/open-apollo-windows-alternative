@@ -31,6 +31,13 @@ param(
     [string]$Log = ''
 )
 $ErrorActionPreference = 'Continue'
+# DISABLED (Nov 15 2026): Windows refuses to rename the endpoint keys, for SYSTEM and for backup/restore handles
+# alike (RegRenameKey and NtRenameKey: access denied), and the Endpoint Builder restores an endpoint's old ID
+# from its software device. Kept as the record of what was tried; it stops before changing anything.
+if (-not $DryRun) {
+    Write-Host 'order-endpoints is disabled: Windows does not let the endpoint IDs be renamed (see the header). Nothing changed.'
+    exit 5
+}
 if (-not $Log) { $Log = Join-Path $PSScriptRoot 'order-endpoints.log' }
 "order-endpoints $(Get-Date -Format o) DryRun=$DryRun user=$([Security.Principal.WindowsIdentity]::GetCurrent().Name)" | Out-File -Encoding ascii $Log
 function Note([string]$s) { Write-Host $s; Add-Content -Encoding ascii $Log $s }

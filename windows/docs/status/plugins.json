@@ -1,0 +1,30 @@
+[
+ {
+  "metric": "live_gate",
+  "label": "Live on the Apollo (load, controls read back, unload)",
+  "open_apollo": 124,
+  "ours": 4,
+  "note": "Ours on the x8p: Ampeg SVTVR Classic, Lexicon 480L, Precision De-Esser, UA 1176LN Legacy"
+ },
+ {
+  "metric": "mapped",
+  "label": "Mapped to a DSP recipe",
+  "open_apollo": 186,
+  "ours": 128,
+  "note": "open-apollo: 124 live + 62 more mapped, Oct 18. Ours: distinct plug-ins in the index on this PC (255 mono/stereo bundles), including both Sphere plug-ins"
+ },
+ {
+  "metric": "licensed",
+  "label": "Licensed on the unit",
+  "open_apollo": null,
+  "ours": 112,
+  "note": "From the x8p board licence query, read offline"
+ },
+ {
+  "metric": "fully_working",
+  "label": "Fully working",
+  "open_apollo": 0,
+  "ours": 0,
+  "note": "open-apollo definition: every check passed"
+ }
+]
