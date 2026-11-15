@@ -1,0 +1,13 @@
+{
+  "id": "cyber",
+  "name": "Cyberpunk",
+  "order": 2,
+  "mode": "dark",
+  "metaphor": "A netrunner's augmented-reality HUD over the audio system.",
+  "desc": "Arc gauges with a numeric core, blade sliders, cut-corner pills, neon meters with ghost peaks, plug-ins as mod cards.",
+  "layout": {
+    "browser": "cards",
+    "params": "module",
+    "composition": "hud"
+  }
+}

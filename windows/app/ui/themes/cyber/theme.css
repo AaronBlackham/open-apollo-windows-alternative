@@ -1,0 +1,244 @@
+/* cyber pack: tokens (layer 7) */
+/* ---------- Cyberpunk: near-black, neon magenta / cyan / acid yellow, cut corners, HUD readouts ---------- */
+[data-look="cyber"] {
+  --bg: #05050a;
+  --view-bg: #05050a;
+  --panel: #0b0b14;
+  --panel-2: #11111d;
+  --raised: #1b1b2e;
+  --line: #24243c;
+  --line-strong: #43436c;
+  --text: #e8fbff;
+  --text-dim: #a5cbdb;
+  --text-faint: #8299b4;
+  --head: #ff2bd6;
+  --accent: #ff2bd6;
+  --accent-ink: #12000e;
+  --ok: #19f0ff;
+  --warn: #e6ff2e;
+  --red: #ff5a36;
+  --red-ink: #160300;
+  --idle: #7480a0;
+  --meter-lo: #19f0ff;
+  --meter-mid: #e6ff2e;
+  --meter-hi: #ff5a36;
+  --meter-track: #030308;
+  --meter-seg: 1;
+  --focus: #e6ff2e;
+  --shadow: 0 0 0 1px #43436c, 0 12px 32px rgba(0, 0, 0, 0.7);
+  --radius: 0px;
+  --radius-sm: 0px;
+  --border-w: 1px;
+  --cut: 8px;
+  --glow: 0 0 6px;
+  --lamp-glow: 0 0 6px currentColor;
+  --font-ui: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-num: var(--mono);
+  --label-size: 10.5px;
+  --label-weight: 600;
+  --label-track: 0.16em;
+  --label-stretch: semi-condensed;
+  --grid-line: transparent;
+  --sel-bg: #2a0c26;
+  color-scheme: dark;
+}
+
+/* ---------- Cyberpunk: near-black, neon magenta / cyan / acid yellow, cut corners, HUD readouts ---------- */
+[data-look="cyber"] {
+  --bg: #05050a;
+  --view-bg: #05050a;
+  --panel: #0b0b14;
+  --panel-2: #11111d;
+  --raised: #1b1b2e;
+  --line: #24243c;
+  --line-strong: #43436c;
+  --text: #e8fbff;
+  --text-dim: #a5cbdb;
+  --text-faint: #8299b4;
+  --head: #ff2bd6;
+  --accent: #ff2bd6;
+  --accent-ink: #12000e;
+  --ok: #19f0ff;
+  --warn: #e6ff2e;
+  --red: #ff5a36;
+  --red-ink: #160300;
+  --idle: #7480a0;
+  --meter-lo: #19f0ff;
+  --meter-mid: #e6ff2e;
+  --meter-hi: #ff5a36;
+  --meter-track: #030308;
+  --meter-seg: 1;
+  --focus: #e6ff2e;
+  --shadow: 0 0 0 1px #43436c, 0 12px 32px rgba(0, 0, 0, 0.7);
+  --radius: 0px;
+  --radius-sm: 0px;
+  --border-w: 1px;
+  --cut: 8px;
+  --glow: 0 0 6px;
+  --lamp-glow: 0 0 6px currentColor;
+  --font-ui: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-num: var(--mono);
+  --label-size: 10.5px;
+  --label-weight: 600;
+  --label-track: 0.16em;
+  --label-stretch: semi-condensed;
+  --grid-line: transparent;
+  --sel-bg: #2a0c26;
+  color-scheme: dark;
+}
+/* Cyberpunk: cut corners on panels and buttons (the panel's fill and border are drawn by ::before so content is not clipped) */
+[data-look="cyber"] .panel, [data-look="cyber"] .mon-card, [data-look="cyber"] .useg, [data-look="cyber"] .plb,
+[data-look="cyber"] .pl-drawer, [data-look="cyber"] .cue-card {
+  border-color: transparent; background: transparent; position: relative; isolation: isolate;
+}
+[data-look="cyber"] .panel::before, [data-look="cyber"] .mon-card::before, [data-look="cyber"] .useg::before, [data-look="cyber"] .plb::before,
+[data-look="cyber"] .pl-drawer::before, [data-look="cyber"] .cue-card::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    var(--line-strong);
+  border: 1px solid transparent;
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+}
+[data-look="cyber"] .btn, [data-look="cyber"] .tabs button[aria-selected="true"] {
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+}
+[data-look="cyber"] .btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }
+[data-look="cyber"] .sect-title::before, [data-look="cyber"] .panel-head h2::before { content: "// "; color: var(--accent); }
+
+/* ===== Cyberpunk: the HUD (layers 3-9) ===== */
+/* knobs: segmented arc gauges, a numeric core, ticks; circular drag */
+[data-look="cyber"] .cy-dial { position: relative; display: grid; place-items: center; }
+[data-look="cyber"] .cy-dial > * { grid-area: 1 / 1; }
+[data-look="cyber"] .cy-dial .k-readout { font-size: 9.5px; color: var(--text); z-index: 1; max-width: 70%; overflow: hidden; text-align: center; }
+[data-look="cyber"] .cy-seg { fill: none; stroke: #1c1f3a; stroke-width: 8; }
+[data-look="cyber"] .cy-seg.on { stroke: var(--accent); filter: drop-shadow(0 0 2px var(--accent)); }
+[data-look="cyber"] .cy-tick { stroke: var(--ok); stroke-width: 1.6; }
+[data-look="cyber"] .cy-core { fill: #080812; stroke: #2c2c50; stroke-width: 1; }
+[data-look="cyber"] .knob.unconfirmed .cy-seg.on { stroke: var(--warn); filter: none; }
+[data-look="cyber"] .knob.refused .cy-seg.on { stroke: var(--red); }
+[data-look="cyber"] .knob.refused .cy-core { stroke: var(--red); stroke-dasharray: 3 2; }
+[data-look="cyber"] .sk-cyber-knob { cursor: crosshair; }
+/* faders: a thin rail, a glowing blade, a value tag that rides it */
+[data-look="cyber"] .cy-rail { width: 14px; background: transparent; box-shadow: none; overflow: visible; }
+[data-look="cyber"] .cy-rail::before { content: ""; position: absolute; left: 6px; width: 2px; top: 0; bottom: 0; background: linear-gradient(to top, #24243c, #43436c); }
+[data-look="cyber"] .cy-blade { left: -3px; right: -3px; height: 4px; background: var(--ok); border: 0; border-radius: 0; box-shadow: 0 0 8px var(--ok); }
+[data-look="cyber"] .fader.refused .cy-blade { background: var(--red); box-shadow: 0 0 8px var(--red); }
+[data-look="cyber"] .cy-tag {
+  position: absolute; right: calc(100% + 1px); transform: translateY(50%); font: 9px var(--mono); color: var(--ok); background: #05050a;
+  border: 1px solid var(--ok); padding: 0 2px; white-space: nowrap; pointer-events: none; z-index: 2;
+}
+[data-look="cyber"] .fader .fd-scale { opacity: 0.45; }
+/* switches: cut-corner pills that scan on */
+[data-look="cyber"] .sw { clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); border-radius: 0; background: #0f0f1c; border-color: #3a3a5e; }
+[data-look="cyber"] .sw .cy-scan { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent); transform: translateX(-110%); pointer-events: none; }
+[data-look="cyber"] .sw[aria-pressed="true"] .cy-scan, [data-look="cyber"] .sw[aria-checked="true"] .cy-scan { animation: cy-scan 420ms ease-out 1; }
+@keyframes cy-scan { to { transform: translateX(110%); } }
+/* selectors: hex cells */
+[data-look="cyber"] .seg { border: 0; gap: 2px; background: transparent; overflow: visible; }
+[data-look="cyber"] .seg button { clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%); background: #15152a; border: 0 !important; }
+[data-look="cyber"] .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+/* meters: neon segments with a ghost peak */
+[data-look="cyber"] .cy-ghost { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); box-shadow: 0 0 4px var(--accent); opacity: 0; }
+[data-look="cyber"] .cy-neon .meter-bar { box-shadow: inset 0 0 0 1px #2c2c50; }
+/* the plug-in slot: a mod chip */
+[data-look="cyber"] .ins-slot { clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); border: 1px solid #3a3a5e; background: #0d0d18; }
+[data-look="cyber"] .ins-slot .cy-chip { width: 4px; height: 12px; background: #3a3a5e; flex: none; }
+[data-look="cyber"] .ins-slot[data-state="running"] .cy-chip { background: var(--ok); box-shadow: 0 0 4px var(--ok); }
+[data-look="cyber"] .ins-slot[data-drop="ok"] { outline: 1px dashed var(--ok); outline-offset: 2px; }
+[data-look="cyber"] .cy-lock { animation: cy-lock 600ms ease-out; }
+@keyframes cy-lock { 0% { outline: 2px solid var(--ok); outline-offset: 6px; } 100% { outline: 2px solid transparent; outline-offset: 0; } }
+[data-look="cyber"] .cy-glitch { animation: cy-glitch 340ms steps(3) 1; }
+@keyframes cy-glitch { 0% { transform: translate(0); } 30% { transform: translate(-2px, 1px); filter: hue-rotate(80deg); } 60% { transform: translate(2px, -1px); } 100% { transform: none; filter: none; } }
+[data-look="cyber"] main.cy-sweep::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: cy-sweep 380ms ease-out forwards; pointer-events: none; z-index: 5; }
+@keyframes cy-sweep { to { top: 100%; opacity: 0; } }
+/* the browser: a loadout of mod cards with stat bars */
+[data-look="cyber"] .plb[data-layout="cards"] .plb-item {
+  height: auto; grid-template-columns: 40px minmax(0, 1fr) auto auto; grid-template-rows: auto auto; row-gap: 3px; margin: 4px 6px; padding: 5px 7px;
+  border: 1px solid #2c2c50; background: #0b0b16; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+[data-look="cyber"] .cy-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+[data-look="cyber"] .cy-stat { display: flex; align-items: center; gap: 3px; }
+[data-look="cyber"] .cy-stat-l { font: 8px var(--mono); color: var(--text-faint); }
+[data-look="cyber"] .cy-stat-b { flex: 1; height: 3px; background: #1c1f3a; position: relative; }
+[data-look="cyber"] .cy-stat-b span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); box-shadow: 0 0 3px var(--ok); }
+/* the parameter view: the module opened */
+[data-look="cyber"] .pl-drawer[data-layout="module"] .pl-param { clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); border: 1px solid #2c2c50; background: #0b0b16; }
+[data-look="cyber"] .pl-drawer[data-layout="module"] .pl-dr-head { border-bottom: 1px solid #43436c; padding-bottom: 4px; }
+
+/* pressed wins over the pill's base surface */
+[data-look="cyber"] .sw[aria-pressed="true"], [data-look="cyber"] .sw[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+[data-look="cyber"] .sw.sw-red[aria-pressed="true"], [data-look="cyber"] .sw.sw-red[aria-checked="true"] { background: var(--red); border-color: var(--red); color: var(--red-ink); }
+
+/* ===== Cyberpunk, layer 2: HUD cards. Every channel a separate card with an angled header; each unit a node; a link line
+   between the nodes (the combined device); panels slide in from the edges. ===== */
+[data-look="cyber"] #view-control[data-comp="hud"] .inputs { gap: 22px; padding-left: 2px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .useg { border: 0; background: transparent; position: relative; overflow: visible; }
+[data-look="cyber"] #view-control[data-comp="hud"] .useg::before { display: none; }
+[data-look="cyber"] #view-control[data-comp="hud"] .useg-head {
+  position: relative; margin-bottom: 8px; border: 1px solid var(--ok); background: #08081a; padding-left: 52px;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+[data-look="cyber"] #view-control[data-comp="hud"] .useg-head::before {
+  content: "NODE"; position: absolute; left: 8px; top: 7px; font: 700 10px var(--mono); letter-spacing: 0.2em; color: var(--ok);
+}
+[data-look="cyber"] #view-control[data-comp="hud"] .useg + .useg::after {
+  content: ""; position: absolute; left: -22px; top: 20px; width: 22px; height: 2px; background: var(--ok); box-shadow: 0 0 6px var(--ok);
+}
+[data-look="cyber"] #view-control[data-comp="hud"] .useg + .useg::before {
+  display: block; content: "LINK"; position: absolute; left: -21px; top: 6px; font: 700 7px var(--mono); color: var(--ok); clip-path: none; inset: auto; z-index: 1;
+  background: none; border: 0;
+}
+[data-look="cyber"] #view-control[data-comp="hud"] .useg-body { gap: 6px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .pair { border: 0; background: transparent; min-width: calc(2 * 64px + 2px); }
+[data-look="cyber"] #view-control[data-comp="hud"] .pair-head { border: 0; height: 22px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .pair-body { gap: 2px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .pair.linked .pair-body { box-shadow: none; }
+[data-look="cyber"] #view-control[data-comp="hud"] .pair.linked .strip { border-color: var(--accent); }
+[data-look="cyber"] #view-control[data-comp="hud"] .strip, [data-look="cyber"] #view-control[data-comp="hud"] .tb-strip, [data-look="cyber"] #view-control[data-comp="hud"] .master {
+  border: 1px solid #2c2c50; background: #0a0a16; clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+[data-look="cyber"] #view-control[data-comp="hud"] .strip + .strip { border-left: 1px solid #2c2c50; }
+[data-look="cyber"] #view-control[data-comp="hud"] .strip-top { background: linear-gradient(100deg, #1d1d3a 0 70%, transparent 70%); margin: -6px -5px 0; padding: 4px 6px 3px 14px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .strip-num { color: var(--accent); }
+[data-look="cyber"] #view-control[data-comp="hud"] .st-sec { border-top-color: #1c1f3a; }
+[data-look="cyber"] #view-control[data-comp="hud"] .master { margin-left: 2px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .tb-strip { flex-basis: 44px; }
+[data-look="cyber"] #view-control .plb { animation: cy-in-l 280ms ease-out; }
+[data-look="cyber"] #view-control .monitor { animation: cy-in-r 280ms ease-out; }
+@keyframes cy-in-l { from { transform: translateX(-30px); opacity: 0; } }
+@keyframes cy-in-r { from { transform: translateX(30px); opacity: 0; } }
+
+/* ===== Cyberpunk, signature: the signal-flow overlay (its FLOW switch rides each node's header) ===== */
+[data-look="cyber"] #view-control[data-comp="hud"] .sig-flow-btn { display: inline-flex; height: 20px; padding: 0 8px; font: 700 9px var(--mono); letter-spacing: 0.16em; }
+
+/* ===== Cyberpunk: Windows audio checkboxes are cut-corner sockets ===== */
+[data-look="cyber"] .ep-row input { appearance: none; width: 16px; height: 16px; background: #0a0a16; border: 1px solid var(--ok); clip-path: polygon(0 4px, 4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%); display: grid; place-items: center; }
+[data-look="cyber"] .ep-row input:checked { background: var(--accent); border-color: var(--accent); }
+[data-look="cyber"] .ep-row input:checked::after { content: "✓"; font: 700 11px var(--mono); color: #0a0a16; }
+[data-look="cyber"] .ep-group { border-color: #2c2c50; clip-path: polygon(0 10px, 10px 0, 100% 0, 100% 100%, 0 100%); }
+
+/* ===== [Ins] Cyberpunk: aux strips are HUD cards too ===== */
+[data-look="cyber"] #view-control[data-comp="hud"] .aux-strip { border: 1px solid #2c2c50; background: #0a0a16; margin-left: 2px; clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); flex-basis: 60px; width: 60px; }
+[data-look="cyber"] #view-control[data-comp="hud"] .aux-strip .strip-num { color: var(--accent); }
+[data-look="cyber"] .ins-uni { clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); border: 1px dashed #3a3a5e; }
+
+/* ===== [Sess] save states: HUD cards with cut corners and an angled header, stats in code, pills (layout "hud") */
+[data-look="cyber"] .sess-pop { background: #07070f; border-color: #3a3a5e; clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px)); }
+[data-look="cyber"] .ss-hud .ss-head { border-bottom: 1px solid #2c2c50; padding-bottom: 6px; }
+[data-look="cyber"] .ss-hud .ss-title { font: 700 13px var(--font-head); color: var(--accent); letter-spacing: 0.14em; }
+[data-look="cyber"] .ss-hud .ss-cur { color: var(--text-dim); font-size: 11px; letter-spacing: 0.08em; }
+[data-look="cyber"] .ss-pill { clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); border-radius: 0; background: #0f0f1c; border-color: #3a3a5e; font: 700 10.5px var(--font-label); letter-spacing: 0.1em; color: var(--accent); }
+[data-look="cyber"] .ss-pill:hover { background: #17172e; }
+[data-look="cyber"] .ss-pill.ss-del { color: var(--red); }
+[data-look="cyber"] .ss-hud .ss-card { background: #0b0b16; border: 1px solid #2c2c50; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+[data-look="cyber"] .ss-hud .ss-card-head { border-bottom: 1px solid #2c2c50; padding-bottom: 4px; }
+[data-look="cyber"] .ss-hud .ss-card[data-current="1"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+[data-look="cyber"] .ss-hud .ss-card[data-last="1"] { border-style: dashed; }
+[data-look="cyber"] .ss-hud .ss-name { font-weight: 700; letter-spacing: 0.04em; }
+[data-look="cyber"] .ss-hud .ss-tag { color: var(--accent); }
+[data-look="cyber"] .ss-hud .ss-stats { font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.04em; }

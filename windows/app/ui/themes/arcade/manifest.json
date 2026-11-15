@@ -1,0 +1,13 @@
+{
+  "id": "arcade",
+  "name": "Arcade",
+  "order": 6,
+  "mode": "dark",
+  "metaphor": "An 80s arcade cabinet; the units are PLAYER 1 and PLAYER 2.",
+  "desc": "Pixel knobs with 8 directions, block faders, buttons that press down, health-bar meters, a power-up inventory.",
+  "layout": {
+    "browser": "tiles",
+    "params": "item",
+    "composition": "cards"
+  }
+}

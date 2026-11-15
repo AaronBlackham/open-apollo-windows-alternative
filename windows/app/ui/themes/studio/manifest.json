@@ -1,0 +1,13 @@
+{
+  "id": "studio",
+  "name": "Studio",
+  "order": 1,
+  "mode": "dark",
+  "metaphor": "A large-format analog console with an outboard rack.",
+  "desc": "Machined knobs and long-throw faders, backlit switches, LED ladders, a rack of plug-in faceplates.",
+  "layout": {
+    "browser": "rack",
+    "params": "faceplate",
+    "composition": "console"
+  }
+}

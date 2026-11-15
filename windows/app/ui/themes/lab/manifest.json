@@ -1,0 +1,13 @@
+{
+  "id": "lab",
+  "name": "Lab",
+  "order": 3,
+  "mode": "dark",
+  "metaphor": "An audio analyzer and oscilloscope bench.",
+  "desc": "Numeric encoders, precision sliders with graticules, soft-keys with lamps, peak and average bar graphs, a catalog table.",
+  "layout": {
+    "browser": "table",
+    "params": "table",
+    "composition": "panels"
+  }
+}

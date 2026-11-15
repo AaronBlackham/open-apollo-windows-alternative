@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "Driver settings Setup writes to HKLM\\SYSTEM\\CurrentControlSet\\Services\\apollo\\Parameters.",
+    "Change them per release here (or put a defaults.json in the frozen build's root folder, which wins).",
+    "A number becomes REG_DWORD. For hex or a string value use { \"type\": \"dword\" or \"sz\", \"data\": ... }.",
+    "overwrite false: a value already on the machine is kept (an upgrade keeps your tuning).",
+    "Add \"overwrite\": true to one value's object form to force it in a release.",
+    "The values below are the 2026-11-14 driver's own defaults (docs/STRIPS.md 10.5, PHASE2.md V9, engine.c).",
+    "They are the service-wide (legacy) values: a driver from gate G2 on applies them to the x8p only. A Twin X",
+    "reads Parameters\\Units\\<its key> and Parameters\\Models\\99 instead (built-in Mode 0 = observe); Setup",
+    "never writes those, and never binds a Twin X (docs/spec-twinx.md 6.9.1)."
+  ],
+  "overwrite": false,
+  "values": {
+    "EnabledEndpoints": { "type": "dword", "data": 1023, "overwrite": true },
+    "StripsEnable": { "type": "dword", "data": 1, "overwrite": true },
+    "StripSteps": { "type": "dword", "data": 9, "overwrite": true },
+    "StripMask": { "type": "dword", "data": 255, "overwrite": true },
+    "StripDsp": 1,
+    "MixerInitBatch": { "type": "dword", "data": 1, "overwrite": true },
+    "StripProbe": { "type": "dword", "data": 0, "overwrite": true },
+    "RenderLeadFrames": 144,
+    "CaptureGuardFrames": 16,
+    "StartTransportAtConnect": 1
+  }
+}

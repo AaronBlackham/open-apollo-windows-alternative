@@ -1,0 +1,1 @@
+Steinberg ASIO SDK from https://www.steinberg.net/asiosdk, downloaded Nov 14 2026 (LICENSE.txt dated 2025, dual: Steinberg ASIO License or GPLv3). Used here under GPLv3.

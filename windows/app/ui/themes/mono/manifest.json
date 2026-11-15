@@ -1,0 +1,13 @@
+{
+  "id": "mono",
+  "name": "Mono",
+  "order": 4,
+  "mode": "dark",
+  "metaphor": "A data terminal: text and numbers, nothing decorative.",
+  "desc": "Value bars you drag anywhere, [x] toggles, thin line meters with numbers, plug-ins as a text list.",
+  "layout": {
+    "browser": "text",
+    "params": "rows",
+    "composition": "rows"
+  }
+}

@@ -1,0 +1,790 @@
+"""
+State tree: load device map JSON, path-based get/set, subscription tracking.
+
+The device map from ConsoleLink contains a flat list of 11,244 controls:
+
+    {"path": "/devices/0/inputs/0/preamps/0/Gain",
+     "type": "float", "min": -144.0, "max": 65.0, "value": 10.0}
+
+We reconstruct a nested tree that mirrors the real UA Mixer Engine's
+response format:
+
+    {"properties": {"Gain": {"type": "float", "min": -144, ...}},
+     "children":   {"0": {...nested...}}}
+
+Path convention:
+    /devices/0/inputs/0/preamps/0/Gain       → property node
+    /devices/0/inputs/0/preamps/0/Gain/value  → the "value" field of that property
+
+The real mixer engine treats "Gain" as a property with metadata (type, min, max)
+and "Gain/value" as its current value. We replicate this.
+"""
+
+import json
+import logging
+import re
+import threading
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Callable
+
+log = logging.getLogger(__name__)
+
+# Property patterns the engine publishes as `readonly` (N = any index); names
+# only (device_maps/readonly_properties.json)
+READONLY_PATTERNS = Path(__file__).resolve().parent / "device_maps" / \
+    "readonly_properties.json"
+
+
+def _readonly_regex(path: Path = READONLY_PATTERNS):
+    try:
+        patterns = json.loads(Path(path).read_text())["readonly"]
+    except (OSError, ValueError, KeyError):
+        log.warning("No readonly property list at %s", path)
+        return None
+    return re.compile("^(?:%s)$" % "|".join(
+        "/".join(r"\d+" if part == "N" else re.escape(part)
+                 for part in pattern.split("/")) for pattern in patterns))
+
+
+_READONLY_RE = _readonly_regex()
+
+
+class StateTree:
+    """In-memory control tree with path-based access and subscriptions."""
+
+    def __init__(self):
+        # The nested tree: {"properties": {...}, "children": {...}}
+        self.root: dict = {"properties": {}, "children": {}}
+        # Flat index: path → property dict (for fast lookup)
+        self._props: dict[str, dict] = {}
+        # Subscriptions: path → set of callback IDs
+        self._subs: dict[str, set[str]] = defaultdict(set)
+        # Callback registry: client_id → callback function
+        self._callbacks: dict[str, Callable] = {}
+        # Internal observers: see every notified change, whatever the
+        # client subscriptions (derived state such as /Dirty).  Not wire
+        # clients: a SET's originator exclusion and a disconnect leave
+        # them alone.
+        self._change_observers: dict[str, Callable] = {}
+        # Hardware write hook: called when a SET changes a value
+        # signature: on_set(path: str, value: Any) → None
+        self.on_set: Callable | None = None
+        # Device map metadata
+        self.device_name: str = ""
+        self.control_count: int = 0
+        # Persistence: track modified values, debounced save
+        self._dirty: dict[str, Any] = {}  # path → value (only modified controls)
+        # path → the value it had before its first change (the device map's
+        # default, or the value the saved state replaced): what NewSession
+        # goes back to
+        self._restore_filter: Callable[[str], bool] | None = None
+        self._deferred_saved: dict[str, Any] = {}
+        self._base: dict[str, Any] = {}
+        self._save_path: Path | None = None
+        self.restored = 0   # values the state file gave at start
+        self._save_timer: threading.Timer | None = None
+        self._save_delay = 2.0  # seconds
+        # The debounced save runs on a Timer thread while save_now() (a
+        # client checkpoint, shutdown) runs on the event loop: one lock so
+        # two writers never share the .tmp file or interleave the rename
+        self._persistence_lock = threading.RLock()
+
+    # ── Loading ──────────────────────────────────────────────────────
+
+    def load_device_map(self, path: str | Path):
+        """Load a device map JSON and reconstruct the nested tree."""
+        path = Path(path)
+        log.info("Loading device map: %s", path)
+        with open(path) as f:
+            data = json.load(f)
+
+        self.device_name = data.get("device_name", "Unknown")
+        controls = data.get("controls", [])
+        self.control_count = len(controls)
+
+        # Build nested tree from flat controls
+        for ctrl in controls:
+            ctrl_path = ctrl["path"]
+            self._insert_control(ctrl_path, ctrl)
+        self._publish_defaults()
+
+        log.info("Loaded %d controls for %s", self.control_count, self.device_name)
+
+    def add_runtime_property(self, ctrl_path: str, ctrl: dict):
+        """Add a runtime-only property not in the device map.
+
+        Used for paths the real mixer engine provides dynamically
+        (e.g. /initialized, /ping) that aren't in captured device maps.
+        """
+        self._insert_control(ctrl_path, ctrl)
+        self._props[ctrl_path] = self.get_prop_dict(ctrl_path)
+        self._publish_defaults((ctrl_path,))
+
+    def update_property(self, ctrl_path: str, overrides: dict):
+        """Update an existing property with override values.
+
+        Only updates fields that have non-None values in overrides,
+        preserving existing fields not mentioned in overrides.
+        """
+        prop = self.get_prop_dict(ctrl_path)
+        if prop is None:
+            return
+        for key in ("type", "value", "min", "max", "values", "readonly"):
+            if overrides.get(key) is not None:
+                prop[key] = overrides[key]
+
+    def is_readonly(self, path: str) -> bool:
+        """Whether a client SET of `path` is refused (`uasrv.read_only`).
+        Daemon-internal writers call set() and are not subject to it."""
+        prop = self.get_prop_dict(path)
+        return bool(prop and prop.get("readonly"))
+
+    def get_prop_dict(self, path: str) -> dict | None:
+        """Get the raw property dict for a path (for direct mutation)."""
+        resolved, prop_name = self._resolve_path(path)
+        if prop_name is not None:
+            return resolved
+        return None
+
+    def enable_persistence(self, save_path: str | Path,
+                           restore_filter: Callable[[str], bool] | None = None):
+        """Enable persistent state: save modified values to disk, load on startup.
+
+        Only stores values that differ from the device map defaults.
+        The save file is a small JSON dict: {path: value, ...}
+        """
+        self._restore_filter = restore_filter
+        self._deferred_saved = {}
+        self._save_path = Path(save_path)
+        if self._save_path.exists():
+            self._load_saved_state()
+
+    def _load_saved_state(self):
+        """Load previously saved state and overlay onto current tree."""
+        try:
+            with open(self._save_path) as f:
+                saved = json.load(f)
+            count = 0
+            for path, value in saved.items():
+                if self._restore_filter is not None and not self._restore_filter(path):
+                    self._deferred_saved[path] = value
+                    continue
+                resolved, prop_name = self._resolve_path(path)
+                if resolved is not None and prop_name is not None:
+                    self._base.setdefault(path, resolved.get("value"))
+                    resolved["value"] = value
+                    self._dirty[path] = value
+                    count += 1
+            self.restored = count
+            log.info("Restored %d saved values from %s", count, self._save_path)
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("Failed to load saved state from %s: %s", self._save_path, e)
+
+    def _schedule_save(self):
+        """Schedule a debounced save (2s after last change)."""
+        with self._persistence_lock:
+            if self._save_path is None:
+                return
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+            self._save_timer = threading.Timer(self._save_delay, self._save_state)
+            self._save_timer.daemon = True
+            self._save_timer.start()
+
+    def _save_state(self):
+        """Write modified values to disk (atomically: .tmp, then rename).
+        A failed write leaves the previous file as it was."""
+        with self._persistence_lock:
+            if self._save_path is None or not (self._dirty or self._deferred_saved):
+                return
+            # A copy: the event loop keeps changing _dirty while the Timer
+            # thread encodes (json.dump iterates in Python, so a live dict
+            # can change size under it)
+            snapshot = dict(self._deferred_saved)
+            snapshot.update(self._dirty)
+            try:
+                self._save_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self._save_path.with_suffix(".tmp")
+                with open(tmp, "w") as f:
+                    json.dump(snapshot, f, separators=(",", ":"))
+                tmp.rename(self._save_path)
+                log.debug("Saved %d modified values to %s", len(snapshot),
+                          self._save_path)
+            except OSError as e:
+                log.error("Failed to save state to %s: %s", self._save_path, e)
+
+    def save_now(self):
+        """Force an immediate save (e.g. on shutdown).  Waits for a
+        debounced save that is writing right now, then writes once."""
+        with self._persistence_lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+                self._save_timer = None
+            self._save_state()
+
+    def _insert_control(self, ctrl_path: str, ctrl: dict):
+        """Insert a control into the nested tree."""
+        parts = [p for p in ctrl_path.strip("/").split("/") if p]
+        if not parts:
+            return
+
+        # The last component is the property name, everything before is children
+        prop_name = parts[-1]
+        container_parts = parts[:-1]
+
+        # Navigate/create children to reach the container
+        node = self.root
+        for part in container_parts:
+            children = node.setdefault("children", {})
+            if part not in children:
+                children[part] = {"properties": {}, "children": {}}
+            node = children[part]
+
+        # Insert as a property
+        prop_data = {}
+        if ctrl.get("type") is not None:
+            prop_data["type"] = ctrl["type"]
+        if ctrl.get("min") is not None:
+            prop_data["min"] = ctrl["min"]
+        if ctrl.get("max") is not None:
+            prop_data["max"] = ctrl["max"]
+        if ctrl.get("values") is not None:
+            prop_data["values"] = ctrl["values"]
+        if "default" in ctrl:
+            prop_data["default"] = ctrl["default"]
+        if "value" in ctrl:
+            prop_data["value"] = ctrl["value"]
+        if ctrl.get("readonly") or (
+                _READONLY_RE and _READONLY_RE.match(ctrl_path)):
+            prop_data["readonly"] = True
+
+        props = node.setdefault("properties", {})
+        props[prop_name] = prop_data
+
+        # Index for fast lookup
+        self._props[ctrl_path] = prop_data
+
+    # ── Defaults ─────────────────────────────────────────────────────
+
+    def _publish_defaults(self, paths=None):
+        """Publish `default` on the properties the engine gives one (x4
+        engine dump): a map's own stays, else _builtin_default.  `paths`
+        limits it to those."""
+        for path in (paths if paths is not None else tuple(self._props)):
+            prop = self._props.get(path)
+            if prop is not None and "default" not in prop:
+                default = self._builtin_default(path)
+                if default is not None:
+                    prop["default"] = default
+
+    def _builtin_default(self, path: str):
+        """The Mixer Engine's default of a property, by name (x4 engine
+        dump): 0 dB faders and trims, a send at 0 dB (its Gain at -144),
+        centre pans, a preamp at 10 dB, the talkback strip and its sends
+        at -6 dB.  None where the engine has none."""
+        name = path.rpartition("/")[2]
+        if name in self._FIXED_DEFAULTS:
+            return self._FIXED_DEFAULTS[name]
+        in_preamp, in_send = "/preamps/" in path, "/sends/" in path
+        tapered = name.endswith("Tapered")
+        if in_preamp and name in ("Gain", "GainTapered"):
+            from hardware import preamp_db_to_tapered
+            return preamp_db_to_tapered(10.0) if tapered else 10.0
+        if name == "Gain" and in_send:
+            # (the engine's talkback sends 0 and 1, the AUX ones, stay off)
+            send = int(path.rsplit("/sends/", 1)[1].split("/")[0])
+            return -6.0 if self._is_talkback(path) and send > 1 else -144.0
+        if not (name.removesuffix("Tapered") in ("FaderLevel", "LLMDiskTrimLevel")
+                or name == "GainTapered" and in_send):
+            return None
+        if name.startswith("LLM"):
+            return 43.0 / 55.0 if tapered else 0.0
+        if self._is_talkback(path):
+            # the engine's own values: float32 of 37/55 and 43/55 (the
+            # fader LUT lands a 360th off them)
+            return 37.0 / 55.0 if tapered else -6.0
+        return 43.0 / 55.0 if tapered else 0.0
+
+    _FIXED_DEFAULTS = {
+        "Pan": 0.0, "Pan2": 0.0, "PostFaderOverride": -1, "DimAttenuation": 17,
+        "AltMonTrim": 0.0, "AltMonSelection": 0, "CRMonitorLevel": -96.0,
+        "CRMonitorLevelTapered": 0.0,
+        "BassMgrXOverFreq": 80,
+    }
+
+    def _is_talkback(self, path: str) -> bool:
+        """Whether `path` is under the TALKBACK input (the map's name)."""
+        parts = path.split("/")
+        if len(parts) < 5 or parts[3] != "inputs":
+            return False
+        name_path = "/".join(parts[:5]) + "/Name"
+        name = self._base.get(name_path + "/value",
+                              self.get_value(name_path + "/value"))
+        return isinstance(name, str) and name.strip().upper() == "TALKBACK"
+
+    def _stereo_pan_default(self, path: str, name: str):
+        """Pan / Pan2 of a linked input rest hard left / right (-1 / 1, as
+        the link writes them); None for any other property."""
+        parts = path.split("/")
+        if name not in ("Pan", "Pan2") or len(parts) != 6 or \
+                parts[3] != "inputs":
+            return None
+        if self.get_value("/".join(parts[:5]) + "/Stereo/value") is True:
+            return -1.0 if name == "Pan" else 1.0
+        return None
+
+    # ── Path Traversal ───────────────────────────────────────────────
+
+    def _resolve_path(self, path: str) -> tuple[dict | None, str | None]:
+        """Resolve a path to (node, None) for a child or (prop_dict, prop_name) for a property.
+
+        Returns (None, None) if path not found.
+        """
+        if path == "/":
+            return self.root, None
+
+        parts = [p for p in path.strip("/").split("/") if p]
+        if not parts:
+            return self.root, None
+
+        # Try resolving as a child path first
+        node = self.root
+        for i, part in enumerate(parts):
+            children = node.get("children", {})
+            if part in children:
+                node = children[part]
+            else:
+                # Maybe this part is a property name
+                props = node.get("properties", {})
+                if part in props:
+                    # Remaining parts after property name
+                    remaining = parts[i + 1:]
+                    if not remaining:
+                        # Path points to the property itself
+                        return props[part], part
+                    elif remaining == ["value"]:
+                        # Path points to /prop/value
+                        return props[part], part
+                    elif remaining == ["values"]:
+                        # Path points to /prop/values (enum list)
+                        return props[part], part
+                    else:
+                        return None, None
+                return None, None
+
+        return node, None
+
+    # ── GET ───────────────────────────────────────────────────────────
+
+    def get(self, path: str, recursive: bool = False,
+            propfilter: list[str] | None = None) -> dict | None:
+        """Handle a GET command. Returns the response data dict, or None."""
+        resolved, prop_name = self._resolve_path(path)
+        if resolved is None:
+            return None
+
+        # If it resolved to a property
+        if prop_name is not None:
+            # Check if path ends with /value
+            if path.rstrip("/").endswith("/value"):
+                return resolved.get("value")
+            # Check if path ends with /values (enum list for dropdowns)
+            if path.rstrip("/").endswith("/values"):
+                vals = resolved.get("values")
+                return vals if vals is not None else []
+            # Return the property metadata
+            return self._filter_props_dict(resolved, propfilter)
+
+        # It's a node (children container)
+        if recursive:
+            return self._serialize_node(resolved, propfilter)
+        else:
+            return self._serialize_node_shallow(resolved, propfilter)
+
+    def _serialize_node(self, node: dict,
+                        propfilter: list[str] | None) -> dict:
+        """Serialize a node recursively (for recursive GET)."""
+        result = {}
+        props = node.get("properties", {})
+        if props:
+            if propfilter:
+                # propfilter selects which properties to include BY NAME
+                pf_set = set(propfilter)
+                filtered = {name: meta for name, meta in props.items()
+                            if name in pf_set}
+                if filtered:
+                    result["properties"] = filtered
+            else:
+                result["properties"] = props
+
+        children = node.get("children", {})
+        if children:
+            serialized_children = {}
+            for name, child in children.items():
+                serialized_children[name] = self._serialize_node(child, propfilter)
+            result["children"] = serialized_children
+
+        return result
+
+    def _serialize_node_shallow(self, node: dict,
+                                propfilter: list[str] | None) -> dict:
+        """Serialize a node non-recursively (shallow GET)."""
+        result = {}
+        props = node.get("properties", {})
+        if props:
+            if propfilter:
+                # propfilter selects which properties to include BY NAME
+                pf_set = set(propfilter)
+                filtered = {name: meta for name, meta in props.items()
+                            if name in pf_set}
+                if filtered:
+                    result["properties"] = filtered
+            else:
+                result["properties"] = props
+
+        # For non-recursive, just list children names (empty dicts)
+        children = node.get("children", {})
+        if children:
+            result["children"] = {name: {} for name in children}
+
+        return result
+
+    def _filter_props_dict(self, meta: dict,
+                           propfilter: list[str] | None) -> dict:
+        """Filter a property metadata dict by propfilter list."""
+        if not propfilter:
+            return meta
+        # Map lowercase filter names to actual keys
+        # Common filters: Name, Value, value, type, min, max, values
+        filtered = {}
+        for key, val in meta.items():
+            if key in propfilter or key.lower() in [p.lower() for p in propfilter]:
+                filtered[key] = val
+        return filtered
+
+    # ── SET ───────────────────────────────────────────────────────────
+
+    def set(self, path: str, value: Any, source_client: str | None = None,
+            hardware: bool = True) -> bool:
+        """Handle a SET command. Returns True if the path was accepted.
+
+        Args:
+            path: Control path to set
+            value: New value
+            source_client: Client ID that initiated the SET (excluded from
+                           subscription notifications to prevent echo)
+            hardware: False updates the tree and the subscribers without
+                      calling on_set (a caller that writes the hardware
+                      itself, in its own order, such as a session load)
+        """
+        # Special paths
+        if path == "/Sleep":
+            return True  # Keepalive, always accept
+
+        resolved, prop_name = self._resolve_path(path)
+        if resolved is None:
+            if path == "/Dirty/value":
+                # Accepted on a tree without /Dirty, as always.  Where the
+                # tree has it, a client SET writes it, as the Mixer
+                # Engine's CMxRoot::SetProperty does (kPropDirty 0xba).
+                return True
+            log.warning("SET: path not found: %s", path)
+            return False
+
+        if prop_name is None:
+            log.warning("SET: path is a container, not a value: %s", path)
+            return False
+
+        # Convert value to match the property type
+        prop_type = resolved.get("type")
+        if value == "default":
+            # Captured current values are not factory defaults: the map's
+            # own default, else the per-property table (_builtin_default)
+            ppath = path.rstrip("/").removesuffix("/value")
+            value = self._stereo_pan_default(ppath, prop_name)
+            if value is None:
+                value = resolved.get("default")
+            if value is None:
+                log.warning("SET: default unavailable: %s", path)
+                return False
+        value = self._coerce_value(value, prop_type, resolved)
+
+        old_value = resolved.get("value")
+        resolved["value"] = value
+
+        if old_value != value:
+            log.debug("SET %s: %r → %r", path, old_value, value)
+            # Track modified value for persistence
+            self._base.setdefault(path, old_value)
+            self._dirty[path] = value
+            self._schedule_save()
+            # Notify hardware backend
+            if hardware and self.on_set:
+                self.on_set(path, value)
+            # Notify subscribers (exclude originator to prevent echo)
+            self._notify_subscribers(path, value, exclude=source_client)
+
+        return True
+
+    def set_value(self, path: str, value: Any, source_client: str | None = None) -> bool:
+        """Set a value directly (convenience alias for set())."""
+        return self.set(path, value, source_client=source_client)
+
+    def _coerce_value(self, value: Any, prop_type: str | None,
+                      meta: dict) -> Any:
+        """Coerce a value to the property's declared type."""
+        if prop_type == "bool":
+            if isinstance(value, str):
+                return value.lower() in ("true", "1")
+            return bool(value)
+        elif prop_type == "float":
+            try:
+                v = float(value)
+                if meta.get("min") is not None:
+                    v = max(v, meta["min"])
+                if meta.get("max") is not None:
+                    v = min(v, meta["max"])
+                return v
+            except (ValueError, TypeError):
+                return value
+        elif prop_type == "int" or prop_type == "int64":
+            try:
+                v = int(value)
+                if meta.get("min") is not None:
+                    v = max(v, int(meta["min"]))
+                if meta.get("max") is not None:
+                    v = min(v, int(meta["max"]))
+                return v
+            except (ValueError, TypeError):
+                return value
+        elif prop_type == "string":
+            value = str(value)
+            allowed = meta.get("values")
+            def names(entries, prefix=""):
+                result = set()
+                for item in entries:
+                    if isinstance(item, dict):
+                        name = str(item.get("value", ""))
+                        result.add(prefix + name)
+                        result.update(names(item.get("children", []), prefix + name + "/"))
+                    else:
+                        result.add(item)
+                return result
+            if value and allowed and value not in names(allowed):
+                log.warning("SET: value %r not in allowed values (%d entries)", value, len(allowed))
+            return value
+        return value
+
+    # ── SUBSCRIBE / UNSUBSCRIBE ──────────────────────────────────────
+
+    def subscribe(self, client_id: str, path: str):
+        """Subscribe a client to value changes on a path."""
+        self._subs[path].add(client_id)
+        log.debug("SUBSCRIBE %s → %s", client_id, path)
+
+    def unsubscribe(self, client_id: str, path: str):
+        """Unsubscribe a client from a path."""
+        if path in self._subs:
+            self._subs[path].discard(client_id)
+            if not self._subs[path]:
+                del self._subs[path]
+
+    def unsubscribe_all(self, client_id: str):
+        """Remove all subscriptions for a client (on disconnect)."""
+        empty = []
+        for path, clients in self._subs.items():
+            clients.discard(client_id)
+            if not clients:
+                empty.append(path)
+        for path in empty:
+            del self._subs[path]
+
+    def register_callback(self, client_id: str, callback: Callable):
+        """Register a notification callback for a client."""
+        self._callbacks[client_id] = callback
+
+    def unregister_callback(self, client_id: str):
+        """Remove a client's callback."""
+        self._callbacks.pop(client_id, None)
+
+    def register_change_observer(self, observer_id: str, callback: Callable):
+        """Observe every notified change, including properties added at
+        runtime, independent of client subscriptions.  For derived state
+        inside the daemon only: it creates no protocol subscription, and a
+        SET's originator exclusion or a client disconnect does not touch it.
+        """
+        self._change_observers[observer_id] = callback
+
+    def unregister_change_observer(self, observer_id: str):
+        self._change_observers.pop(observer_id, None)
+
+    def _notify_subscribers(self, path: str, value: Any, exclude: str | None = None):
+        """Send subscription notifications to all subscribed clients.
+
+        Args:
+            path: The path that changed
+            value: The new value
+            exclude: Client ID to skip (the originator of the SET)
+        """
+        # Internal observers first, from a snapshot (an observer may
+        # register or unregister one, or notify again for derived state);
+        # a failing observer never stops the client deliveries
+        for observer_id, callback in tuple(self._change_observers.items()):
+            try:
+                callback(path, value)
+            except Exception:
+                log.exception("Internal change observer %s failed for %s",
+                              observer_id, path)
+
+        # Check exact path match
+        subscribers = set()
+        if path in self._subs:
+            subscribers.update(self._subs[path])
+
+        # Also check if anyone subscribed to the parent path
+        # (e.g., subscribed to /devices/0/inputs/0/Gain/value gets notified
+        #  when /devices/0/inputs/0/Gain/value changes)
+        # The path with /value suffix is the canonical subscription form
+        if not path.endswith("/value"):
+            value_path = path + "/value"
+            if value_path in self._subs:
+                subscribers.update(self._subs[value_path])
+        else:
+            # Also check without /value suffix
+            base_path = path.rsplit("/value", 1)[0]
+            if base_path in self._subs:
+                subscribers.update(self._subs[base_path])
+
+        # Remove the originator so they don't get echoed
+        if exclude:
+            subscribers.discard(exclude)
+
+        for client_id in subscribers:
+            cb = self._callbacks.get(client_id)
+            if cb:
+                try:
+                    cb(path, value)
+                except Exception:
+                    log.exception("Subscription callback failed for %s", client_id)
+
+    # ── Enumerate Values (for subscribe initial flood) ─────────────
+
+    def enumerate_values(self, path: str, recursive: bool = False) -> list[tuple[str, Any]]:
+        """Enumerate all (path/value, value) pairs under a path.
+
+        When a client subscribes with recursive=1, the real mixer engine
+        sends back every control value under that path as individual
+        {path, data} messages. This method provides that list.
+
+        For a leaf property path (e.g. /SampleRate), returns just that
+        one value. For a container path with recursive=True, returns all
+        descendant property values.
+        """
+        resolved, prop_name = self._resolve_path(path)
+        if resolved is None:
+            return []
+
+        # Leaf property — return its value
+        if prop_name is not None:
+            val = resolved.get("value")
+            if val is not None:
+                # Canonical form: path ending in /value
+                vpath = path if path.endswith("/value") else path + "/value"
+                return [(vpath, val)]
+            return []
+
+        # Container node
+        if not recursive:
+            # Non-recursive subscribe on a container: send direct property values
+            results = []
+            for name, meta in resolved.get("properties", {}).items():
+                if "value" in meta:
+                    results.append((path.rstrip("/") + f"/{name}/value", meta["value"]))
+            return results
+
+        # Recursive: walk entire subtree
+        results = []
+        self._walk_values(path.rstrip("/"), resolved, results)
+        return results
+
+    def _walk_values(self, base: str, node: dict, out: list[tuple[str, Any]]):
+        """Recursively collect all property values from a node."""
+        for name, meta in node.get("properties", {}).items():
+            if "value" in meta:
+                out.append((f"{base}/{name}/value", meta["value"]))
+        for name, child in node.get("children", {}).items():
+            self._walk_values(f"{base}/{name}", child, out)
+
+    def path_exists(self, path: str) -> bool:
+        """Check if a path resolves to anything."""
+        resolved, _ = self._resolve_path(path)
+        return resolved is not None
+
+    # ── Utility ──────────────────────────────────────────────────────
+
+    def get_value(self, path: str) -> Any:
+        """Quick helper: get the current value of a control path."""
+        resolved, prop_name = self._resolve_path(path)
+        if resolved is None:
+            return None
+        if prop_name is not None:
+            return resolved.get("value")
+        return None
+
+    def all_paths(self) -> list[str]:
+        """Return all control paths (flat list)."""
+        return list(self._props.keys())
+
+    def replace_node(self, path, data):
+        """Replace an existing software-owned subtree and republish its values.
+
+        Used by the opt-in software plugin model, not a DSP instance loader.
+        """
+        from copy import deepcopy
+        self.validate_node(data)
+        node, prop = self._resolve_path(path)
+        if node is None or prop is not None:
+            raise ValueError("unknown object node")
+        prefix = path.rstrip("/") + "/"
+        old_paths = {p for p in self._props if p.startswith(prefix)}
+        for key in old_paths:
+            del self._props[key]
+        node.clear()
+        node.update(deepcopy(data))
+
+        def index(current, base):
+            for name, meta in current.get("properties", {}).items():
+                self._props[base + "/" + name] = meta
+            for name, child in current.get("children", {}).items():
+                index(child, base + "/" + name)
+        index(node, path)
+        new_paths = {p for p in self._props if p.startswith(prefix)}
+        for key in sorted(old_paths | new_paths):
+            self._notify_subscribers(key + "/value", self.get_value(key))
+
+    @staticmethod
+    def validate_node(data):
+        """Validate imported host snapshot structure before modifying a tree."""
+        import math
+        pending = [(data, 0)]
+        count = 0
+        while pending:
+            node, depth = pending.pop()
+            count += 1
+            if not isinstance(node, dict) or depth > 64 or count > 50000:
+                raise ValueError("invalid or oversized preset tree")
+            props, children = node.get("properties", {}), node.get("children", {})
+            if not isinstance(props, dict) or not isinstance(children, dict):
+                raise ValueError("invalid preset properties/children")
+            for key in [*props, *children]:
+                if not isinstance(key, str) or not key or "/" in key or key in (".", ".."):
+                    raise ValueError("invalid preset property/child key")
+            for meta in props.values():
+                if not isinstance(meta, dict):
+                    raise ValueError("invalid preset property metadata")
+                value = meta.get("value")
+                if value is not None and meta.get("type") in ("float", "int", "int64"):
+                    if not isinstance(value, (int, float)) or not math.isfinite(value):
+                        raise ValueError("invalid preset numeric value")
+            pending.extend((child, depth + 1) for child in children.values())

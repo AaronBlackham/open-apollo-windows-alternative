@@ -1,0 +1,194 @@
+/* day pack: tokens (layer 7) */
+/* ---------- Day: light, for daytime and bright rooms ---------- */
+[data-look="day"] {
+  --bg: #e4e7eb;
+  --view-bg: #e4e7eb;
+  --panel: #f6f7f9;
+  --panel-2: #ffffff;
+  --raised: #e8ecf0;
+  --line: #cbd1d8;
+  --line-strong: #9ea8b3;
+  --text: #101317;
+  --text-dim: #3c444d;
+  --text-faint: #57606a;
+  --head: #101317;
+  --accent: #0a5fd1;
+  --accent-ink: #ffffff;
+  --ok: #10803a;
+  --warn: #8a6d00;
+  --red: #c4262d;
+  --red-ink: #ffffff;
+  --idle: #6b737c;
+  --meter-lo: #1e9b48;
+  --meter-mid: #c89400;
+  --meter-hi: #d12a30;
+  --meter-track: #d9dee4;
+  --meter-seg: 0;
+  --focus: #0a5fd1;
+  --shadow: 0 8px 26px rgba(20, 30, 40, 0.18);
+  --radius: 3px;
+  --radius-sm: 2px;
+  --border-w: 1px;
+  --cut: 0px;
+  --glow: none;
+  --lamp-glow: 0 0 0 transparent;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-head: var(--font-label);
+  --font-num: var(--mono);
+  --label-size: 10px;
+  --label-weight: 700;
+  --label-track: 0.1em;
+  --label-stretch: normal;
+  --grid-line: transparent;
+  --sel-bg: #dbe8fb;
+  color-scheme: light;
+}
+
+/* ===== Day: the guide (layers 3-9). Round, soft, plain words, gentle easing, larger targets. ===== */
+[data-look="day"] .sw, [data-look="day"] .btn { border-radius: 14px; }
+[data-look="day"] .sw:not(.sw-grid .sw), [data-look="day"] .btn { min-height: 28px; }
+/* knobs: large round with a thick value arc and a dot */
+[data-look="day"] .dy-track { fill: none; stroke: #dde3ea; stroke-width: 11; stroke-linecap: round; }
+[data-look="day"] .dy-val { fill: none; stroke: var(--accent); stroke-width: 11; stroke-linecap: round; }
+[data-look="day"] .dy-face { fill: #ffffff; stroke: #cfd7df; stroke-width: 1.2; }
+[data-look="day"] .dy-dotg { transform-box: view-box; transform-origin: 50px 50px; transition: transform 180ms ease-out; }
+[data-look="day"] .dy-dot { fill: var(--accent); }
+[data-look="day"] .knob.unconfirmed .dy-val { stroke: var(--warn); }
+[data-look="day"] .knob.refused .dy-val, [data-look="day"] .knob.refused .dy-dot { stroke: var(--red); fill: var(--red); }
+[data-look="day"] .knob.refused .k-readout::after { content: " (not set)"; color: var(--red); font-size: 9.5px; }
+/* faders: a pill track with a round thumb */
+[data-look="day"] .dy-pill { width: 14px; border-radius: 7px; background: #dde3ea; box-shadow: none; }
+[data-look="day"] .dy-pfill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); opacity: 0.3; border-radius: 7px; }
+[data-look="day"] .dy-thumb { left: -7px; right: -7px; height: 28px; border-radius: 14px; background: #ffffff; border: 1px solid #b6c0ca; box-shadow: 0 2px 6px rgba(20, 30, 40, 0.18); transition: bottom 160ms ease-out; }
+[data-look="day"] .fader.refused .dy-thumb { border-color: var(--red); border-width: 2px; }
+/* switches: toggle pills (the small ones in a strip stay plain pills) */
+[data-look="day"] .sw { background: #ffffff; border-color: #c4ccd5; color: var(--text); font-weight: 600; letter-spacing: 0.02em; }
+[data-look="day"] .sw .dy-switch { position: relative; width: 24px; height: 14px; border-radius: 7px; background: #c9d1da; flex: none; transition: background 160ms ease; }
+[data-look="day"] .sw .dy-knob { position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: #ffffff; transition: left 160ms ease; }
+[data-look="day"] .sw[aria-pressed="true"] .dy-switch, [data-look="day"] .sw[aria-checked="true"] .dy-switch { background: var(--accent); }
+[data-look="day"] .sw[aria-pressed="true"] .dy-knob, [data-look="day"] .sw[aria-checked="true"] .dy-knob { left: 12px; }
+[data-look="day"] .sw.sw-red[aria-pressed="true"] .dy-switch, [data-look="day"] .sw.sw-red[aria-checked="true"] .dy-switch { background: var(--red); }
+[data-look="day"] .sw[aria-pressed="true"], [data-look="day"] .sw[aria-checked="true"] { background: #eaf2fd; border-color: var(--accent); color: var(--text); }
+[data-look="day"] .sw.sw-red[aria-pressed="true"], [data-look="day"] .sw.sw-red[aria-checked="true"] { background: #fdecec; border-color: var(--red); color: var(--text); }
+[data-look="day"] .sw-grid .dy-switch, [data-look="day"] .mix-ms .dy-switch, [data-look="day"] .mo-ctl .dy-switch, [data-look="day"] .pair-head .dy-switch, [data-look="day"] .plb .dy-switch { display: none; }
+[data-look="day"] .sw-grid .sw[aria-pressed="true"] { background: var(--accent); color: #ffffff; }
+[data-look="day"] .sw-grid .sw.sw-red[aria-pressed="true"] { background: var(--red); color: #ffffff; }
+/* selectors: a segmented pill */
+[data-look="day"] .seg { border-radius: 14px; background: #eef1f4; border-color: #d3dae2; padding: 2px; gap: 2px; }
+[data-look="day"] .seg button { border-radius: 12px; background: transparent; border: 0 !important; transition: background 160ms ease; }
+[data-look="day"] .seg button[aria-pressed="true"] { background: #ffffff; color: var(--accent); box-shadow: 0 1px 3px rgba(20, 30, 40, 0.2); }
+/* meters: zones (too quiet / good / too loud) behind the level */
+[data-look="day"] .dy-zoned .meter-col { width: 11px; }
+[data-look="day"] .dy-zoned .meter-bar { border-radius: 5px; background: #eef1f4; }
+[data-look="day"] .dy-zones { position: absolute; inset: 0; background: linear-gradient(to top, rgba(110, 120, 130, 0.14) 0 var(--q), rgba(30, 155, 72, 0.18) var(--q) var(--g), rgba(209, 42, 48, 0.2) var(--g) 100%); }
+[data-look="day"] .dy-zoned .meter-clip { border-radius: 4px; }
+/* the plug-in slot: an "add" pill */
+[data-look="day"] .ins-slot { border-radius: 12px; border-style: dashed; background: #ffffff; height: 26px; color: var(--text-dim); }
+[data-look="day"] .ins-slot[data-state="empty"] .ins-lamp { width: 12px; height: 12px; border-radius: 50%; box-shadow: none; background: linear-gradient(var(--accent), var(--accent)) center / 8px 2px no-repeat, linear-gradient(var(--accent), var(--accent)) center / 2px 8px no-repeat; }
+[data-look="day"] .ins-slot:not([data-state="empty"]):not([data-state="na"]) { border-style: solid; background: #eaf2fd; color: var(--text); }
+/* the browser: by purpose, bigger previews */
+[data-look="day"] .plb[data-layout="purpose"] .plb-group-head { font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--text); padding: 6px 8px; }
+[data-look="day"] .plb[data-layout="purpose"] .plb-item { height: 38px; grid-template-columns: 52px minmax(0, 1fr) auto auto; border-radius: 10px; margin: 3px 6px; border: 1px solid var(--line); background: #ffffff; }
+[data-look="day"] .plb[data-layout="purpose"] .plb-art { width: 52px; height: 28px; border-radius: 6px; }
+[data-look="day"] .plb[data-layout="purpose"] .plb-name { font-size: 12.5px; }
+/* the parameter view: cards */
+[data-look="day"] .pl-drawer { border-radius: 14px; }
+[data-look="day"] .pl-drawer[data-layout="cards"] .pl-param { border-radius: 12px; background: #ffffff; padding: 8px 6px; }
+[data-look="day"] .pl-drawer[data-layout="cards"] .pl-dr-art { display: flex; border-radius: 8px; }
+[data-look="day"] .useg, [data-look="day"] .mon-card, [data-look="day"] .plb, [data-look="day"] .panel { border-radius: 12px; }
+
+/* ===== Day, layer 2: an overview of every input as calm tiles; tap one for its focus view with everything about it,
+   pan / mute / solo / low cut / polarity behind More. ===== */
+[data-look="day"] #view-control[data-comp="focus"] .useg { flex: 1 1 auto !important; min-width: 300px !important; }
+[data-look="day"] #view-control[data-comp="focus"] .useg-body { flex-wrap: wrap; align-content: flex-start; gap: 10px; padding: 10px; }
+[data-look="day"] #view-control[data-comp="focus"] .pair { border: 0; flex: none; min-width: 0; }
+[data-look="day"] #view-control[data-comp="focus"] .pair-head { border: 0; height: 26px; }
+[data-look="day"] #view-control[data-comp="focus"] .pair-body { gap: 10px; align-items: flex-start; }
+[data-look="day"] #view-control[data-comp="focus"] .pair.linked .pair-body { box-shadow: none; }
+/* the overview tile: number, name, gain, the level */
+[data-look="day"] #view-control[data-comp="focus"] .strip {
+  width: 132px; flex: none; border: 1px solid var(--line) !important; border-radius: 16px; background: #ffffff; padding: 10px; cursor: pointer;
+  display: grid; grid-template-columns: minmax(0, 1fr) 26px; grid-template-areas: "top meter" "name meter" "pre meter" "ins ins"; gap: 6px; align-content: start;
+  box-shadow: 0 1px 3px rgba(20, 30, 40, 0.08); transition: width 200ms ease, box-shadow 200ms ease;
+}
+[data-look="day"] #view-control[data-comp="focus"] .strip:hover { box-shadow: 0 3px 10px rgba(20, 30, 40, 0.14); }
+[data-look="day"] #view-control[data-comp="focus"] .strip-top { grid-area: top; }
+[data-look="day"] #view-control[data-comp="focus"] .strip-name { grid-area: name; font-size: 13px; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-pre { grid-area: pre; border: 0; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-pre > :not(.knob) { display: none; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-ins { grid-area: ins; border: 0; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-ins .st-lbl { display: none; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-mix,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .strip-meter,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .fd-row { display: contents; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-mix > .st-lbl,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .mix-top,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .fader,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .fd-linked,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .fd-foot { display: none; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .meter-wrap { grid-area: meter; min-height: 120px; }
+[data-look="day"] #view-control[data-comp="focus"] .strip .st-out, [data-look="day"] #view-control[data-comp="focus"] .strip .st-stats { display: none; }
+/* the focus view: the tile opens wide with everything, the rarer settings behind More */
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus {
+  width: 330px; cursor: default; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "top top" "name name" "pre mix" "ins mix" "more more";
+  border-color: var(--accent) !important; box-shadow: 0 6px 22px rgba(10, 95, 209, 0.18);
+}
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-pre { grid-area: pre; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-ins { grid-area: ins; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-mix { grid-area: mix; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .strip-meter { min-height: 180px; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-more { grid-area: more; justify-self: start; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus:not(.more) .mix-top,
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus:not(.more) .sw-grid > :nth-child(n+3) { display: none; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .sw-grid .sw { height: 30px; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-lbl::before { content: none; }
+[data-look="day"] #view-control[data-comp="focus"] .tb-strip, [data-look="day"] #view-control[data-comp="focus"] .master { border-radius: 16px; border: 1px solid var(--line); background: #ffffff; flex: none; }
+[data-look="day"] #view-control[data-comp="focus"] .tb-strip { width: 80px; min-height: 240px; }
+[data-look="day"] #view-control[data-comp="focus"] .master { width: 150px; min-height: 260px; }
+[data-look="day"] #view-control[data-comp="focus"] .useg-head::after { content: "Tap an input to see everything about it."; font-size: 12px; color: var(--text-dim); width: 100%; }
+
+/* ===== Day, signature: guided gain (the focus view's "Set my level") ===== */
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus { grid-template-areas: "top top" "name name" "pre mix" "ins mix" "more guide"; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-guide { display: inline-flex; grid-area: guide; justify-self: end; align-items: center; min-height: 36px; padding: 0 16px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600; }
+[data-look="day"] .st-guide-box { border-radius: 14px; background: #f3f7fd; border-color: #b9d1f2; font-size: 14px; line-height: 1.45; }
+[data-look="day"] .st-guide-box .btn { min-height: 36px; border-radius: 999px; padding: 0 14px; }
+
+/* ===== Day: Windows audio checkboxes are large rounded boxes, 44 px rows ===== */
+[data-look="day"] .ep-row { min-height: 44px; font-size: 14px; grid-template-columns: 30px minmax(0, 1fr) auto; }
+[data-look="day"] .ep-row input { appearance: none; width: 22px; height: 22px; border-radius: 6px; border: 2px solid #9aa9bb; background: #fff; display: grid; place-items: center; }
+[data-look="day"] .ep-row input:checked { background: var(--accent); border-color: var(--accent); }
+[data-look="day"] .ep-row input:checked::after { content: "✓"; font: 700 14px var(--font-ui); color: #fff; }
+[data-look="day"] .ep-group { border-radius: 14px; padding: 6px 12px 8px; }
+[data-look="day"] .ep-tag { border-radius: 999px; text-transform: none; letter-spacing: 0; font-size: 11px; }
+
+/* ===== [Ins] Day: the overview shows what is loaded (and one place to add); the focus view shows the whole chain ===== */
+[data-look="day"] .ins-slots[data-slots="4"] .ins-slot { height: 26px; font-size: 11px; }
+[data-look="day"] .ins-slots[data-slots="4"] .ins-x { height: 26px; }
+[data-look="day"] .ins-uni { border-radius: 12px; height: 24px; font-size: 10px; }
+[data-look="day"] .ins-recmon button { height: 26px; font-size: 11px; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-ins-head > .st-lbl { display: inline; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .ins-recmon { flex: 0 0 110px; }
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .ins-uni-row,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .ins-row[data-state="empty"] ~ .ins-row[data-state="empty"],
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .ins-recmon,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .ins-chain,
+[data-look="day"] #view-control[data-comp="focus"] .strip:not(.focus) .st-aux { display: none; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus { grid-template-areas: "top top" "name name" "pre mix" "ins mix" "aux aux" "more guide"; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .st-aux { grid-area: aux; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .aux-pan { display: block; }
+[data-look="day"] #view-control[data-comp="focus"] .strip.focus .aux-send { flex-direction: row; justify-content: center; gap: 6px; }
+[data-look="day"] #view-control[data-comp="focus"] .aux-strip { width: 110px; flex-basis: 110px; border-radius: 16px; border: 1px solid var(--line); background: #ffffff; }
+
+/* ===== [Sess] sessions in plain words: a friendly sheet, one column of cards, 44 px buttons (layout "plain") */
+[data-look="day"] .sess-pop { border-radius: 16px; width: min(560px, calc(100vw - 40px)); }
+[data-look="day"] .ss-plain { padding: 16px 18px 12px; gap: 12px; }
+[data-look="day"] .ss-plain .ss-title { margin: 0; font-size: 18px; font-family: var(--font-head); color: var(--head); }
+[data-look="day"] .ss-plain .ss-intro { margin: 0; color: var(--text-dim); font-size: 13px; }
+[data-look="day"] .ss-plain .ss-now { font-size: 13.5px; }
+[data-look="day"] .ss-plain .ss-card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+[data-look="day"] .ss-plain .ss-card[data-current="1"] { border: 2px solid var(--accent); }
+[data-look="day"] .ss-plain .ss-name { font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+[data-look="day"] .ss-plain .ss-tag { font-size: 11.5px; font-weight: 600; letter-spacing: 0; color: var(--text); background: var(--raised); border-radius: 10px; padding: 1px 8px; }
+[data-look="day"] .ss-plain .ss-note { border-radius: 10px; border-left-width: 4px; }
+[data-look="day"] .ss-plain .btn { border-radius: 22px; }

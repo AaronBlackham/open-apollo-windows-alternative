@@ -1,0 +1,255 @@
+/* [Plug-ins] the browser docked on the Control view, the insert slots on the strips, the detail card, the parameter
+   drawer and the DSP 1 meter. Same tokens as app.css (themes.css): state colour only for state. */
+
+/* ---------- the insert slot on a strip ---------- */
+
+.ins-slots { display: flex; flex-direction: column; gap: 3px; }
+.ins-row { display: flex; gap: 2px; min-width: 0; }
+.ins-slot {
+  position: relative; display: flex; align-items: center; gap: 4px;
+  height: 22px; flex: 1 1 auto; min-width: 0; padding: 0 4px;
+  border: var(--border-w) dashed var(--line-strong); border-radius: var(--radius-sm); background: transparent;
+  font-family: var(--font-label); font-size: 9.5px; font-weight: 700; letter-spacing: 0.03em; color: var(--text-faint);
+  cursor: pointer; text-align: left;
+}
+.ins-slot:hover { color: var(--text); border-color: var(--text-faint); }
+.ins-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-lamp { width: 6px; height: 6px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ins-why { display: none; }
+.ins-x {
+  flex: none; width: 16px; height: 22px; padding: 0; border: var(--border-w) solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--panel-2); color: var(--text-dim); cursor: pointer; font-size: 12px; line-height: 1;
+}
+.ins-x:hover { color: var(--red); border-color: var(--red); }
+
+/* states: the lamp carries the state colour, the slot's border shows it is occupied */
+.ins-slot[data-state="running"], .ins-slot[data-state="loading"], .ins-slot[data-state="bypassed"],
+.ins-slot[data-state="waiting"], .ins-slot[data-state="failed"] { border-style: solid; background: var(--panel-2); color: var(--text); }
+.ins-slot[data-state="running"] .ins-lamp, .ins-lamp[data-state="running"] { background: var(--ok); box-shadow: var(--lamp-glow); color: var(--ok); }
+.ins-slot[data-state="loading"] .ins-lamp, .ins-lamp[data-state="loading"],
+.ins-slot[data-state="waiting"] .ins-lamp, .ins-lamp[data-state="waiting"] { background: var(--warn); color: var(--warn); }
+.ins-slot[data-state="waiting"] .ins-lamp, .ins-lamp[data-state="waiting"] { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
+.ins-slot[data-state="bypassed"] .ins-lamp, .ins-lamp[data-state="bypassed"] { background: transparent; box-shadow: inset 0 0 0 2px var(--idle); }
+.ins-slot[data-state="bypassed"] .ins-name { color: var(--text-faint); text-decoration: line-through; }
+.ins-slot[data-state="failed"] .ins-lamp, .ins-lamp[data-state="failed"], .ins-slot[data-refused="1"] .ins-lamp { background: var(--red); color: var(--red); box-shadow: var(--lamp-glow); }
+.ins-slot[data-refused="1"] { border-color: var(--red); }
+.ins-slot[data-state="na"] { border-style: dotted; color: var(--text-faint); cursor: default; opacity: 0.8; }
+.ins-slot.open { border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.ins-slot.target { border-color: var(--accent); border-style: solid; color: var(--text); }
+
+/* placing a plug-in (dragging, or picked up by keyboard): every slot says yes, or no and why */
+.ins-slot[data-drop="ok"] { border: var(--border-w) solid var(--ok); color: var(--text); background: var(--panel-2); }
+.ins-slot[data-drop="ok"].over, .ins-slot[data-drop="ok"]:focus-visible { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--ok); }
+.ins-slot[data-drop="no"] { border: var(--border-w) dashed var(--red); opacity: 0.85; cursor: not-allowed; }
+.ins-slot[data-drop] .ins-why {
+  display: block; position: absolute; inset: 0; padding: 0 3px; background: var(--panel-2); border-radius: var(--radius-sm);
+  font-size: 8.5px; letter-spacing: 0.04em; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ins-slot[data-drop="ok"] .ins-why { color: var(--ok); }
+.ins-slot[data-drop="no"] .ins-why { color: var(--red); }
+.ins-slot[data-drop="ok"] .ins-why::before { content: "+ "; }
+.ins-slot[data-drop="no"] .ins-why::before { content: "× "; }
+
+/* ---------- DSP 1 meter (browser head, the x8p's segment head) ---------- */
+
+.dsp-meter { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 10.5px; color: var(--text-dim); }
+.dsp-lbl { font-family: var(--font-label); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-faint); }
+.dsp-bar { position: relative; width: 84px; height: 7px; background: var(--meter-track); box-shadow: inset 0 0 0 1px var(--line); flex: none; }
+.dsp-used { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+.dsp-bar[data-low="1"] .dsp-used { background: var(--red); }
+.dsp-txt { white-space: nowrap; }
+.dsp-pools { display: inline-flex; flex-direction: column; gap: 1px; }
+.dsp-pool { display: block; width: 30px; height: 2px; background: var(--meter-track); box-shadow: inset 0 0 0 1px var(--line); position: relative; }
+.dsp-pool-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--text-faint); }
+.dsp-load { color: var(--text-faint); }
+.dsp-na { font-size: 10.5px; color: var(--text-faint); font-style: italic; }
+
+/* ---------- the browser ---------- */
+
+.plb {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative;
+  background: var(--panel); border: var(--border-w) solid var(--line); border-radius: var(--radius);
+}
+.plb-head { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 9px; border-bottom: var(--border-w) solid var(--line); flex: none; }
+.plb-title { font-family: var(--font-head); font-size: var(--label-size); font-weight: 700; letter-spacing: var(--label-track); text-transform: uppercase; color: var(--head); }
+.plb-count { font-size: 10.5px; color: var(--text-faint); }
+.plb-chip {
+  margin-left: auto; font-family: var(--font-label); font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
+  padding: 1px 5px; border: var(--border-w) solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text-faint); white-space: nowrap;
+}
+.plb-chip[data-kind="on"] { border-color: var(--ok); color: var(--ok); }
+.plb-chip[data-kind="busy"] { border-color: var(--warn); color: var(--warn); }
+.plb-chip[data-kind="bad"] { border-color: var(--red); color: var(--red); }
+.plb-toggle { padding: 0 6px; height: 20px; font-size: 13px; line-height: 1; flex: none; }
+.view-control[data-plb="closed"] .plb-head { flex-direction: column; padding: 6px 2px; border-bottom: 0; }
+.view-control[data-plb="closed"] .plb-head > :not(.plb-toggle) { display: none; }
+.view-control[data-plb="closed"] .plb-head { order: -1; }
+
+.plb-body { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.plb-tools { display: flex; gap: 4px; padding: 6px 6px 4px; flex: none; }
+.plb-search { flex: 1; min-width: 0; height: 24px; font-size: 12px; padding: 0 6px; }
+.plb-fits { flex: none; height: 24px; font-size: 9px; padding: 0 5px; }
+.plb-room { padding: 2px 8px 5px; flex: none; }
+.plb-room .dsp-bar { flex: 1 1 auto; width: auto; }
+.plb-notes { display: flex; flex-direction: column; gap: 4px; padding: 0 6px 5px; flex: none; }
+.plb-notes .ctl-note { font-size: 11px; padding: 3px 4px 3px 9px; }
+.plb-hint { margin: 0 6px 5px; padding: 3px 6px; font-size: 11px; color: var(--text); border-left: 2px solid var(--accent); background: var(--sel-bg); flex: none; }
+.plb-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: var(--border-w) solid var(--line); }
+.plb-group-head {
+  display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 8px; border: 0; cursor: pointer; text-align: left;
+  background: var(--panel-2); border-bottom: var(--border-w) solid var(--line); position: sticky; top: 0; z-index: 1;
+  font-family: var(--font-label); font-stretch: var(--label-stretch); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.plb-group-head:hover { color: var(--text); }
+.plb-caret { width: 9px; color: var(--text-faint); }
+.plb-group-name { flex: 1; }
+.plb-group-n { font-size: 10px; color: var(--text-faint); letter-spacing: 0; }
+.plb-items { display: flex; flex-direction: column; }
+.plb-item {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
+  height: 26px; padding: 0 7px 0 6px; border-bottom: var(--border-w) solid var(--line); cursor: grab; outline: none;
+}
+.plb-item:hover { background: var(--panel-2); }
+.plb-item[aria-selected="true"] { background: var(--sel-bg); box-shadow: inset 2px 0 0 var(--accent); }
+.plb-item:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.plb-item[data-lic="0"], .plb-item[data-lic="?"] { cursor: default; }
+.plb-item[data-lic="0"] .plb-name, .plb-item[data-fits="0"] .plb-name { color: var(--text-faint); }
+.plb-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plb-words { font-size: 10px; color: var(--text-faint); }
+.plb-tag { font-family: var(--font-label); font-size: 8px; font-weight: 700; letter-spacing: 0.05em; color: var(--red); white-space: nowrap; }
+.plb-item[data-lic="?"] .plb-tag { color: var(--warn); }
+.plb-lamp { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); opacity: 0.85; }
+.plb-empty { margin: 10px; }
+.plb-foot { margin: 0; padding: 5px 8px; border-top: var(--border-w) solid var(--line); font-size: 10.5px; flex: none; }
+.plb-drop {
+  display: none; position: absolute; inset: 0; z-index: 3; align-items: center; justify-content: center;
+  border: 2px dashed var(--red); background: color-mix(in srgb, var(--panel) 85%, transparent);
+  font-family: var(--font-label); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--red); pointer-events: none;
+}
+body.pl-dragging .plb-drop { display: flex; opacity: 0.6; }
+body.pl-dragging .plb.unload .plb-drop { opacity: 1; }
+body:not(.pl-dragging) .plb-drop { display: none; }
+.plb.picking { border-color: var(--accent); }
+
+/* previews: the plug-in's own art from the UAD install, or a line glyph per type */
+.pl-prev {
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: var(--panel-2); border: var(--border-w) solid var(--line); border-radius: var(--radius-sm); color: var(--text-faint);
+}
+.pl-prev img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.plb-art { width: 40px; height: 20px; }
+.pl-glyph { width: 24px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.pl-prev[data-group="eq"] { color: var(--accent); }
+
+/* ---------- the detail card ---------- */
+
+.pl-card {
+  position: fixed; z-index: 40; width: 270px; padding: 10px; display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel-2); border: var(--border-w) solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+.card-art { display: flex; }
+.card-prev { width: 100%; height: 78px; }
+.card-prev .pl-glyph { width: 96px; height: 48px; stroke-width: 0.8; }
+.card-name { font-family: var(--font-head); font-size: 13px; font-weight: 700; color: var(--text); }
+.card-cat { display: flex; flex-direction: column; gap: 1px; font-family: var(--font-label); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--head); }
+.card-src { font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: 0; color: var(--text-faint); }
+.card-pool { position: relative; display: flex; height: 8px; background: var(--meter-track); box-shadow: inset 0 0 0 1px var(--line); }
+.cp-used { background: var(--text-faint); }
+.cp-need { background: var(--ok); }
+.cp-need[data-fits="0"] { background: var(--red); }
+.card-kv { display: grid; grid-template-columns: 76px 1fr; gap: 2px 8px; margin: 0; font-size: 11px; }
+.card-kv dt { font-family: var(--font-label); font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); padding-top: 2px; }
+.card-kv dd { margin: 0; color: var(--text); }
+.card-kv dd.bad { color: var(--red); } .card-kv dd.ok { color: var(--ok); } .card-kv dd.warn { color: var(--warn); }
+
+/* ---------- the parameter drawer (under the strips, pointing at its strip) ---------- */
+
+.pl-drawer {
+  position: relative; flex: none; max-height: 40%; overflow-y: auto; padding: 8px 10px 8px;
+  background: var(--panel); border: var(--border-w) solid var(--accent); border-radius: var(--radius); outline: none;
+}
+.pl-dr-caret {
+  position: absolute; top: -1px; width: 12px; height: 6px; background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.pl-dr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.pl-dr-id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pl-dr-where { font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.04em; white-space: nowrap; }
+.pl-dr-title { margin: 0; font-size: 14px; font-weight: 700; font-family: var(--font-head); white-space: nowrap; }
+.pl-dr-facts { font-size: 10.5px; color: var(--text-dim); margin-bottom: 6px; letter-spacing: 0.02em; }
+.pl-dr-close { padding: 0 8px; font-size: 14px; }
+.pl-dr-fine { margin: 6px 2px 0; font-size: 11px; }
+.pl-state { font-family: var(--font-label); font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; color: var(--text-faint); }
+.pl-state[data-state="running"] { color: var(--ok); }
+.pl-state[data-state="loading"], .pl-state[data-state="waiting"] { color: var(--warn); }
+.pl-state[data-state="failed"] { color: var(--red); }
+.pl-actions { display: flex; align-items: center; gap: 6px; }
+.pl-actions .sw { height: 24px; padding: 0 10px; }
+.pl-actions .btn { padding: 2px 9px; font-size: 12px; }
+.pl-drawer > .ctl-note { margin-bottom: 6px; max-width: none; }
+.pl-params { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 5px; }
+.pl-param {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0;
+  padding: 5px 4px 4px; background: var(--panel-2); border: var(--border-w) solid var(--line); border-radius: var(--radius-sm);
+}
+.pl-param.unconfirmed { border-style: dashed; border-color: var(--warn); }
+.pl-param[data-rb="refused"] { border-color: var(--red); }
+.pl-param-name { font-family: var(--font-label); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-param .knob .k-readout { font-size: 10.5px; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+.pl-param .knob + .pl-param-text { display: none; }   /* a knob shows the plug-in's text itself */
+.pl-param .seg { width: 100%; }
+.pl-param .seg button { padding: 0 2px; font-size: 9.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pl-param .select { width: 100%; min-width: 0; }
+.pl-param-text { font-size: 10.5px; color: var(--text); min-height: 14px; }
+.pl-param-foot { display: flex; align-items: center; justify-content: space-between; gap: 3px; width: 100%; }
+.pl-entry-wrap { display: inline-flex; align-items: center; gap: 1px; }
+.pl-entry { width: 34px; height: 17px; padding: 0 2px; font-size: 10px; text-align: right; border: var(--border-w) solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel); user-select: text; }
+.pl-pct { font-size: 9px; color: var(--text-faint); }
+.pl-rb { font-size: 8.5px; letter-spacing: 0.04em; color: var(--ok); white-space: nowrap; margin-left: auto; }
+.pl-param[data-rb="sent"] .pl-rb { color: var(--warn); }
+.pl-param[data-rb="refused"] .pl-rb { color: var(--red); }
+
+/* Settings: Plug-in hosting */
+.pl-set-actions { display: flex; align-items: center; gap: 8px; }
+
+/* ---------- [Ins] chains: four slot rows, the Unison slot, REC / MON, the chain's state, refusals inline ---------- */
+
+.st-ins-head { display: flex; align-items: center; justify-content: space-between; gap: 3px; min-width: 0; }
+.ins-recmon { display: grid; grid-template-columns: 1fr 1fr; gap: 0; position: relative; flex: 1 1 auto; min-width: 0; }
+/* a strip is narrow: the REC / MON switch takes the INS label's place (it sits right above the inserts) */
+.st-ins-head:has(.ins-recmon:not([hidden])) > .st-lbl { display: none; }
+.ins-recmon button { height: 18px; min-width: 0; padding: 0 1px; font-size: 8.5px; letter-spacing: 0.02em; }
+/* the narrow layouts: the used rows and the next empty one; every row while a plug-in is placed, and in the wide layouts */
+.ins-row.ins-extra { display: none; }
+body.pl-placing .ins-row.ins-extra, body.pl-dragging .ins-row.ins-extra,
+#view-control[data-comp="panels"] .ins-row.ins-extra, #view-control[data-comp="rows"] .ins-row.ins-extra,
+#view-control[data-comp="focus"] .strip.focus .ins-row.ins-extra, #view-control[data-comp="focus"] .aux-strip .ins-row.ins-extra { display: flex; }
+.ins-row.ins-extra[hidden] { display: none !important; }
+.ins-recmon.over::after { content: "LAT!"; position: absolute; right: -2px; top: -9px; font: 700 7.5px var(--mono); color: var(--warn); letter-spacing: 0; }
+.ins-slots[data-slots="2"] .ins-slot, .ins-slots[data-slots="3"] .ins-slot, .ins-slots[data-slots="4"] .ins-slot { height: 19px; font-size: 9px; }
+.ins-slots[data-slots="4"] .ins-x { height: 19px; }
+.ins-slots { gap: 2px; }
+.ins-row[hidden] { display: none; }
+/* the Unison slot: the preamp position above the inserts; disabled (dotted, dim, its reason in the title) while it takes no pick */
+.ins-uni {
+  position: relative; display: flex; align-items: center; gap: 4px; height: 17px; flex: 1 1 auto; min-width: 0; padding: 0 4px;
+  border: var(--border-w) dashed var(--line-strong); border-radius: var(--radius-sm); background: transparent;
+  font-family: var(--font-label); font-size: 8px; font-weight: 700; letter-spacing: 0.14em; color: var(--text-faint); cursor: pointer; text-align: left;
+}
+.ins-uni[data-state="off"] { border-style: dotted; opacity: 0.6; cursor: not-allowed; }
+.ins-uni[data-state="off"] .ins-name::after { content: " · N/A"; letter-spacing: 0.04em; }
+.ins-uni[data-state="running"] { border-style: solid; color: var(--text); background: var(--panel-2); }
+.ins-uni[data-state="running"] .ins-lamp { background: var(--ok); }
+.ins-uni[data-drop="ok"] { border: var(--border-w) solid var(--ok); color: var(--text); }
+.ins-uni-row .ins-x { height: 17px; }
+/* aux slots while aux inserts are off: shown, not taking anything */
+.ins-slot[data-state="off"] { border-style: dotted; opacity: 0.6; cursor: not-allowed; }
+/* the chain's state once per strip, and a refused build's words */
+.ins-chain { font: 600 8px/1.2 var(--mono); letter-spacing: 0.04em; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-chain[data-state="loading"], .ins-chain[data-state="waiting"] { color: var(--warn); }
+.ins-chain[data-state="failed"] { color: var(--red); }
+.ins-refusal { font-size: 9px; line-height: 1.25; color: var(--red); overflow-wrap: anywhere; }
+.ins-refusal::before { content: "NOT DONE: "; font-weight: 700; letter-spacing: 0.04em; }
+.ins-chain[hidden], .ins-refusal[hidden], .ins-slots[hidden], .ins-recmon[hidden] { display: none; }

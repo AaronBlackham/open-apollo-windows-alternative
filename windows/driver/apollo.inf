@@ -1,0 +1,459 @@
+;
+; apollo.inf - open driver for the Apollo x8p and Apollo Twin X Gen 1
+;
+; Matches exactly two four-part hardware IDs (never DEV_0002 alone):
+;   SUBSYS_00141A00  Apollo x8p: the full driver (Apollo_Install).
+;   SUBSYS_00191A00  Apollo Twin X Gen 1 (Apollo_TwinX_Install). Mode 0 (default): the driver
+;                    identifies and quiesces it and does nothing else. Mode 1 (gate G3, its unit
+;                    key): bring-up + transport + copy engine, for a test tone. Mode 2 (gate G4):
+;                    also its own Windows endpoints; ACX adds them only in Mode 2, so Mode 0/1
+;                    still show no endpoint. Gate G5: its input strips (StripsEnable).
+; Gate G7: Parameters\Aggregate\EndpointSet = 1 replaces both units' own endpoints with one combined set
+; on the x8p, "(Apollo)" interfaces below, following the combined device's routing.
+; [Endpoints] Nov 15: every physical output pair of a unit is its own Windows playback endpoint, named by
+; its jack ("LINE 1-2 (Apollo x8p)"), every mic/line input a mono recording endpoint, plus the monitor-mix
+; loopback; VIRTUAL and S/PDIF inputs opt-in. The rows are driver\endpoint_plan.h (standalone) and
+; driver\apollo_agg.h APOLLO_AGG_EP_LIST (combined); tools\agg-test\aggep-test checks these lines against
+; them. All reference strings are new ("Ap2..."): Windows gives every endpoint a new ID, so none inherits
+; a name it cached for an older row. Which rows exist: Parameters\Units\<key>\Endpoints (standalone,
+; bit i = row i; the x8p also reads a legacy Parameters\Endpoints) or Parameters\Aggregate\Endpoints
+; (combined); absent = the default set.
+; UA's WHQL package ranks above this one, so neither unit moves unless forced with
+; devcon update <this inf> <that exact ID> (tools\phase1\install.ps1 -Unit x8p|twinx).
+; Any other UA device stays on UA's driver.
+;
+; SPDX-License-Identifier: GPL-2.0-only
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = MEDIA
+ClassGuid   = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+CatalogFile = apollo.cat
+DriverVer   =
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+apollo.sys = 1,,
+
+[Manufacturer]
+%ManufacturerName% = Apollo, NT$ARCH$.10.0...22000
+
+[Apollo.NT$ARCH$.10.0...22000]
+%Apollo.DeviceDesc% = Apollo_Install, PCI\VEN_1A00&DEV_0002&SUBSYS_00141A00
+%ApolloTwinX.DeviceDesc% = Apollo_TwinX_Install, PCI\VEN_1A00&DEV_0002&SUBSYS_00191A00
+
+; ---- Apollo Twin X Gen 1 (Mode 0 observe; Mode 1 = G3 bring-up + transport; Mode 2 = G4) --
+; Same binary, service, interrupt and security settings as the x8p. Parameters\Models\99 and
+; Parameters\Units\<key> hold its settings; the x8p's legacy Parameters values never apply to it
+; (docs/spec-twinx.md 6.9).
+[Apollo_TwinX_Install.NT]
+CopyFiles = Apollo_CopyFiles
+
+[Apollo_TwinX_Install.NT.HW]
+AddReg = Apollo_HW_AddReg
+
+; [Endpoints] Its standalone Windows endpoints (driver\endpoint_plan.h APOLLO_TWX_EP_LIST): MON L/R,
+; LINE 3-4 and HP out; Monitor mix (the loopback, never a default) and MIC/LINE 1-2 in; VIRTUAL 1-2,
+; VIRTUAL 3-4 and S/PDIF in (opt-in). Parameters\Units\<key>\Endpoints, bit i = row i (default 0x3F);
+; they exist in Mode 2 only.
+[Apollo_TwinX_Install.NT.Interfaces]
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxMon%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_TwxMon%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxMon%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxLine34%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_TwxLine34%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxLine34%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxHp%,         Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_TwxHp%,         Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxHp%,         Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxMix%,        Apollo_TwinX_Mix_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_TwxMix%,        Apollo_TwinX_Mix_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxMix%,        Apollo_TwinX_Mix_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxIn1%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_TwxIn1%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxIn1%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxIn2%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_TwxIn2%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxIn2%,        Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxVirt12%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_TwxVirt12%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxVirt12%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxVirt34%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_TwxVirt34%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxVirt34%,     Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_TwxSpdifIn%,    Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_TwxSpdifIn%,    Apollo_TwinX_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_TwxSpdifIn%,    Apollo_TwinX_Out_Interface
+
+; Outputs and inputs: normal endpoints, choosable as defaults (install scripts put your previous defaults back).
+[Apollo_TwinX_Out_Interface]
+AddReg = Apollo_TwinX_Endpoint_AddReg
+
+; Monitor mix in: the monitor-mix loopback. Never a sensible default microphone.
+[Apollo_TwinX_Mix_Interface]
+AddReg = Apollo_TwinX_Endpoint_AddReg, Apollo_NeverDefault_AddReg
+
+[Apollo_TwinX_Endpoint_AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%ApolloTwinX.EndpointName%
+HKR,EP\0,%PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%
+HKR,EP\0,%PKEY_AudioEndpoint_Supports_EventDriven_Mode%,0x00010001,0x1
+
+[Apollo_TwinX_Install.NT.Services]
+AddService = apollo, 0x00000002, Apollo_Service
+
+[Apollo_TwinX_Install.NT.Wdf]
+KmdfService = apollo, Apollo_WdfSection
+
+; ---- Apollo x8p ---------------------------------------------------------------------------
+
+[Apollo_Install.NT]
+CopyFiles = Apollo_CopyFiles
+
+[Apollo_CopyFiles]
+apollo.sys
+
+[Apollo_Install.NT.HW]
+AddReg = Apollo_HW_AddReg
+
+[Apollo_HW_AddReg]
+; One MSI message: the driver only ever uses vector 0.
+HKR, Interrupt Management,, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties,, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MSISupported, 0x00010001, 1
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MessageNumberLimit, 0x00010001, 1
+; Kernel DMA Protection: the device only ever sees DMA-adapter (IOMMU) addresses.
+HKR, Parameters, DmaRemappingCompatible, 0x00010001, 1
+; Device security for the whole stack: SYSTEM and Administrators full access,
+; LocalService read/write (audiosrv and audiodg open the ACX audio endpoints on
+; this device), interactive users read access (= the control and ASIO IOCTLs,
+; see apollo_ioctl.h). The driver also requires an elevated administrator token
+; at open time for the admin IOCTLs, so LocalService cannot use them.
+; Mandatory label Medium, no read/write/execute up: low-integrity and AppContainer
+; processes cannot open the device at all (the user IOCTLs include ASIO, i.e. every
+; input). Normal users (Medium), elevated admins (High) and services (System) can.
+HKR,, Security,, "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;LS)(A;;GR;;;IU)S:(ML;;NRNWNX;;;ME)"
+HKR,, DeviceCharacteristics, 0x10001, 0x100     ; FILE_DEVICE_SECURE_OPEN
+
+; Windows audio endpoints (ACX circuits, docs/PHASE2.md section 3). Each circuit name in
+; driver\endpoints.c is the reference string of three interfaces here; ACX registers and
+; enables them itself, these lines give them their proxy CLSID, name and endpoint properties.
+; [Endpoints] Standalone (driver\endpoint_plan.h APOLLO_X8P_EP_LIST): MON L/R, LINE 1-2, 3-4, 5-6, 7-8,
+; HP 1, HP 2, S/PDIF out; Monitor mix (never a default) and MIC/LINE 1-8 in; VIRTUAL 1-2..7-8 and S/PDIF
+; in (opt-in). Parameters\Units\<key>\Endpoints (or the legacy Parameters\Endpoints), bit i = row i,
+; default 0x1FFFF. The old EnabledEndpoints value (rows of the previous table) is ignored.
+[Apollo_Install.NT.Interfaces]
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pMon%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pMon%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pMon%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pLine12%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pLine12%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pLine12%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pLine34%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pLine34%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pLine34%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pLine56%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pLine56%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pLine56%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pLine78%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pLine78%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pLine78%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pHp1%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pHp1%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pHp1%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pHp2%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pHp2%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pHp2%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pSpdif%,      Apollo_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_X8pSpdif%,      Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pSpdif%,      Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pMix%,        Apollo_Mix_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pMix%,        Apollo_Mix_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pMix%,        Apollo_Mix_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn1%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn1%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn1%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn2%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn2%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn2%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn3%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn3%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn3%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn4%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn4%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn4%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn5%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn5%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn5%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn6%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn6%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn6%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn7%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn7%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn7%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pIn8%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pIn8%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pIn8%,        Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pVirt12%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pVirt12%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pVirt12%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pVirt34%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pVirt34%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pVirt34%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pVirt56%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pVirt56%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pVirt56%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pVirt78%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pVirt78%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pVirt78%,     Apollo_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pSpdifIn%,    Apollo_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pSpdifIn%,    Apollo_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pSpdifIn%,    Apollo_Out_Interface
+; [G7] The combined Windows endpoints (docs/spec-twinx.md 6.7, 6.9.7; driver\apollo_agg.h
+; APOLLO_AGG_EP_LIST, checked against these lines by tools\agg-test\aggep-test). Only when
+; Parameters\Aggregate\EndpointSet = 1, and then INSTEAD of the rows above: the x8p hosts one set
+; for both units (the Twin X then creates none). Their streams run on the combined device's
+; timeline and routing: Windows audio and the DAW sum on the same outputs. EndpointSet absent or
+; 0 (the default): these circuits are never created.
+; [Endpoints] "Monitor" (the windows routes) and "Monitor mix", then every output jack and input of both
+; units ("x8p LINE 1-2", "Twin X HP", "Twin X MIC/LINE 1", ...). Parameters\Aggregate\Endpoints, bit i =
+; row i, default 0x7FFFFF (the VIRTUAL and S/PDIF inputs opt in).
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggMon%,        Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggMon%,        Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggMon%,        Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pMon%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pMon%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pMon%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pLine12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pLine12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pLine12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pLine34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pLine34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pLine34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pLine56%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pLine56%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pLine56%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pLine78%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pLine78%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pLine78%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pHp1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pHp1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pHp1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pHp2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pHp2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pHp2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pSpdif%,   Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggX8pSpdif%,   Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pSpdif%,   Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxMon%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggTwxMon%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxMon%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxLine34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggTwxLine34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxLine34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxHp%,      Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_AggTwxHp%,      Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxHp%,      Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggMonIn%,      Apollo_Agg_Mix_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggMonIn%,      Apollo_Agg_Mix_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggMonIn%,      Apollo_Agg_Mix_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn3%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn3%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn3%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn4%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn4%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn4%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn5%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn5%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn5%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn6%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn6%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn6%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn7%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn7%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn7%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pIn8%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pIn8%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pIn8%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxIn1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggTwxIn1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxIn1%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxIn2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggTwxIn2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxIn2%,     Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pVirt12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pVirt12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pVirt12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pVirt34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pVirt34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pVirt34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pVirt56%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pVirt56%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pVirt56%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pVirt78%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pVirt78%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pVirt78%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggX8pSpdifIn%, Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggX8pSpdifIn%, Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggX8pSpdifIn%, Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxVirt12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggTwxVirt12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxVirt12%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxVirt34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggTwxVirt34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxVirt34%,  Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_AggTwxSpdifIn%, Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_AggTwxSpdifIn%, Apollo_Agg_Out_Interface
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_AggTwxSpdifIn%, Apollo_Agg_Out_Interface
+
+; Outputs and inputs: normal endpoints. They CAN become the default; install.ps1 puts your previous
+; defaults back. To forbid one as default for good (it then cannot be chosen by hand either),
+; give it Apollo_NeverDefault_AddReg too.
+[Apollo_Out_Interface]
+AddReg = Apollo_Endpoint_AddReg
+
+; Monitor mix in: the monitor-mix loopback. Never a sensible default microphone.
+[Apollo_Mix_Interface]
+AddReg = Apollo_Endpoint_AddReg, Apollo_NeverDefault_AddReg
+
+[Apollo_Endpoint_AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%Apollo.EndpointName%
+HKR,EP\0,%PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%
+HKR,EP\0,%PKEY_AudioEndpoint_Supports_EventDriven_Mode%,0x00010001,0x1
+
+; [G7] Combined outputs and inputs: "Monitor" (Windows audio to the "windows" routes of the combined
+; configuration, Studio: the Twin X MON outputs, summed with the DAW there; its purpose is to be the
+; default output, spec 6.7), every unit's output jack and input. Choosable as defaults.
+[Apollo_Agg_Out_Interface]
+AddReg = Apollo_Agg_Endpoint_AddReg
+
+; [G7] Combined "Monitor mix" in: the monitor-mix loopback of the unit Windows plays to. Never a default.
+[Apollo_Agg_Mix_Interface]
+AddReg = Apollo_Agg_Endpoint_AddReg, Apollo_NeverDefault_AddReg
+
+[Apollo_Agg_Endpoint_AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%ApolloAgg.EndpointName%
+HKR,EP\0,%PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%
+HKR,EP\0,%PKEY_AudioEndpoint_Supports_EventDriven_Mode%,0x00010001,0x1
+
+; FLOW_MASK_CAPTURE | FLOW_MASK_RENDER | ROLE_MASK_COMMUNICATION | ROLE_MASK_CONSOLE
+[Apollo_NeverDefault_AddReg]
+HKR,EP\0,%PKEY_AudioDevice_NeverSetAsDefaultEndpoint%,0x00010001,0x305
+
+[Apollo_Install.NT.Services]
+AddService = apollo, 0x00000002, Apollo_Service
+
+[Apollo_Service]
+DisplayName   = %Apollo.SvcDesc%
+ServiceType   = 1               ; SERVICE_KERNEL_DRIVER
+StartType     = 3               ; SERVICE_DEMAND_START
+ErrorControl  = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary = %13%\apollo.sys
+
+[Apollo_Install.NT.Wdf]
+KmdfService = apollo, Apollo_WdfSection
+
+[Apollo_WdfSection]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+ProviderName      = "Avium"
+ManufacturerName  = "Avium"
+DiskName          = "Apollo open driver disk"
+; [Endpoints] the device names Windows shows (in parentheses after every endpoint name, and in Device
+; Manager). The driver sets the x8p's friendly name to "Apollo" while it hosts the combined set.
+Apollo.DeviceDesc = "Apollo x8p"
+ApolloTwinX.DeviceDesc = "Apollo Twin X"
+Apollo.SvcDesc    = "Apollo open driver"
+Apollo.EndpointName = "Apollo x8p"
+ApolloTwinX.EndpointName = "Apollo Twin X"
+ApolloAgg.EndpointName = "Apollo"
+
+; Non-localizable
+KSNAME_X8pMon       = "Ap2X8pMon"
+KSNAME_X8pLine12    = "Ap2X8pLine12"
+KSNAME_X8pLine34    = "Ap2X8pLine34"
+KSNAME_X8pLine56    = "Ap2X8pLine56"
+KSNAME_X8pLine78    = "Ap2X8pLine78"
+KSNAME_X8pHp1       = "Ap2X8pHp1"
+KSNAME_X8pHp2       = "Ap2X8pHp2"
+KSNAME_X8pSpdif     = "Ap2X8pSpdif"
+KSNAME_X8pMix       = "Ap2X8pMix"
+KSNAME_X8pIn1       = "Ap2X8pIn1"
+KSNAME_X8pIn2       = "Ap2X8pIn2"
+KSNAME_X8pIn3       = "Ap2X8pIn3"
+KSNAME_X8pIn4       = "Ap2X8pIn4"
+KSNAME_X8pIn5       = "Ap2X8pIn5"
+KSNAME_X8pIn6       = "Ap2X8pIn6"
+KSNAME_X8pIn7       = "Ap2X8pIn7"
+KSNAME_X8pIn8       = "Ap2X8pIn8"
+KSNAME_X8pVirt12    = "Ap2X8pVirt12"
+KSNAME_X8pVirt34    = "Ap2X8pVirt34"
+KSNAME_X8pVirt56    = "Ap2X8pVirt56"
+KSNAME_X8pVirt78    = "Ap2X8pVirt78"
+KSNAME_X8pSpdifIn   = "Ap2X8pSpdifIn"
+KSNAME_TwxMon       = "Ap2TwxMon"
+KSNAME_TwxLine34    = "Ap2TwxLine34"
+KSNAME_TwxHp        = "Ap2TwxHp"
+KSNAME_TwxMix       = "Ap2TwxMix"
+KSNAME_TwxIn1       = "Ap2TwxIn1"
+KSNAME_TwxIn2       = "Ap2TwxIn2"
+KSNAME_TwxVirt12    = "Ap2TwxVirt12"
+KSNAME_TwxVirt34    = "Ap2TwxVirt34"
+KSNAME_TwxSpdifIn   = "Ap2TwxSpdifIn"
+KSNAME_AggMon       = "Ap2CMon"
+KSNAME_AggX8pMon    = "Ap2CX8pMon"
+KSNAME_AggX8pLine12 = "Ap2CX8pLine12"
+KSNAME_AggX8pLine34 = "Ap2CX8pLine34"
+KSNAME_AggX8pLine56 = "Ap2CX8pLine56"
+KSNAME_AggX8pLine78 = "Ap2CX8pLine78"
+KSNAME_AggX8pHp1    = "Ap2CX8pHp1"
+KSNAME_AggX8pHp2    = "Ap2CX8pHp2"
+KSNAME_AggX8pSpdif  = "Ap2CX8pSpdif"
+KSNAME_AggTwxMon    = "Ap2CTwxMon"
+KSNAME_AggTwxLine34 = "Ap2CTwxLine34"
+KSNAME_AggTwxHp     = "Ap2CTwxHp"
+KSNAME_AggMonIn     = "Ap2CMix"
+KSNAME_AggX8pIn1    = "Ap2CX8pIn1"
+KSNAME_AggX8pIn2    = "Ap2CX8pIn2"
+KSNAME_AggX8pIn3    = "Ap2CX8pIn3"
+KSNAME_AggX8pIn4    = "Ap2CX8pIn4"
+KSNAME_AggX8pIn5    = "Ap2CX8pIn5"
+KSNAME_AggX8pIn6    = "Ap2CX8pIn6"
+KSNAME_AggX8pIn7    = "Ap2CX8pIn7"
+KSNAME_AggX8pIn8    = "Ap2CX8pIn8"
+KSNAME_AggTwxIn1    = "Ap2CTwxIn1"
+KSNAME_AggTwxIn2    = "Ap2CTwxIn2"
+KSNAME_AggX8pVirt12 = "Ap2CX8pVirt12"
+KSNAME_AggX8pVirt34 = "Ap2CX8pVirt34"
+KSNAME_AggX8pVirt56 = "Ap2CX8pVirt56"
+KSNAME_AggX8pVirt78 = "Ap2CX8pVirt78"
+KSNAME_AggX8pSpdifIn= "Ap2CX8pSpdifIn"
+KSNAME_AggTwxVirt12 = "Ap2CTwxVirt12"
+KSNAME_AggTwxVirt34 = "Ap2CTwxVirt34"
+KSNAME_AggTwxSpdifIn= "Ap2CTwxSpdifIn"
+Proxy.CLSID         = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_AUDIO    = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_RENDER   = "{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_CAPTURE  = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_REALTIME = "{EB115FFC-10C8-4964-831D-6DCB02E6F23F}"
+KSNODETYPE_ANY      = "{00000000-0000-0000-0000-000000000000}"
+PKEY_AudioEndpoint_Association               = "{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},2"
+PKEY_AudioEndpoint_Supports_EventDriven_Mode = "{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},7"
+PKEY_AudioDevice_NeverSetAsDefaultEndpoint   = "{F3E80BEF-1723-4FF2-BCC4-7F83DC5E46D4},3"

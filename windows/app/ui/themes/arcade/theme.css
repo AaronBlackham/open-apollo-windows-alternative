@@ -1,0 +1,249 @@
+/* arcade pack: tokens (layer 7) */
+/* ---------- Arcade: 80s cabinet, pixel headings, LED segment readouts, optional scanlines ---------- */
+[data-look="arcade"] {
+  --bg: #000000;
+  --view-bg: #000000;
+  --panel: #04040c;
+  --panel-2: #0a0a1a;
+  --raised: #16163e;
+  --line: #22226a;
+  --line-strong: #4646d0;
+  --text: #f4f4ff;
+  --text-dim: #c6c6ea;
+  --text-faint: #a0a0d6;
+  --head: #ff3df2;
+  --accent: #00e5ff;
+  --accent-ink: #00121a;
+  --ok: #39ff5a;
+  --warn: #ffe600;
+  --red: #ff2d2d;
+  --red-ink: #140000;
+  --idle: #8080b8;
+  --meter-lo: #39ff5a;
+  --meter-mid: #ffe600;
+  --meter-hi: #ff2d2d;
+  --meter-track: #000000;
+  --meter-seg: 1;
+  --focus: #ffe600;
+  --shadow: 0 0 0 2px #4646d0;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --border-w: 2px;
+  --cut: 0px;
+  --glow: 0 0 5px;
+  --lamp-glow: 0 0 5px currentColor;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Avium Pixel", var(--mono);
+  --font-num: "Avium Pixel", var(--mono);
+  --label-size: 10px;
+  --label-weight: 700;
+  --label-track: 0.12em;
+  --label-stretch: normal;
+  --grid-line: transparent;
+  --sel-bg: #101040;
+  color-scheme: dark;
+}
+
+/* ---------- Arcade: 80s cabinet, pixel headings, LED segment readouts, optional scanlines ---------- */
+[data-look="arcade"] {
+  --bg: #000000;
+  --view-bg: #000000;
+  --panel: #04040c;
+  --panel-2: #0a0a1a;
+  --raised: #16163e;
+  --line: #22226a;
+  --line-strong: #4646d0;
+  --text: #f4f4ff;
+  --text-dim: #c6c6ea;
+  --text-faint: #a0a0d6;
+  --head: #ff3df2;
+  --accent: #00e5ff;
+  --accent-ink: #00121a;
+  --ok: #39ff5a;
+  --warn: #ffe600;
+  --red: #ff2d2d;
+  --red-ink: #140000;
+  --idle: #8080b8;
+  --meter-lo: #39ff5a;
+  --meter-mid: #ffe600;
+  --meter-hi: #ff2d2d;
+  --meter-track: #000000;
+  --meter-seg: 1;
+  --focus: #ffe600;
+  --shadow: 0 0 0 2px #4646d0;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --border-w: 2px;
+  --cut: 0px;
+  --glow: 0 0 5px;
+  --lamp-glow: 0 0 5px currentColor;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Avium Pixel", var(--mono);
+  --font-num: "Avium Pixel", var(--mono);
+  --label-size: 10px;
+  --label-weight: 700;
+  --label-track: 0.12em;
+  --label-stretch: normal;
+  --grid-line: transparent;
+  --sel-bg: #101040;
+  color-scheme: dark;
+}
+/* Arcade: headings in the pixel face, chunky bevel-free borders, LED ladder meters */
+[data-look="arcade"] .sect-title, [data-look="arcade"] .panel-head h2, [data-look="arcade"] .brand-model,
+[data-look="arcade"] .useg-name, [data-look="arcade"] .plb-title, [data-look="arcade"] .pl-dr-title {
+  font-family: var(--font-head); letter-spacing: 0.04em; font-weight: 400; color: var(--head);
+}
+[data-look="arcade"] .brand-model { font-size: 20px; }
+/* the seven-segment face only on pure readouts (values in dB, ms, %): letters stay in the pixel face */
+[data-look="arcade"] .k-readout, [data-look="arcade"] .fd-readout, [data-look="arcade"] .strip-peak, [data-look="arcade"] .mo-peak,
+[data-look="arcade"] .bcell-db, [data-look="arcade"] .look-num { font-family: "Avium Segment", "Avium Pixel", var(--mono); }
+[data-look="arcade"] .sect-title, [data-look="arcade"] .panel-head h2 { font-size: 10px; }
+
+/* ===== Arcade: the cabinet (layers 3-9). Pixels, blocks, presses, health bars, stepped motion. ===== */
+/* knobs: pixel dials with an 8-direction pointer, a click per step */
+[data-look="arcade"] .ar-ring { fill: var(--line-strong); }
+[data-look="arcade"] .ar-face { fill: #11113a; }
+[data-look="arcade"] .ar-ptr { fill: var(--warn); }
+[data-look="arcade"] .sk-arcade-knob { image-rendering: pixelated; cursor: ns-resize; }
+[data-look="arcade"] .knob.sk-click .sk-arcade-knob { transform: translateY(1px); }
+[data-look="arcade"] .knob.unconfirmed .ar-ring { fill: var(--warn); }
+[data-look="arcade"] .knob.refused .ar-ring, [data-look="arcade"] .knob.refused .ar-ptr { fill: var(--red); }
+/* faders: a block cap on a stepped rail */
+[data-look="arcade"] .ar-rail { width: 12px; background: #000000; box-shadow: inset 0 0 0 2px var(--line-strong); border-radius: 0; }
+[data-look="arcade"] .ar-block { left: -7px; right: -7px; height: 16px; background: var(--accent); border: 2px solid #ffffff; border-radius: 0; box-shadow: 2px 2px 0 #000000; transition: bottom 80ms steps(2); }
+[data-look="arcade"] .ar-grip { position: absolute; left: 3px; right: 3px; top: 5px; height: 2px; background: #000000; }
+[data-look="arcade"] .fader.refused .ar-block { background: var(--red); }
+/* switches: big chunky buttons that press down 2 px */
+[data-look="arcade"] .sw, [data-look="arcade"] .btn { border: 2px solid var(--line-strong); border-radius: 0; box-shadow: 0 3px 0 #000000; transform: translateY(0); transition: transform 60ms steps(1), box-shadow 60ms steps(1); }
+[data-look="arcade"] .sw:active, [data-look="arcade"] .sw[aria-pressed="true"], [data-look="arcade"] .sw[aria-checked="true"], [data-look="arcade"] .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #000000; }
+[data-look="arcade"] .sw[aria-pressed="true"], [data-look="arcade"] .sw[aria-checked="true"] { border-color: #ffffff; }
+/* selectors: a level-select cursor */
+[data-look="arcade"] .seg { border: 2px solid var(--line-strong); border-radius: 0; }
+[data-look="arcade"] .seg .ar-cursor { visibility: hidden; color: var(--warn); margin-right: 1px; }
+[data-look="arcade"] .seg .ar-cursor::before { content: "▶"; font-size: 8px; }
+[data-look="arcade"] .seg button[aria-pressed="true"] .ar-cursor { visibility: visible; }
+[data-look="arcade"] .seg button[aria-pressed="true"] { background: #1a1a5a; color: #ffffff; box-shadow: none; }
+/* meters: health bars */
+[data-look="arcade"] .ar-health .meter-col { width: 11px; }
+[data-look="arcade"] .ar-health .meter-bar { box-shadow: inset 0 0 0 2px var(--line-strong); background: #000000; border-radius: 0; }
+[data-look="arcade"] .ar-health .meter-fill { inset: 2px; -webkit-mask: repeating-linear-gradient(to top, #000 0 4px, transparent 4px 6px); mask: repeating-linear-gradient(to top, #000 0 4px, transparent 4px 6px); }
+[data-look="arcade"] .ar-health .meter-clip { height: 7px; border-radius: 0; box-shadow: inset 0 0 0 2px var(--line-strong); }
+[data-look="arcade"] .ar-shake { animation: ar-shake 240ms steps(3); }
+@keyframes ar-shake { 25% { transform: translate(-2px, 0); } 50% { transform: translate(2px, 1px); } 75% { transform: translate(-1px, -1px); } }
+/* the plug-in slot: a pixel-framed item slot; a coin blip on a drop */
+[data-look="arcade"] .ins-slot { border: 3px double var(--line-strong); border-radius: 0; background: #000000; height: 24px; }
+[data-look="arcade"] .ins-slot[data-state="running"] { border-color: var(--ok); }
+[data-look="arcade"] .ar-coin { position: absolute; right: 22px; top: 2px; width: 10px; height: 10px; background: var(--warn); border: 2px solid #000000; z-index: 3; animation: ar-coin 720ms steps(6) forwards; }
+@keyframes ar-coin { to { transform: translateY(-26px); opacity: 0; } }
+[data-look="arcade"] .ar-buzz { animation: ar-buzz 400ms steps(2) 2; }
+@keyframes ar-buzz { 50% { border-color: var(--red); background: #300000; } }
+/* the browser: a power-up inventory (the one tile grid) */
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; }
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-item {
+  height: auto; grid-template-columns: 1fr; grid-template-rows: 30px auto auto; justify-items: center; gap: 2px; padding: 4px 2px; text-align: center;
+  border: 2px solid var(--line-strong); background: #05050f;
+}
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-art { width: 100%; height: 30px; border: 0; image-rendering: pixelated; }
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-name { font-size: 9.5px; white-space: normal; line-height: 1.15; max-height: 2.3em; overflow: hidden; }
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-words { font-size: 9px; }
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-lamp { display: none; }
+[data-look="arcade"] .plb[data-layout="tiles"] .plb-item[aria-selected="true"] { border-color: var(--warn); box-shadow: none; }
+/* the parameter view: an item card */
+[data-look="arcade"] .pl-drawer[data-layout="item"] { border: 3px double var(--accent); border-radius: 0; }
+[data-look="arcade"] .pl-drawer[data-layout="item"] .pl-dr-art { display: flex; image-rendering: pixelated; }
+[data-look="arcade"] .pl-drawer[data-layout="item"] .pl-param { border: 2px solid var(--line-strong); border-radius: 0; background: #05050f; }
+
+/* ===== Arcade, layer 2: PLAYER 1 and PLAYER 2. Each input a character card (portrait number, name, stats left, the
+   fader and health bar right), the master section a score panel across the top of each player's side. ===== */
+[data-look="arcade"] #view-control[data-comp="cards"] .useg { flex: 1 1 auto !important; min-width: 340px !important; border: 3px double var(--line-strong); }
+[data-look="arcade"] #view-control[data-comp="cards"] .useg-head::before {
+  content: attr(data-player); font: 20px "Avium Pixel", var(--mono); color: var(--head); width: 100%; letter-spacing: 0.05em;
+}
+[data-look="arcade"] #view-control[data-comp="cards"] .useg-body { flex-wrap: wrap; align-content: flex-start; gap: 6px; padding: 6px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .master {
+  order: -1; flex: 1 0 100%; flex-direction: row; align-items: stretch; gap: 10px; padding: 6px 10px; border: 3px double var(--warn); background: #0a0a20;
+}
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-title { flex-direction: column; justify-content: center; border: 0; font: 16px "Avium Pixel", var(--mono); color: var(--warn); }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-title span:first-child::after { content: " SCORE"; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-title .mo-lr { display: none; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-body { flex: 1; gap: 6px 14px; flex-wrap: wrap; min-width: 0; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-ctl { flex-direction: row; width: auto; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; min-width: 0; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-gap { display: none; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-meters { flex-direction: row; align-items: stretch; gap: 10px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-bars { min-height: 0; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-peaks { justify-content: center; font-size: 16px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .mo-peak { font-size: 16px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .pair { border: 0; min-width: 0; flex: none; }
+[data-look="arcade"] #view-control[data-comp="cards"] .pair-head { border: 0; height: 24px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .pair-body { gap: 6px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .pair.linked .pair-body { box-shadow: none; }
+[data-look="arcade"] #view-control[data-comp="cards"] .pair.linked .strip { border-color: var(--accent); }
+[data-look="arcade"] #view-control[data-comp="cards"] .strip {
+  width: 152px; flex: none; border: 3px double var(--line-strong) !important; background: #05050f; padding: 0 5px 5px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "top top" "name name" "pre mix" "ins mix"; gap: 4px 6px; align-content: start;
+}
+[data-look="arcade"] #view-control[data-comp="cards"] .strip-top { grid-area: top; margin: 0 -5px; padding: 4px 6px; background: #12124a; border-bottom: 2px solid var(--line-strong); }
+[data-look="arcade"] #view-control[data-comp="cards"] .strip-num { font: 22px "Avium Pixel", var(--mono); color: var(--warn); }
+[data-look="arcade"] #view-control[data-comp="cards"] .strip-top[data-lv]::after { content: "LV" attr(data-lv); font: 10px "Avium Pixel", var(--mono); color: var(--accent); }
+[data-look="arcade"] #view-control[data-comp="cards"] .strip-name { grid-area: name; }
+[data-look="arcade"] #view-control[data-comp="cards"] .st-pre { grid-area: pre; }
+[data-look="arcade"] #view-control[data-comp="cards"] .st-ins { grid-area: ins; align-self: start; }
+[data-look="arcade"] #view-control[data-comp="cards"] .st-mix { grid-area: mix; }
+[data-look="arcade"] #view-control[data-comp="cards"] .strip-meter { min-height: 110px; }
+[data-look="arcade"] #view-control[data-comp="cards"] .st-out, [data-look="arcade"] #view-control[data-comp="cards"] .st-more,
+[data-look="arcade"] #view-control[data-comp="cards"] .st-stats { display: none; }
+[data-look="arcade"] #view-control[data-comp="cards"] .tb-strip { border: 3px double var(--line-strong); width: 76px; flex: none; }
+
+/* ===== Arcade, signature: HI-SCORE (each input's highest peak since reset, and when) ===== */
+[data-look="arcade"] .hiscore { display: flex; align-items: flex-start; gap: 14px; padding: 6px 10px; border: 3px double var(--warn); background: #05050f; }
+[data-look="arcade"] .hiscore[hidden] { display: none; }
+[data-look="arcade"] .hs-head { display: flex; flex-direction: column; gap: 4px; flex: none; width: 128px; }
+[data-look="arcade"] .hs-title { font: 22px "Avium Pixel", var(--mono); color: var(--warn); letter-spacing: 0.04em; }
+[data-look="arcade"] .hs-since { font: 10px "Avium Pixel", var(--mono); color: var(--text-dim); }
+[data-look="arcade"] .hs-reset { height: 22px; font: 11px "Avium Pixel", var(--mono); align-self: flex-start; }
+[data-look="arcade"] .hs-list { list-style: none; margin: 0; padding: 0; flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 18px; }
+[data-look="arcade"] .hs-row { display: grid; grid-template-columns: 34px 1fr 54px 66px; gap: 6px; align-items: baseline; font: 13px "Avium Pixel", var(--mono); color: var(--text); }
+[data-look="arcade"] .hs-row:first-child { color: var(--warn); }
+[data-look="arcade"] .hs-rank { color: var(--accent); }
+[data-look="arcade"] .hs-db { font-family: "Avium Segment", var(--mono); text-align: right; }
+[data-look="arcade"] .hs-at { color: var(--text-dim); font-size: 11px; }
+[data-look="arcade"] .hs-row.clip .hs-db { color: var(--red); }
+[data-look="arcade"] .hs-row.clip .hs-db::after { content: ""; }
+[data-look="arcade"] .hs-empty { display: block; color: var(--text-dim); animation: ar-blink 1s steps(2) infinite; }
+@keyframes ar-blink { 50% { opacity: 0; } }
+
+/* ===== Arcade: Windows audio checkboxes are pixel boxes ===== */
+[data-look="arcade"] .ep-row { font-family: "Avium Pixel", var(--mono); font-size: 13px; }
+[data-look="arcade"] .ep-row input { appearance: none; width: 16px; height: 16px; border: 2px solid var(--line-strong); background: #05050f; display: grid; place-items: center; image-rendering: pixelated; }
+[data-look="arcade"] .ep-row input:checked { border-color: var(--warn); }
+[data-look="arcade"] .ep-row input:checked::after { content: ""; width: 8px; height: 8px; background: var(--warn); }
+[data-look="arcade"] .ep-group { border: 3px double var(--line-strong); border-radius: 0; }
+[data-look="arcade"] .ep-tag { border-radius: 0; font-family: "Avium Pixel", var(--mono); }
+
+/* ===== [Ins] Arcade: the chain is the card's power-up slots, the aux sends along the bottom ===== */
+[data-look="arcade"] #view-control[data-comp="cards"] .strip { grid-template-areas: "top top" "name name" "pre mix" "ins mix" "aux aux"; }
+[data-look="arcade"] #view-control[data-comp="cards"] .st-aux { grid-area: aux; }
+[data-look="arcade"] .ins-slots[data-slots="4"] .ins-slot { height: 20px; }
+[data-look="arcade"] .ins-uni { border-radius: 0; font-family: "Avium Pixel", var(--mono); }
+[data-look="arcade"] #view-control[data-comp="cards"] .aux-strip { width: 96px; flex-basis: 96px; border: 3px double var(--line-strong); background: #05050f; }
+[data-look="arcade"] #view-control[data-comp="cards"] .aux-strip .strip-num { font: 14px "Avium Pixel", var(--mono); color: var(--accent); }
+
+/* ===== [Sess] SAVE SLOTS: pixel frames, slot numbers, LOAD / SAVE / ERASE that press down (layout "slots") */
+[data-look="arcade"] .sess-pop { border-radius: 0; border: 2px solid var(--line-strong); box-shadow: 0 0 0 2px #000000, 0 0 0 4px var(--line-strong); background: #04040c; }
+[data-look="arcade"] .ss-slots .ss-title { font: 16px "Avium Pixel", var(--mono); color: var(--head); letter-spacing: 0.08em; }
+[data-look="arcade"] .ss-slots .ss-cur { font: 11px "Avium Pixel", var(--mono); color: var(--text-dim); }
+[data-look="arcade"] .ss-slots .ss-state[data-state="edited"] { color: var(--warn); }
+[data-look="arcade"] .ss-slots .ss-slot { border: 2px solid var(--line-strong); background: #0a0a1a; box-shadow: inset 0 0 0 2px #000000; }
+[data-look="arcade"] .ss-slots .ss-slot[data-current="1"] { border-color: var(--accent); }
+[data-look="arcade"] .ss-slots .ss-auto { border-style: dashed; }
+[data-look="arcade"] .ss-slots .ss-new { border-style: dotted; color: var(--text-dim); }
+[data-look="arcade"] .ss-slots .ss-slot-n { font: 10px "Avium Pixel", var(--mono); color: var(--warn); letter-spacing: 0.1em; }
+[data-look="arcade"] .ss-slots .ss-name { font: 12px "Avium Pixel", var(--mono); color: var(--text); }
+[data-look="arcade"] .ss-slots .ss-meta { font: 10px "Avium Pixel", var(--mono); color: var(--ok); }
+[data-look="arcade"] .ss-slots .ss-tag { font: 10px "Avium Pixel", var(--mono); color: var(--accent); }
+[data-look="arcade"] .ss-pix { border: 2px solid var(--line-strong); border-radius: 0; background: #0a0a1a; box-shadow: 0 3px 0 #000000; font: 10px "Avium Pixel", var(--mono); color: var(--text); padding: 4px 8px; }
+[data-look="arcade"] .ss-pix:active { transform: translateY(2px); box-shadow: 0 1px 0 #000000; }
+[data-look="arcade"] .ss-pix.ss-del { color: var(--red); }
+[data-look="arcade"] .ss-slots .ss-foot { font: 9px "Avium Pixel", var(--mono); }

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-look="studio">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apollo Control</title>
+<link rel="stylesheet" href="themes.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="units.css">
+<link rel="stylesheet" href="cues.css">
+<link rel="stylesheet" href="correction.css">
+<link rel="stylesheet" href="plugins.css">
+<link rel="stylesheet" href="sessions.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="brand-model" id="brandModel">Apollo x8p</span>
+    <span class="brand-sub">open driver</span>
+  </div>
+  <div class="conn" id="conn" role="status" aria-live="polite">
+    <span class="conn-dot" id="connDot"></span>
+    <span id="connText">Looking for the x8p</span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" data-view="control" id="tab-control">Control</button>
+    <button role="tab" data-view="status" id="tab-status">Status<span class="tab-dot" id="statusDot" aria-hidden="true" hidden></span></button>
+    <button role="tab" data-view="cues" id="tab-cues">Cues</button>
+    <button role="tab" data-view="units" id="tab-units">Units &amp; routing</button>
+    <button role="tab" data-view="correction" id="tab-correction">Speakers</button>
+    <button role="tab" data-view="channels" id="tab-channels">Channels</button>
+    <button role="tab" data-view="device" id="tab-device">Device</button>
+    <button role="tab" data-view="settings" id="tab-settings">Settings</button>
+  </nav>
+  <div class="top-right">
+    <!-- [Sess] the session on screen and its list (sessions.js): one model, each theme's own layout. -->
+    <div class="sess-wrap">
+      <button class="btn btn-quiet sess-btn" id="sessBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="sessPanel" title="Sessions (Ctrl+O; Ctrl+S saves)">Session</button>
+      <div class="sess-pop" id="sessPanel" role="dialog" aria-label="Sessions" hidden></div>
+    </div>
+    <div class="menu-wrap">
+      <button class="btn btn-quiet" id="presetBtn" aria-haspopup="menu" aria-expanded="false">Presets</button>
+      <div class="menu" id="presetMenu" role="menu" hidden></div>
+    </div>
+  </div>
+</header>
+
+<div class="banner" id="banner" hidden>
+  <span id="bannerText"></span>
+  <span class="banner-actions" id="bannerActions"></span>
+</div>
+
+<main>
+  <section class="view view-control" id="view-control" role="tabpanel" aria-labelledby="tab-control" data-plb="open">
+    <!-- Every unit's notes (app.js renderUnitBar). -->
+    <div class="ctl-bar" id="ctlBar" hidden></div>
+    <!-- [Plug-ins] the plug-in browser, docked beside the strips (plugins.js). -->
+    <aside class="plb" id="plb" aria-label="Plug-ins"></aside>
+    <div class="desk" id="desk">
+      <!-- [Rate] the combined device's shared rate; [Plug-ins] a plug-in being placed by keyboard. -->
+      <div class="desk-bar rate-bar" id="rateBar" hidden></div>
+      <div class="desk-bar place-bar" id="placeBar" role="status" aria-live="polite" hidden></div>
+      <!-- One segment per unit, side by side (app.js syncSegments). -->
+      <div class="inputs" id="inputs" aria-label="Inputs"></div>
+      <!-- [Plug-ins] an insert's parameters, opened in place under the strips. -->
+      <div class="pl-drawer" id="plDrawer" role="region" hidden></div>
+    </div>
+    <aside class="monitor" id="monitor" aria-label="Monitor"></aside>
+  </section>
+
+  <section class="view view-status" id="view-status" role="tabpanel" aria-labelledby="tab-status" hidden>
+    <!-- One section per unit (app.js buildUnitView): the x8p today, the Twin X when they combine. -->
+    <div class="units" id="units"></div>
+  </section>
+
+  <section class="view view-cues" id="view-cues" role="tabpanel" aria-labelledby="tab-cues" hidden>
+    <!-- [Monitor] the selected unit's cue mixes (app.js buildCues): selector and notes, cue, sends, cue settings. -->
+    <div class="ctl-bar" id="cueBar" hidden></div>
+    <div class="cues" id="cues"></div>
+  </section>
+
+  <section class="view view-units" id="view-units" role="tabpanel" aria-labelledby="tab-units" hidden>
+    <!-- Units & routing (units.js): units list, clock master, channel order, output routing, Apply. -->
+    <div class="ur" id="ur"></div>
+  </section>
+
+  <section class="view view-correction" id="view-correction" role="tabpanel" aria-labelledby="tab-correction" hidden>
+    <!-- [Corr] Speaker correction (correction.js): profile, on/off, A/B, outputs, filters and target. -->
+    <div class="cr" id="corr"></div>
+  </section>
+
+  <section class="view view-channels" id="view-channels" role="tabpanel" aria-labelledby="tab-channels" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Record channels</h2>
+        <span class="muted" id="bridgeNote"></span>
+      </div>
+      <div class="bridge" id="bridge"></div>
+      <p class="fine">Slot order follows the x8p's firmware descriptor, confirmed on this unit: a tone
+        played to the monitor came back on slots 27-28. Inputs 1-8 need input strips on the DSP before
+        they carry audio after a cold start. Windows sees each of these as its own input once the
+        audio endpoints land (phase 2).</p>
+    </div>
+  </section>
+
+  <section class="view view-device" id="view-device" role="tabpanel" aria-labelledby="tab-device" hidden>
+    <div class="device-grid">
+      <div class="dev-col">
+        <div class="panel">
+          <div class="panel-head"><h2>Unit</h2></div>
+          <dl class="kv" id="devInfo"></dl>
+          <div class="chips" id="devFlags"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Sample rate</h2></div>
+          <!-- [Rate] per unit, or one for the combined device (app.js renderDeviceRate). -->
+          <div class="dev-rate" id="devRate"></div>
+        </div>
+      </div>
+      <div class="panel log-panel">
+        <div class="panel-head">
+          <h2>Driver log</h2>
+          <div class="panel-tools">
+            <label class="check"><input type="checkbox" id="logAuto"> Auto refresh</label>
+            <button class="btn" id="logRefresh">Refresh</button>
+            <button class="btn" id="logCopy">Copy</button>
+          </div>
+        </div>
+        <pre class="log" id="log" tabindex="0">Press Refresh to read the driver's log.</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="view view-settings" id="view-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+    <div class="settings" id="settings"></div>
+  </section>
+
+  <section class="view view-styleguide" id="view-styleguide" aria-label="Style guide" hidden>
+    <!-- Every control in every state for the current theme (styleguide.js, docs/THEMES.md 2). Not a tab: Settings opens it. -->
+    <div class="sg" id="sg"></div>
+  </section>
+</main>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<dialog class="dlg" id="dlg"></dialog>
+
+<script src="skin.js"></script>
+<script src="themes/index.js"></script>
+<script src="units.js"></script>
+<script src="correction.js"></script>
+<script src="plugins.js"></script>
+<script src="auxbus.js"></script>
+<script src="styleguide.js"></script>
+<script src="signatures.js"></script>
+<script src="cmd.js"></script>
+<script src="sessions.js"></script>
+<script src="endpoints.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

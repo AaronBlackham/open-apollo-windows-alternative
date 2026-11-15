@@ -1,0 +1,176 @@
+/* studio pack: tokens (layer 7) */
+/* ---------- Studio (default): matte black hardware, silkscreen labels, amber and green LEDs ---------- */
+[data-look="studio"] {
+  --bg: #0b0c0e;
+  --view-bg: #0b0c0e;
+  --panel: #131417;
+  --panel-2: #1a1b1f;
+  --raised: #25272c;
+  --line: #2a2c31;
+  --line-strong: #41444b;
+  --text: #ece9e2;
+  --text-dim: #b6b2a9;
+  --text-faint: #908c82;
+  --head: #ece9e2;
+  --accent: #f5a623;
+  --accent-ink: #1a0f02;
+  --ok: #4fd472;
+  --warn: #e8c547;
+  --red: #ff4040;
+  --red-ink: #1a0402;
+  --idle: #7a776f;
+  --meter-lo: #4fd472;
+  --meter-mid: #e8c547;
+  --meter-hi: #ff4040;
+  --meter-track: #060708;
+  --meter-seg: 0;
+  --focus: #8ab4ff;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --radius: 3px;
+  --radius-sm: 2px;
+  --border-w: 1px;
+  --cut: 0px;
+  --glow: none;
+  --lamp-glow: 0 0 0 transparent;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-head: var(--font-label);
+  --font-num: var(--mono);
+  --label-size: 10px;
+  --label-weight: 700;
+  --label-track: 0.11em;
+  --label-stretch: normal;
+  --grid-line: transparent;
+  --sel-bg: #2b2418;
+  color-scheme: dark;
+}
+
+/* ===== Studio: the console (layers 3-9) ===== */
+/* knobs: knurled metal, a pointer line, the printed scale */
+[data-look="studio"] .sk-studio-knob .st-tick { stroke: var(--text-faint); stroke-width: 1.6; }
+[data-look="studio"] .sk-studio-knob .st-tick.big { stroke: var(--text-dim); stroke-width: 2.6; }
+[data-look="studio"] .st-knurl { fill: #17181b; stroke: #4a4d55; stroke-width: 6; stroke-dasharray: 1.3 1.7; }
+[data-look="studio"] .st-cap { fill: #2b2d32; stroke: #5b5f67; stroke-width: 1.2; }
+[data-look="studio"] .st-ptr { stroke: #f4f1e8; stroke-width: 4; stroke-linecap: round; }
+[data-look="studio"] .knob.unconfirmed .st-ptr { stroke: var(--warn); }
+[data-look="studio"] .knob.refused .st-ptr { stroke: var(--red); }
+[data-look="studio"] .knob.refused .st-cap { stroke: var(--red); stroke-width: 2.5; }
+[data-look="studio"] .knob.locked .sk-studio-knob { opacity: 0.5; }
+[data-look="studio"] .knob .k-readout { font-size: 11px; letter-spacing: 0.02em; }
+/* faders: a dark groove, a ribbed cap that glides, the printed legend (a press on it jumps there) */
+[data-look="studio"] .st-groove { width: 20px; background: transparent; box-shadow: none; }
+[data-look="studio"] .st-groove::before { content: ""; position: absolute; left: 8px; width: 4px; top: 0; bottom: 0; background: #040405; border-radius: 2px; box-shadow: inset 0 0 0 1px #2c2e33; }
+[data-look="studio"] .st-fcap { left: -3px; right: -3px; height: 26px; background: #3b3e44; border: 1px solid #62666f; border-radius: 2px; transition: bottom 90ms ease-out; box-shadow: none; }
+[data-look="studio"] .fader:hover .st-fcap, [data-look="studio"] .fader:focus-visible .st-fcap { background: #44474e; }
+[data-look="studio"] .st-fcap .st-rib { position: absolute; inset: 3px 4px; background: repeating-linear-gradient(to bottom, #777b84 0 1px, transparent 1px 3px); }
+[data-look="studio"] .st-fcap::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: #f4f1e8; }
+[data-look="studio"] .fader.refused .st-fcap::after { background: var(--red); }
+[data-look="studio"] .st-legend { cursor: pointer; }
+[data-look="studio"] .st-legend span::after { content: ""; display: inline-block; width: 3px; height: 1px; margin-left: 1px; vertical-align: middle; background: var(--text-faint); }
+/* switches: backlit push buttons; the talkback a momentary rubber key */
+[data-look="studio"] .sw { background: #1b1c20; border-color: #3f4249; color: var(--text-dim); padding-top: 3px; }
+[data-look="studio"] .sw .st-lamp { position: absolute; left: 4px; right: 4px; top: 2px; height: 2px; border-radius: 1px; background: #2c2d31; }
+[data-look="studio"] .sw[aria-pressed="true"], [data-look="studio"] .sw[aria-checked="true"] { background: #2a2216; border-color: #6b5320; color: var(--accent); }
+[data-look="studio"] .sw[aria-pressed="true"] .st-lamp, [data-look="studio"] .sw[aria-checked="true"] .st-lamp { background: var(--accent); }
+[data-look="studio"] .sw.sw-red[aria-pressed="true"], [data-look="studio"] .sw.sw-red[aria-checked="true"] { background: #2a1513; border-color: #7a2a24; color: #ff8a80; }
+[data-look="studio"] .sw.sw-red[aria-pressed="true"] .st-lamp, [data-look="studio"] .sw.sw-red[aria-checked="true"] .st-lamp { background: var(--red); }
+[data-look="studio"] .sw.talk { border-radius: 14px; background: #24252a; border-color: #4a4d55; }
+[data-look="studio"] .sw.talk:active { transform: translateY(1px); }
+/* selectors: rotary switches with engraved positions */
+[data-look="studio"] .seg { align-items: center; background: #17181b; }
+[data-look="studio"] .seg .st-rot { width: 18px; height: 18px; flex: none; margin: 0 3px; }
+[data-look="studio"] .st-rot circle { fill: #2b2d32; stroke: #62666f; stroke-width: 1.2; }
+[data-look="studio"] .st-rot line { stroke: #f4f1e8; stroke-width: 2.2; stroke-linecap: round; }
+[data-look="studio"] .seg button[aria-pressed="true"] { color: var(--accent); background: #1f1a12; box-shadow: inset 0 -2px 0 var(--accent); }
+/* meters: LED ladders (discrete lamps) */
+[data-look="studio"] .st-ladder .meter-col { width: 9px; }
+[data-look="studio"] .st-ladder .meter-fill {
+  -webkit-mask: repeating-linear-gradient(to top, #000 0 3px, transparent 3px 5px); mask: repeating-linear-gradient(to top, #000 0 3px, transparent 3px 5px);
+}
+[data-look="studio"] .st-ladder .meter-clip { border-radius: 50%; height: 7px; width: 7px; align-self: center; }
+/* the plug-in slot: a patch point */
+[data-look="studio"] .ins-slot .st-jack { width: 9px; height: 9px; border-radius: 50%; background: #040405; box-shadow: inset 0 0 0 2px #5b5f67; flex: none; }
+[data-look="studio"] .ins-slot:not([data-state="empty"]):not([data-state="na"]) .st-jack { box-shadow: inset 0 0 0 2px var(--accent); }
+[data-look="studio"] .ins-slot { border-style: solid; border-color: #34363c; background: #141518; }
+[data-look="studio"] .ins-slot.st-patched { animation: st-patch 700ms ease-out; }
+@keyframes st-patch { 0% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+[data-look="studio"] .st-fault { animation: st-fault 300ms steps(2) 3; }
+@keyframes st-fault { 50% { border-color: var(--red); color: var(--red); } }
+/* the browser: an outboard rack of faceplates */
+[data-look="studio"] .plb[data-layout="rack"] .plb-item {
+  height: 36px; grid-template-columns: 62px minmax(0, 1fr) auto auto; margin: 3px 5px; padding: 0 12px;
+  background: radial-gradient(circle at 5px 50%, #55585f 0 2px, transparent 2.5px), radial-gradient(circle at calc(100% - 5px) 50%, #55585f 0 2px, transparent 2.5px), #1d1e22;
+  border: 1px solid #3a3d43; border-radius: 2px;
+}
+[data-look="studio"] .plb[data-layout="rack"] .plb-art { width: 62px; height: 28px; }
+[data-look="studio"] .plb[data-layout="rack"] .plb-name { font-family: var(--font-label); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+/* the parameter view: the faceplate opened */
+[data-look="studio"] .pl-drawer[data-layout="faceplate"] {
+  background: radial-gradient(circle at 8px 8px, #55585f 0 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 8px) 8px, #55585f 0 2.5px, transparent 3px), #1b1c20;
+  border: 1px solid #45484f; padding-left: 18px; padding-right: 18px;
+}
+[data-look="studio"] .pl-drawer[data-layout="faceplate"] .pl-dr-art { display: flex; }
+[data-look="studio"] .pl-drawer[data-layout="faceplate"] .pl-param { background: transparent; border: 0; border-right: 1px solid #2c2e33; border-radius: 0; }
+[data-look="studio"] .pl-drawer[data-layout="faceplate"] .pl-param-name { color: var(--text); }
+
+/* the patch point carries the state: a shape per state (filled, half, ring, square, cross) */
+[data-look="studio"] .ins-slot .ins-lamp { display: none; }
+[data-look="studio"] .ins-slot[data-state="running"] .st-jack { background: var(--ok); box-shadow: inset 0 0 0 2px var(--accent); }
+[data-look="studio"] .ins-slot[data-state="loading"] .st-jack { background: linear-gradient(90deg, var(--warn) 50%, #040405 50%); box-shadow: inset 0 0 0 2px var(--warn); }
+[data-look="studio"] .ins-slot[data-state="waiting"] .st-jack { box-shadow: inset 0 0 0 2px var(--warn); }
+[data-look="studio"] .ins-slot[data-state="bypassed"] .st-jack { border-radius: 1px; box-shadow: inset 0 0 0 2px var(--idle); }
+[data-look="studio"] .ins-slot[data-state="failed"] .st-jack, [data-look="studio"] .ins-slot[data-refused="1"] .st-jack { background: var(--red); border-radius: 0; box-shadow: none;
+  clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+[data-look="studio"] .plb[data-layout="rack"] .plb-item { grid-template-columns: 48px minmax(0, 1fr) auto auto; padding: 0 10px; }
+[data-look="studio"] .plb[data-layout="rack"] .plb-art { width: 48px; }
+[data-look="studio"] .plb[data-layout="rack"] .plb-name { font-size: 10.5px; letter-spacing: 0.03em; }
+
+/* ===== Studio, layer 2: the console. A meter bridge across the top, scribble strips, each unit a console section. ===== */
+[data-look="studio"] .meter-bridge { display: flex; flex-direction: column; gap: 3px; flex: none; background: #0e0f11; border: 1px solid #2a2c31; padding: 4px 6px 3px; }
+[data-look="studio"] .mb-tools { display: flex; align-items: center; gap: 8px; }
+[data-look="studio"] .mb-tools .lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); }
+[data-look="studio"] .mb-tools .seg { width: 150px; }
+[data-look="studio"] .mb-tools .sw { height: 20px; padding: 0 8px; }
+[data-look="studio"] .mb-canvas { width: 100%; height: 58px; display: block; }
+/* scribble strips: tape with a marker name */
+[data-look="studio"] #view-control[data-comp="console"] .strip-name {
+  background: #e7e1d0; color: #1d1c19; font: 13px "Ink Free", "Segoe Print", "Segoe UI", sans-serif; padding: 0 4px; border-radius: 1px;
+  transform: rotate(-0.6deg); box-shadow: 0 1px 0 #00000055;
+}
+[data-look="studio"] #view-control[data-comp="console"] .strip-name.empty { color: #8b8578; font-style: normal; }
+[data-look="studio"] #view-control[data-comp="console"] .useg-head { background: #17181b; border-bottom: 2px solid #2a2c31; }
+[data-look="studio"] #view-control[data-comp="console"] .master { background: #1b1c20; border-left: 2px solid #2a2c31; }
+
+/* ===== Studio: Windows audio checkboxes are lit push-switches ===== */
+[data-look="studio"] .ep-row input { appearance: none; width: 18px; height: 14px; border-radius: 2px; background: linear-gradient(#26282c, #17181b); box-shadow: inset 0 0 0 1px #000, 0 1px 0 #ffffff14; display: grid; place-items: center; }
+[data-look="studio"] .ep-row input::after { content: ""; width: 10px; height: 3px; border-radius: 1px; background: #3a2a12; }
+[data-look="studio"] .ep-row input:checked::after { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+[data-look="studio"] .ep-row input:checked { box-shadow: inset 0 0 0 1px #000, 0 0 0 1px #f5a62355; }
+
+/* ===== [Ins] Studio: the aux returns sit with the console's other strips, a little darker ===== */
+[data-look="studio"] .aux-strip { background: #17181b; border-left: 2px solid #2a2c31; }
+[data-look="studio"] .ins-uni { border-color: #34363c; }
+
+/* ===== [Sess] the session menu: a console's session / recall section (sessions.js layout "console"). SESSION in
+   silkscreen, the session on a scribble strip, backlit keys with a lamp line (SAVE's lit), RECALL rows on the panel. */
+[data-look="studio"] .sess-pop { background: #16171a; border-color: #3f4249; }
+[data-look="studio"] .ss-console .ss-title { color: var(--head); }
+[data-look="studio"] .ss-console .ss-scribble { background: #e7e1d0; color: #1d1c19; padding: 3px 8px; border-radius: 1px; transform: rotate(-0.4deg); box-shadow: 0 1px 0 #00000055; }
+[data-look="studio"] .ss-console .ss-cur { font: 15px "Ink Free", "Segoe Print", "Segoe UI", sans-serif; }
+[data-look="studio"] .ss-console .ss-state { margin-left: auto; font: 700 10px var(--font-label); letter-spacing: 0.1em; color: #3b382f; }
+[data-look="studio"] .ss-console .ss-state[data-state="edited"] { color: #8a1f12; }
+[data-look="studio"] .ss-key { position: relative; background: #1b1c20; border-color: #3f4249; color: var(--text-dim); font: 700 10.5px var(--font-label); letter-spacing: 0.06em; padding: 7px 12px 4px; }
+[data-look="studio"] .ss-key::before { content: ""; position: absolute; left: 5px; right: 5px; top: 2px; height: 2px; border-radius: 1px; background: #2c2d31; }
+[data-look="studio"] .ss-key[data-key="save"] { color: var(--accent); border-color: #6b5320; background: #2a2216; }
+[data-look="studio"] .ss-key[data-key="save"]::before { background: var(--accent); }
+[data-look="studio"] .ss-key:hover { color: var(--text); }
+[data-look="studio"] .ss-console .ss-sub { color: var(--head); font-size: var(--label-size); letter-spacing: var(--label-track); text-transform: uppercase; border-bottom: 1px solid #2a2c31; padding-bottom: 3px; }
+[data-look="studio"] .ss-console .ss-row { border-bottom: 1px solid #222428; }
+[data-look="studio"] .ss-recall { background: transparent; border-color: transparent; }
+[data-look="studio"] .ss-recall:hover { background: #202126; border-color: #3f4249; }
+[data-look="studio"] .ss-console .ss-last .ss-name { font: 700 10.5px var(--font-label); letter-spacing: 0.08em; color: var(--text-dim); }
+[data-look="studio"] .ss-console .ss-row[data-current="1"] .ss-recall { border-color: #6b5320; background: #2a2216; }
+[data-look="studio"] .ss-console .ss-tag { color: var(--accent); border: 1px solid #6b5320; padding: 0 4px; }
+[data-look="studio"] .ss-small { background: #1b1c20; font: 700 10px var(--font-label); letter-spacing: 0.06em; color: var(--text-dim); }
+[data-look="studio"] .ss-small.ss-del:hover { color: #ff8a80; border-color: #7a2a24; }

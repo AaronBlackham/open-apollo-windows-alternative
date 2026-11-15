@@ -1,0 +1,13 @@
+{
+  "id": "day",
+  "name": "Day",
+  "order": 5,
+  "mode": "light",
+  "metaphor": "A calm, friendly tablet app for daylight sessions.",
+  "desc": "Large round knobs, pill sliders and toggle switches, plain words, level zones, plug-ins by purpose.",
+  "layout": {
+    "browser": "purpose",
+    "params": "cards",
+    "composition": "focus"
+  }
+}

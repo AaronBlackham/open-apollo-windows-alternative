@@ -1,0 +1,51 @@
+# Build outputs
+x64/
+obj/
+bin/
+out/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+*.exe
+*.dll
+*.lib
+*.sys
+*.cat
+*.cer
+*.tlog
+*.log
+__pycache__/
+*.pyc
+.venv/
+.venv-build/
+node_modules/
+app/tests/shots/
+tools/bin/
+installer/out/
+installer/tools/download/
+
+# The vendored WebView2 SDK keeps its libraries (BSD, see its LICENSE.txt)
+!app/third_party/webview2/x64/
+!app/third_party/webview2/x64/*
+
+# Universal Audio material and machine-local state: never commit.
+# Strip modules and plug-ins are read from the user's own UAD install at run time.
+ua-files/
+plugins/bundles/
+plugins/p1/
+plugins/store/
+plugins/downloads/
+plugins/work/
+plugins/specs/
+builds/
+reference/
+*.defaults.json
+*.used
+*.aggconfig.bin
+
+# Third-party tools fetched by installer/build (install Inno Setup 6 to build the installer)
+installer/tools/
+load.json
