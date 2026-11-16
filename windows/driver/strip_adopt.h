@@ -76,9 +76,15 @@ static __inline ULONG StripRecordSum(const STRIP_RECORD *R)
                          (ULONG)((sizeof(*R) - sizeof(R->Check)) / sizeof(ULONG)));
 }
 
-/* [Virtual] The version a record is sealed as: 2 when its plan mask names Virtual strips, else 1 (strip_record.h). */
+/*
+ * [Virtual] The version a record is sealed as: 2 when its plan mask names Virtual strips, else 1 (strip_record.h).
+ * [AuxStrips] 3 when it names aux-return strips (bits 16-19), whatever else it names.
+ */
 static __inline ULONG StripRecordVersionOf(const STRIP_RECORD *R)
 {
+    if (((R->Mask >> 16) & 0xFu) != 0) {
+        return STRIP_REC_VERSION_AUX;
+    }
     return ((R->Mask >> 8) & 0xFFu) != 0 ? STRIP_REC_VERSION_VIRTUAL : STRIP_REC_VERSION;
 }
 
@@ -93,11 +99,12 @@ static __inline void StripRecordSeal(STRIP_RECORD *R)
 /*
  * Bytes = what the registry value held. 1 = a record this build wrote and nobody changed. [Virtual] Version 1 (no
  * Virtual strips, every earlier build's) or 2 (Virtual strips in the plan mask), and the one its mask asks for.
+ * [AuxStrips] Or 3 (aux-return strips, plan mask bits 16-19); nothing past bit 19.
  */
 static __inline int StripRecordValid(const STRIP_RECORD *R, ULONG Bytes)
 {
     return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == StripRecordVersionOf(R) &&
-           (R->Mask >> 16) == 0 && R->Size == sizeof(*R) && R->Check == StripRecordSum(R) &&
+           (R->Mask >> 20) == 0 && R->Size == sizeof(*R) && R->Check == StripRecordSum(R) &&
            R->NumDsps <= STRIP_REC_DSPS && R->State <= STRIP_REC_UNKNOWN;
 }
 

@@ -43,6 +43,16 @@ foreach ($k in @(Get-ChildItem -LiteralPath $units -ErrorAction SilentlyContinue
     $trim = $name.TrimStart('0')
     if ($trim.Length -ge 6) { Add-Needle $trim 'an Apollo unit key on this PC' 6 }
 }
+# Serial numbers of the units connected now (the x8p's unit key is its HW_UID, so its serial is nowhere in the
+# registry): apollo-diag units, a read-only query; nothing when no driver or tool is there.
+foreach ($tool in @((Join-Path $PSScriptRoot '..\tools\apollo-diag\apollo-diag.exe'),
+                    (Join-Path $env:ProgramFiles 'Avium\ApolloTools\apollo-diag.exe'))) {
+    if (-not (Test-Path -LiteralPath $tool)) { continue }
+    foreach ($m in [regex]::Matches((& $tool units 2>$null | Out-String), '(?m)^\d+\s+Apollo.*?\s{2,}([0-9A-Za-z]{8,16})\s{2,}')) {
+        Add-Needle $m.Groups[1].Value 'an Apollo unit serial number on this PC' 8
+    }
+    break
+}
 # Instance IDs of Universal Audio PCI devices this PC has seen: the part after the hardware ID, and its unique hex part.
 $enum = 'HKLM:\SYSTEM\CurrentControlSet\Enum\PCI'
 foreach ($hw in @(Get-ChildItem -LiteralPath $enum -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -like 'VEN_1A00&*' })) {

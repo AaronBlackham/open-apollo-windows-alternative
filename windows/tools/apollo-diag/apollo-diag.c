@@ -1765,7 +1765,10 @@ static int CmdAux(int n, char **a)
                 "       aux <1-2> return <dB -60..12|off>                       AUX n into the monitor mix\n"
                 "       aux <1-2> mute 0|1                                      its return muted\n"
                 "  DSP bus coefficients, no readback (the driver keeps them and replays them after a reconnect).\n"
-                "  The x8p records AUX 1 L/R on record slots 28/29, AUX 2 on 30/31.\n");
+                "  The aux buses carry audio only where the unit's StripAuxMask builds the Input Strips on their returns\n"
+                "  (bit 0 AUX 1, bit 2 AUX 2: one mono strip on each return's L input, 0x10 / 0x12; 'apollo-diag strips');\n"
+                "  without one a return mixes nothing and records silence. Then the x8p records AUX 1 on record\n"
+                "  slot 28 and AUX 2 on slot 30, and the return reaches both MON sides.\n");
         return 1;
     }
     if (_stricmp(a[2], "mute") == 0) {
@@ -2695,8 +2698,9 @@ static int CmdStrips(void)
                 ret, (unsigned long)sizeof(s));
         return 1;
     }
-    if (ret < sizeof(s))
-        s.Version = (ret >= APOLLO_STRIPS_INFO_V3_SIZE) ? 3 : (ret >= APOLLO_STRIPS_INFO_V2_SIZE) ? 2 : 1;   /* [Warm] [Virtual] an older driver: its part */
+    if (ret < sizeof(s))    /* [Warm] [Virtual] [AuxStrips] an older driver: its part */
+        s.Version = (ret >= APOLLO_STRIPS_INFO_V4_SIZE) ? 4 : (ret >= APOLLO_STRIPS_INFO_V3_SIZE) ? 3 :
+                    (ret >= APOLLO_STRIPS_INFO_V2_SIZE) ? 2 : 1;
     s.Why[sizeof(s.Why) - 1] = 0;
     printf("State        %lu  %s\n", s.State, StripsStateName(s.State));
     printf("Why          ");
@@ -2812,6 +2816,34 @@ static int CmdStrips(void)
             printf("(VIRTUAL n plays into playback slot 19+n and records on slot 17+n on the x8p; its mixer bus is "
                    "0x18+n-1: 'mix vN', 'cue <c> send vN')\n");
         }
+    }
+    if (s.Version >= 5) {
+        /* [AuxStrips] GET_STRIPS version 5: the Input Strips on the aux returns 0x10-0x13 (docs/STRIPS.md 14) */
+        static const char *const aname[APOLLO_STRIP_AUXES] = { "AUX 1 L", "AUX 1 R", "AUX 2 L", "AUX 2 R" };
+
+        printf("Aux returns  StripAuxMask=0x%lX asked, 0x%lX built", s.AuxAsked, s.AuxMask);
+        if (s.AuxLayoutWhy != 0)
+            printf("  REFUSED by the pool check: %s (code %lu)", StripsLayoutText(s.AuxLayoutWhy), s.AuxLayoutWhy);
+        printf("\n");
+        if (s.AuxMask != 0 || s.AuxAsked != 0) {
+            printf("Aux      strip                 SYNCH  input  header    taken   bus on DSP\n");
+            for (i = 0; i < APOLLO_STRIP_AUXES; i++) {
+                if (!(s.AuxMask & (1ul << i)) && s.AStripState[i] == APOLLO_STRIP_NONE)
+                    continue;
+                printf("%-8s %-20s  %-5s  0x%02lx   0x%05lx   %4lu ms  %lu\n", aname[i],
+                       s.AStripState[i] == APOLLO_STRIP_TAKEN ? "taken" :
+                       s.AStripState[i] == APOLLO_STRIP_QUEUED ? "QUEUED (unproven)" : "-",
+                       s.AStripStarted[i] ? "sent" : "-", s.AuxBus0 + i, s.AStripHeader[i], s.AStripAckMs[i], s.ABusOwner[i]);
+            }
+        }
+        for (i = 0; i < APOLLO_STRIP_AUX_RETURNS; i++) {
+            printf("AUX %lu return mixed on DSP %lu%s; its return and cue cells: %s\n", i + 1, s.AuxReturnOwner[i],
+                   s.AuxReturnOwner[i] != 0 ? " and DSP 0" : "", (s.AuxReturnStereo & (1ul << i)) ?
+                   "a mono strip on the L input (the return on both MON sides, sends left entry)" : "single left-entry write");
+        }
+        if (s.AuxMask != 0)
+            printf("(AUX 1 records on slot 28 and AUX 2 on slot 30 on the x8p and the Twin X; 'aux <n> send ...', "
+                   "'aux <n> return ...')\n");
     }
     printf("(input 1 = record slot 0: watch it with 'apollo-diag levels')\n");
     return 0;
@@ -3789,7 +3821,7 @@ static void Usage(void)
 "  param <name> <value>|--remove (elevated) store one in Units\\<key> for the unit's next start\n"
 "  log [--all]                   the driver's own log (bring-up steps, errors); with --unit,\n"
 "                                that unit's lines (tag [x8p], [twx]) and driver-wide ones\n"
-"  strips                        input-strip state: ownership, pools, modules, replies, Virtual strips\n"
+"  strips                        input-strip state: ownership, pools, modules, replies, Virtual and aux-return strips\n"
 "  strips verify [dir]           find the five pinned strip modules (UAD install, or the\n"
 "                                DLLs in dir) and check the installed copies; no device\n"
 "  strips install [dir]          elevated: copy them to System32\\drivers\\ApolloStrips\n"

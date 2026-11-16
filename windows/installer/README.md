@@ -375,8 +375,11 @@ live units (the uninstaller unbinds them and removes every Avium `apollo.inf` pa
 
 1. **Static (every build):** the helper (/W4 /WX), its offline tests, the IOCTL layout, the INF's IDs, the unsigned
    payload, the compile, the file list against the manifest, the leak scan.
-2. **Windows Sandbox: wizard, layout, signing, uninstall.** Copy the exe into the folder your Sandbox `.wsb` maps
-   read-only, open the sandbox, and in it run:
+2. **Windows Sandbox: wizard, layout, signing, uninstall.** Automated: `installer\sandbox\run-sandbox-check.ps1`
+   stages the newest release exe, starts a sandbox (networking off) that installs silently with `/SANDBOXTEST=1`,
+   checks every item below, uninstalls, checks the removal, shuts itself down, and prints the report (exit 0 = all
+   passed; ApolloSetup-14.34.35.816: 21 checks, 0 failures, Nov 16 2026). By hand: copy the exe into the folder your
+   Sandbox `.wsb` maps read-only, open the sandbox, and in it run:
 
    ```
    Desktop\installers\ApolloSetup-<DriverVer>.exe /SANDBOXTEST=1 /LOG="%USERPROFILE%\Desktop\setup.log"

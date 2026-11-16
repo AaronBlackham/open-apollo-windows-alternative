@@ -619,17 +619,19 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
         } else {
             /*
              * A version 2 caller (older apollo-diag): the fields it knows. A version 3 caller (a build before the
-             * Virtual strips) gets its whole version 3 part, marked version 3.
+             * Virtual strips) gets its whole version 3 part, marked version 3. [AuxStrips] A version 4 caller (a build
+             * before the aux-return strips) its whole version 4 part, marked version 4.
              */
             PAPOLLO_STRIPS_INFO tmp = (PAPOLLO_STRIPS_INFO)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*tmp), APOLLO_POOL_TAG);
-            ULONG part = (outLen >= APOLLO_STRIPS_INFO_V3_SIZE) ? APOLLO_STRIPS_INFO_V3_SIZE : APOLLO_STRIPS_INFO_V2_SIZE;
+            ULONG part = (outLen >= APOLLO_STRIPS_INFO_V4_SIZE) ? APOLLO_STRIPS_INFO_V4_SIZE :
+                         (outLen >= APOLLO_STRIPS_INFO_V3_SIZE) ? APOLLO_STRIPS_INFO_V3_SIZE : APOLLO_STRIPS_INFO_V2_SIZE;
 
             if (tmp == NULL) {
                 status = STATUS_INSUFFICIENT_RESOURCES;
                 break;
             }
             ApolloStripsFillInfo(ctx, tmp);
-            tmp->Version = (part == APOLLO_STRIPS_INFO_V3_SIZE) ? 3 : 2;
+            tmp->Version = (part == APOLLO_STRIPS_INFO_V4_SIZE) ? 4 : (part == APOLLO_STRIPS_INFO_V3_SIZE) ? 3 : 2;
             RtlCopyMemory(out, tmp, part);
             ExFreePoolWithTag(tmp, APOLLO_POOL_TAG);
             info = part;

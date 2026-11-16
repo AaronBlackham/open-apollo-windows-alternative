@@ -31,9 +31,15 @@
  *     word, the plan-mask functions equal to the Mic-only ones without Virtual strips, the pass through the
  *     stream checks, the blocks inside the pools and the room the ledger books, the refusal of a mask that does
  *     not fit, the plan hash (the pinned x8p hash unchanged), the version 2 record and the decisions.
+ *   - [AuxStrips] the Input Strips on the aux returns 0x10-0x13 (docs/STRIPS.md 14): slots 16-19, their places below
+ *     VIRTUAL 8's (upstream's packing of Input Strips 9-12), every word against ua_strip_build_input at that address and
+ *     DSP input, the single START and the pass order (Mic, Virtual, aux), the stream checks, the room and its refusal on
+ *     the x8p's and the Twin X's measured pools, the plan hash (the pinned x8p hash unchanged with StripAuxMask 0), the
+ *     version 3 record (versions 1 and 2 as before) and the decisions (an aux plan rebuilds like any other).
  * Exit code 0 = all pass. "--print [mask]" prints the pass for a mask (default 0xff);
  * "--print-probe [mask]" prints the repair transactions; "--digests" prints the planner digests;
- * "--print-pm [plan mask]" prints the x8p pass for StripMask | StripVirtualMask << 8 (default 0x1ff).
+ * "--print-pm [plan mask]" prints the x8p pass for StripMask | StripVirtualMask << 8 | StripAuxMask << 16 (default 0x1ff);
+ * "--aux-room" prints the pool words each plan books and what the measured pools hold.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -1818,7 +1824,7 @@ static int BlocksOk(ULONG Pm, ULONG MicSlots, const ULONG *Size, const ULONG *Ba
 
     *Inside = 1;
     *InRoom = 1;
-    StripPlanRoom(MicSlots, (Pm & STRIP_PM_VIRTUAL) >> 8, room);
+    StripPlanRoomAux(MicSlots, (Pm & STRIP_PM_VIRTUAL) >> 8, (Pm & STRIP_PM_AUX) >> 16, room);     /* [AuxStrips] */
     for (k = 0; k < STRIP_PLAN_SLOTS; k++)
         if ((Pm & (1u << k)) && StripPlanSlotAddrs(k, MicSlots, a[k]) != 0)
             return 0;
@@ -1920,9 +1926,10 @@ static void CheckVirtual(void)
           "virtual: rows per pool add up to 0x26 / 0 / 0x400 per Input Strip");
     Check(memcmp(g_StripVM0, oa_strip_input_m0, sizeof(oa_strip_input_m0)) == 0 && STRIP_VM0_WORDS == 9,
           "virtual: m0 words = ua_strip_input_m0 (9 words, 0.004f last)");
-    Check(STRIP_PLUGIN_INPUT == 0x83E && STRIP_VIRTUAL_SYNCH0 == 0x18 && STRIP_PLAN_SLOTS == 16 &&
-          STRIP_SLOT_VIRTUAL0 == STRIP_PLAN_INPUTS && STRIP_PLAN_ENT_SLOTS == 64,
-          "virtual: pluginId 0x83E, VIRTUAL 1 = DSP input 0x18, 16 slots, 64 START entries");
+    Check(STRIP_PLUGIN_INPUT == 0x83E && STRIP_VIRTUAL_SYNCH0 == 0x18 && STRIP_SLOT_AUX0 == 16 &&
+          STRIP_SLOT_VIRTUAL0 == STRIP_PLAN_INPUTS && STRIP_PLAN_SLOTS * STRIP_PLAN_START_ENTS == STRIP_PLAN_ENT_SLOTS,
+          "virtual: pluginId 0x83E, VIRTUAL 1 = DSP input 0x18, 16 Mic and Virtual slots ([AuxStrips] the aux returns after "
+          "them), 4 START entries per slot");
     for (i = 0; i < 16; i++)
         if (StripBusSlot(StripSlotSynch(i)) != i)
             Check(0, "virtual: slot -> synch -> slot round trip");
@@ -2029,9 +2036,11 @@ static void CheckVirtual(void)
             ok = (i == STRIP_PLAN_INPUTS) ? (e1 != 0) : (e1 == e2 && PlanSame(&p, &q));
         }
     Check(ok, "virtual: StripPlanPrepareSlot of a Mic slot = StripPlanPrepareRate (96 kHz)");
-    Check(StripPlanPrepareSlot(16, 8, 0, 48000, &p) != 0 && StripPlanPrepareSlot(8, 9, 0, 48000, &p) != 0 &&
-          StripPlanPrepareSlot(8, 8, 0, 32000, &p) != 0 && StripPlanStartPm(0x10000, 8, 0, &p) != 0,
-          "virtual: refused: slot 16, more than 8 Mic slots, a rate without strip words, a plan mask past VIRTUAL 8");
+    Check(StripPlanPrepareSlot(STRIP_PLAN_SLOTS, 8, 0, 48000, &p) != 0 && StripPlanPrepareSlot(8, 9, 0, 48000, &p) != 0 &&
+          StripPlanPrepareSlot(8, 8, 0, 32000, &p) != 0 && StripPlanStartPm(1u << STRIP_PLAN_SLOTS, 8, 0, &p) != 0 &&
+          StripPlanVirtualAddrs(8, 8, p.Addr) != 0 && StripPlanPrepareVirtual(8, 8, 0, &p) != 0,
+          "virtual: refused: slot 20, more than 8 Mic slots, a rate without strip words, a plan mask past the last slot, "
+          "VIRTUAL 9 (the Input Strip place after VIRTUAL 8 is the AUX 1 L return's, not a Virtual one)");
     ok = 1;
     for (st = 0; st <= STRIP_STEP_ALL; st++)
         ok = ok && StripPlanPrepareSlot(9, 8, st, 44100, &p) == 0 && StripPlanPrepareSlot(9, 8, st, 48000, &q) == 0 &&
@@ -2146,9 +2155,9 @@ static void CheckVirtual(void)
     r2.Check = StripRecordSum(&r2);
     Check(!StripRecordValid(&r2, sizeof(r2)), "record: version 2 without Virtual strips: not trusted");
     r2 = r;
-    r2.Mask = 0x10000;
+    r2.Mask = 0x100000;
     StripRecordSeal(&r2);
-    Check(!StripRecordValid(&r2, sizeof(r2)), "record: a plan mask past VIRTUAL 8: not trusted");
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: a plan mask past the last slot ([AuxStrips] bit 20): not trusted");
     r2 = r;
     StripRecordClearStrips(&r2, STRIP_REC_NONE);
     StripRecordSeal(&r2);
@@ -2187,6 +2196,341 @@ static void CheckVirtual(void)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* [AuxStrips] the aux returns' Input Strips (strip_plan.h, docs/STRIPS.md 14) */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The aux return K's Input Strip in a pass over Pm with MicSlots Mic places: our PREPARE plus its START entries against
+ * open-apollo's ua_strip_build_input at our address and the aux return's DSP input 0x10 + K, at stage Steps.
+ */
+static int AuxMatchesUpstream(ULONG MicSlots, ULONG Pm, ULONG K, ULONG Steps)
+{
+    static OA_XACT x;
+    static STRIP_PLAN p, q;
+    ULONG addr[STRIP_PLAN_ROWS], i, slot = STRIP_SLOT_AUX0 + K, from = 0, n;
+
+    if (!(Pm & (1u << slot)) || StripPlanAuxAddrs(MicSlots, K, addr) != 0)
+        return 0;
+    memset(&x, 0, sizeof(x));
+    if (oa_strip_build_input(&x, addr, STRIP_AUX_SYNCH0 + K, OaSteps(Steps)) != 0)
+        return 0;
+    if (StripPlanPrepareSlot(slot, MicSlots, Steps, 48000, &p) != 0 || StripPlanStartPm(Pm, MicSlots, Steps, &q) != 0)
+        return 0;
+    n = (StripPlanSteps(Steps) >= STRIP_STEP_INPUT) ? 4 : (StripPlanSteps(Steps) >= STRIP_STEP_SYNCH) ? 1 : 0;
+    for (i = 0; i < slot; i++)
+        if (Pm & (1u << i))
+            from += n;
+    return SameAsUpstream(&p, &q, from, n, &x);
+}
+
+/* strip_adopt.h's validator of the Virtual build (versions 1 and 2, nothing past bit 15): what it does with a record. */
+static int V2RecordValid(const STRIP_RECORD *R, ULONG Bytes)
+{
+    ULONG want = ((R->Mask >> 8) & 0xFFu) != 0 ? 2u : 1u;
+
+    return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == want && (R->Mask >> 16) == 0 &&
+           R->Size == sizeof(*R) && R->Check == StripRecordSum(R) && R->NumDsps <= STRIP_REC_DSPS &&
+           R->State <= STRIP_REC_UNKNOWN;
+}
+
+/* AUX 1 L on the x8p's layout (8 Mic strips): Input Strip 8, right below VIRTUAL 8's place. */
+static const ULONG kA0Addr[6] = { 0x0009CDE0, 0x0009CDC2, 0x08FEBE80, 0x08FEBD80, 0x08FEBC80, 0x08FEBB80 };
+
+static void CheckAux(void)
+{
+    static STRIP_PLAN p, q, q0;
+    const STRIP_MODEL *x = StripModelFor(STRIP_MODEL_X8P), *t = StripModelFor(STRIP_MODEL_TWINX);
+    ULONG i, j, k, m, st, ok, room[4], room0[4], a[STRIP_PLAN_ROWS], a2[STRIP_PLAN_ROWS], h, in, kind, sc[4];
+    int inside, inRoom, td;
+    char what[240];
+    STRIP_RECORD r, r2;
+    STRIP_ADOPT_NOW n;
+    APOLLO_MON_WRITE w;
+
+    /* slots, DSP inputs, the plan mask */
+    Check(STRIP_SLOT_AUX0 == 16 && STRIP_PLAN_AUXES == 4 && STRIP_AUX_SYNCH0 == 0x10 && STRIP_PM_AUX == 0xF0000u &&
+          STRIP_PLAN_SLOTS == 20 && STRIP_PLAN_ENT_SLOTS == 80 && STRIP_PLAN_INPUT_STRIPS == 12,
+          "aux: slots 16-19 = DSP inputs 0x10-0x13 (AUX 1 L/R, AUX 2 L/R), plan mask bits 16-19, 80 START entries, 12 Input "
+          "Strip places");
+    ok = 1;
+    for (i = 0; i < STRIP_PLAN_SLOTS; i++)
+        ok = ok && StripBusSlot(StripSlotSynch(i)) == i;
+    Check(ok && StripSlotSynch(16) == 0x10 && StripSlotSynch(17) == 0x11 && StripSlotSynch(19) == 0x13 &&
+          StripBusSlot(0x10) == 16 && StripBusSlot(0x13) == 19 && StripBusSlot(0x0F) == STRIP_PLAN_SLOTS &&
+          StripBusSlot(0x14) == STRIP_PLAN_SLOTS && StripBusSlot(0x17) == STRIP_PLAN_SLOTS && StripBusSlot(0x0A) == STRIP_PLAN_SLOTS,
+          "aux: slot -> synch -> slot for all 20 slots; 0x0f, the talkback and 0x14-0x17 have no strip");
+    Check(StripPlanPmAux(0xFF, 0x01, 0x0F) == 0xF01FFu && StripPlanPmAux(0, 0, 0x30) == 0 && StripPlanPmAux(0x03, 0x0F, 0x01) == 0x10F03u,
+          "aux: plan mask = StripMask | StripVirtualMask << 8 | StripAuxMask << 16 (4 bits)");
+    ok = 1;
+    for (m = 0; m <= 0xFF && ok; m += 0x0F)
+        for (k = 0; k <= 0xFF && ok; k += 0x11)
+            ok = StripPlanPmAux(m, k, 0) == StripPlanPm(m, k);
+    Check(ok, "aux: StripAuxMask 0 gives the Virtual build's plan mask, bit for bit");
+
+    /* the models: both have AUX 1-2 (monitor_plan.h takes the aux return codes on both), strips on the L returns only
+       (Nov 16 2026: a mono strip on 0x11/0x13 covered input 1's record slot); the Twin X has its own field */
+    Check(x != NULL && t != NULL && x->AuxAllowed == 0x05 && t->AuxAllowed == 0x05, "aux: x8p and Twin X: the L returns of AUX 1 and AUX 2 (0x05)");
+    for (i = 0; i < 2; i++) {
+        int model = (i == 0) ? STRIP_MODEL_X8P : STRIP_MODEL_TWINX;
+        const STRIP_MODEL *sm = StripModelFor((ULONG)model);
+        int hasAux = ApolloMonEncode(ApolloMonModelFor(model), APOLLO_MP_AUX_RETURN(0), 0, &w) == APOLLO_MON_OK &&
+                     ApolloMonEncode(ApolloMonModelFor(model), APOLLO_MP_AUX_RETURN(1), 0, &w) == APOLLO_MON_OK;
+
+        sprintf_s(what, sizeof(what), "aux: %s: aux-return strips allowed exactly where monitor_plan.h has AUX 1-2", sm->Name);
+        Check(hasAux && sm->AuxAllowed == 0x05, what);
+    }
+    Check(StripModelAuxMask(x, 0xFFFFFFFFu) == 0x05 && StripModelAuxMask(t, 0x03) == 0x01 && StripModelAuxMask(t, 0x0A) == 0 && StripModelAuxMask(t, 0x30) == 0 &&
+          StripModelAuxMask(NULL, 0x0F) == 0 && StripModelAuxMask(x, 0) == 0,
+          "aux: StripAuxMask as each model takes it (bits 0 and 2; the R returns, other bits and no model: none)");
+
+    /* the addresses: Input Strips 8-11, below VIRTUAL 8's place; the same blocks the Virtual strips use */
+    Check(StripPlanAuxAddrs(8, 0, a) == 0 && memcmp(a, kA0Addr, sizeof(kA0Addr)) == 0 && a[6] == 0 && a[9] == 0,
+          "aux: x8p AUX 1 L at 0x9cde0 / 0x9cdc2 / 0x08febe80..0x08febb80 (Input Strip 8)");
+    (void)StripPlanVirtualAddrs(8, 7, a2);
+    Check(kA0Addr[0] + 0x26 == a2[0] && kA0Addr[2] + 0x100 == a2[5],
+          "aux: AUX 1 L's blocks start right below VIRTUAL 8's (pool 1 header, pool 3 c3)");
+    ok = 1;
+    for (k = 0; k < STRIP_PLAN_AUXES && ok; k++)
+        for (m = 0; m <= 8 && ok; m++)
+            ok = StripPlanAuxAddrs(m, k, a) == 0 && StripPlanInputAddrs(m, STRIP_PLAN_VIRTUALS + k, a2) == 0 &&
+                 memcmp(a, a2, sizeof(a)) == 0 && StripPlanSlotAddrs(STRIP_SLOT_AUX0 + k, m, a2) == 0 &&
+                 memcmp(a, a2, sizeof(a)) == 0;
+    for (k = 0; k < STRIP_PLAN_VIRTUALS && ok; k++)
+        ok = StripPlanVirtualAddrs(8, k, a) == 0 && StripPlanInputAddrs(8, k, a2) == 0 && memcmp(a, a2, sizeof(a)) == 0;
+    Check(ok, "aux: the aux return k = Input Strip 8 + k (StripPlanSlotAddrs of slot 16 + k); VIRTUAL n = Input Strip n - 1 as before");
+    Check(StripPlanAuxAddrs(8, 4, a) != 0 && a[0] == 0 && StripPlanAuxAddrs(9, 0, a) != 0 && a[0] == 0 &&
+          StripPlanSlotAddrs(STRIP_PLAN_SLOTS, 8, a) != 0,
+          "aux: refused: a fifth aux input, more than 8 Mic places, slot 20 (addresses all 0)");
+    {
+        /* with every Virtual strip built, upstream's packing (ua_strip_priv_addrs: the Input Strips after every Mic strip)
+           puts the next Input Strips exactly where the aux returns sit */
+        unsigned char kinds[20];
+
+        for (i = 0; i < 20; i++)
+            kinds[i] = (unsigned char)(i < 8 ? OA_KIND_MIC : OA_KIND_INPUT);
+        ok = 1;
+        for (k = 0; k < STRIP_PLAN_AUXES && ok; k++) {
+            oa_strip_priv_addrs(kinds, 16 + k, a2);
+            ok = StripPlanAuxAddrs(8, k, a) == 0 && memcmp(a, a2, 6 * sizeof(ULONG)) == 0;
+        }
+        Check(ok, "aux: x8p, 8 Mic + VIRTUAL 1-8: the aux returns at upstream's packing of Input Strips 9-12");
+    }
+
+    /* every word: the Input Strip at the aux address and the aux DSP input, as upstream's ua_strip_build_input builds it */
+    for (st = 0; st <= STRIP_STEP_ALL; st++) {
+        static const ULONG pms[] = { 0x10000, 0x30000, 0xF01FF, 0xF0000, 0x50100, 0xFFFFF };
+
+        ok = 1;
+        for (j = 0; j < sizeof(pms) / sizeof(pms[0]); j++)
+            for (k = 0; k < STRIP_PLAN_AUXES; k++)
+                if (pms[j] & (1u << (STRIP_SLOT_AUX0 + k)))
+                    ok = ok && AuxMatchesUpstream(8, pms[j], k, st);
+        sprintf_s(what, sizeof(what), "aux: x8p stage %lu: every aux return's PREPARE + START = ua_strip_build_input's words at its "
+                  "address and DSP input 0x10 + k (plan masks 0x10000 .. 0xfffff)", st);
+        Check(ok, what);
+        ok = 1;
+        for (k = 0; k < STRIP_PLAN_AUXES; k++)
+            ok = ok && AuxMatchesUpstream(2, 0xF0F03, k, st);
+        sprintf_s(what, sizeof(what), "aux: Twin X (2 Mic) + VIRTUAL 1-4 + aux 0x0f stage %lu: = upstream's builder", st);
+        Check(ok, what);
+    }
+    Check(AuxMatchesUpstream(8, 0xF01FF, 0, 0) && !AuxMatchesUpstream(8, 0x101FF, 1, 0),
+          "aux: the comparison needs the slot in the plan mask (it is not vacuous)");
+    {
+        static OA_XACT ox;
+
+        /* the AUX 1 L plan against upstream's words for the AUX 1 R input at the same address: the SYNCH input differs */
+        memset(&ox, 0, sizeof(ox));
+        (void)StripPlanAuxAddrs(8, 0, a);
+        (void)oa_strip_build_input(&ox, a, STRIP_AUX_SYNCH0 + 1, 0);
+        (void)StripPlanPrepareSlot(STRIP_SLOT_AUX0, 8, 0, 48000, &p);
+        (void)StripPlanStartPm(0x101FF, 8, 0, &q);
+        Check(!SameAsUpstream(&p, &q, 36, 4, &ox), "aux: the comparison tells DSP input 0x10 from 0x11");
+    }
+    ok = 1;
+    for (st = 0; st <= STRIP_STEP_ALL; st++)
+        ok = ok && StripPlanPrepareSlot(STRIP_SLOT_AUX0 + 2, 8, st, 44100, &p) == 0 &&
+             StripPlanPrepareSlot(STRIP_SLOT_AUX0 + 2, 8, st, 192000, &q) == 0 && PlanSame(&p, &q);
+    Check(ok, "aux: the aux Input Strip's words are the same at every rate (as the Virtual ones)");
+
+    /* the START and the pass order: Mic, Virtual, aux, ONE START */
+    ok = StripPlanStartPm(0xF01FF, 8, 0, &q) == 0 && q.N == 52 && StripPlanStartPm(0x1FF, 8, 0, &q0) == 0 && q0.N == 36;
+    for (j = 0; ok && j < 36; j++)
+        ok = memcmp(&q.Ent[j], &q0.Ent[j], sizeof(q.Ent[j])) == 0;
+    for (k = 0; ok && k < STRIP_PLAN_AUXES; k++) {
+        (void)StripPlanAuxAddrs(8, k, a);
+        ok = !q.Ent[36 + 4 * k].Dma && q.Ent[36 + 4 * k].W[0] == 0x001F0004 && q.Ent[36 + 4 * k].W[1] == (0x00200010u + k) &&
+             q.Ent[36 + 4 * k].W[2] == a[0] && q.Ent[36 + 4 * k + 1].W[1] == 0x10 + k && q.Ent[36 + 4 * k + 1].W[2] == 8 &&
+             q.Ent[36 + 4 * k + 3].W[2] == 7 && q.Ent[36 + 4 * k + 3].W[3] == 0x0001FFFF;
+    }
+    Check(ok, "aux: START 0xf01ff: the 36 entries of START 0x1ff, then SYNCH 0x00200010..13 at each aux header, span, span, route");
+    Check(StripPlanStartPm(0xFFFFF, 8, 0, &q) == 0 && q.N == 80, "aux: START of all 20 strips: 80 entries (one transaction)");
+    ok = 1;
+    {
+        static const ULONG want[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19 };
+
+        for (k = 0; k < 13 && ok; k++)
+            ok = StripPassStepPm(0xF01FF, 0, k, &in) == STRIP_XACT_PREPARE && in == want[k];
+        ok = ok && StripPassStepPm(0xF01FF, 0, 13, &in) == STRIP_XACT_START && StripPassStepPm(0xF01FF, 0, 14, &in) == STRIP_XACT_END;
+    }
+    Check(ok, "aux: pass 0xf01ff: PREPARE inputs 1-8, VIRTUAL 1, AUX 1 L/R, AUX 2 L/R, then ONE START, end");
+    Check(StripPassStepPm(0x10000, 0, 0, &in) == STRIP_XACT_PREPARE && in == 16 &&
+          StripPassStepPm(0x10000, 0, 1, &in) == STRIP_XACT_START && StripPassStepPm(0x10000, 5, 1, &in) == STRIP_XACT_END,
+          "aux: an aux strip alone (StripMask and StripVirtualMask 0): PREPARE, START; stage 5: no START");
+    ok = 1;
+    for (m = 0; m <= 0xFFFF && ok; m += 0x0101)
+        for (st = 0; st <= STRIP_STEP_ALL && ok; st++)
+            for (k = 0; k <= STRIP_PLAN_SLOTS + 1 && ok; k++) {
+                kind = StripPassStepPm(m, st, k, &in);
+                ok = kind != STRIP_XACT_PREPARE || in < STRIP_SLOT_AUX0;
+            }
+    Check(ok, "aux: a plan mask without aux bits never PREPAREs an aux slot");
+
+    /* the stream checks with aux strips */
+    {
+        static const ULONG pms[] = { 0x10000, 0x30000, 0xF01FF, 0xF0000, 0x50100, 0xFFFFF };
+
+        for (j = 0; j < sizeof(pms) / sizeof(pms[0]); j++) {
+            for (st = 2; st <= STRIP_STEP_ALL; st++)
+                CheckPassPm(pms[j], 8, st, "x8p aux");
+            CheckPassPm(pms[j], 8, 0, "x8p aux");
+        }
+        CheckPassPm(0xF0F03, 2, 0, "Twin X aux");
+        CheckPassPm(0x30103, 2, 7, "Twin X aux");
+    }
+
+    /* the room: where the blocks sit, the pool check, the refusal */
+    Check(StripAuxSlots(0) == 0 && StripAuxSlots(0x01) == 1 && StripAuxSlots(0x05) == 3 && StripAuxSlots(0x08) == 4 &&
+          StripPlanInputSlots(0x01, 0) == 1 && StripPlanInputSlots(0xFF, 0) == 8 && StripPlanInputSlots(0x01, 0x01) == 9 &&
+          StripPlanInputSlots(0x00, 0x08) == 12 && StripPlanInputSlots(0x05, 0x0F) == 12,
+          "aux: Input Strip places: the Virtual slots, or with aux strips 8 + the aux places up to the highest");
+    ok = 1;
+    for (m = 0; m <= 8 && ok; m++)
+        for (k = 0; k <= 0xFF && ok; k++) {
+            StripPlanRoomAux(m, k, 0, room);
+            StripPlanRoom(m, k, room0);
+            ok = memcmp(room, room0, sizeof(room)) == 0;
+        }
+    Check(ok, "aux: StripAuxMask 0: the room is StripPlanRoom's, for every Mic count and Virtual mask (the ledger as before)");
+    StripPlanRoomAux(8, 0x01, 0x0F, room);
+    sprintf_s(what, sizeof(what), "aux: x8p 8 Mic + VIRTUAL 1 + aux 0x0f: room %lx / %lx / %lx words (8 x 0x54 + 12 x 0x26, 8 x 0x10, "
+              "8 x 0x2010 + 12 x 0x400)", room[1], room[2], room[3]);
+    Check(room[0] == 0 && room[1] == 8 * 0x54 + 12 * 0x26 && room[2] == 8 * 0x10 && room[3] == 8 * 0x2010 + 12 * 0x400, what);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, kScr, room, STRIP_CODE_WORDS) == 0,
+          "aux: the x8p's DSP 1 pools (measured Nov 14) fit 8 Mic + VIRTUAL 1 + aux 0x0f");
+    StripPlanRoomAux(8, 0xFF, 0x0F, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, kScr, room, STRIP_CODE_WORDS) == 0,
+          "aux: ... and all 20 strips (8 Mic + VIRTUAL 1-8 + aux 0x0f)");
+    Check(BlocksOk(0xF01FF, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: 8 Mic + VIRTUAL 1 + aux 0x0f: every block disjoint, inside DSP 1's pools above the scratch, inside the booked room");
+    Check(BlocksOk(0xFFFFF, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: all 20 strips' blocks disjoint, inside the pools and the booked room");
+    Check(BlocksOk(0x80000, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom &&
+          BlocksOk(0x10001, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: AUX 2 R alone, AUX 1 L with input 1: inside the booked room (it reaches down to the aux place)");
+    StripPlanRoomAux(2, 0x0F, 0x0F, room);
+    Check(StripPlanLayoutCheckRoom(kTwxSize, kTwxBase, kTwxScr, room, STRIP_CODE_WORDS) == 0 &&
+          BlocksOk(0xF0F03, 2, kTwxSize, kTwxBase, kTwxScr, &inside, &inRoom) && inside && inRoom,
+          "Twin X: 2 Mic + VIRTUAL 1-4 + aux 0x0f fit its DSP 1 pools (G3 log), blocks disjoint and inside the booked room");
+
+    /* pools with room for the Mic strips and VIRTUAL 1 only: the aux strips refused (code 9 / 11), the rest goes on */
+    memcpy(sc, kScr, sizeof(sc));
+    sc[1] = 0x9D1B8 - 0x92800 - (8 * 0x54 + 0x26);              /* pool 1: exactly 8 Mic + VIRTUAL 1 left */
+    StripPlanRoomAux(8, 0x01, 0, room0);
+    StripPlanRoomAux(8, 0x01, 0x01, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room0, STRIP_CODE_WORDS) == 0 &&
+          StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 9,
+          "aux: pool 1 with room for 8 Mic + VIRTUAL 1 only: those fit, StripAuxMask 0x01 refused (code 9, pool 1)");
+    memcpy(sc, kScr, sizeof(sc));
+    sc[3] = 0x08FFE000 - 0x08008E96 - 8 * 0x2010 - 0x400 * 11;  /* pool 3: room for 11 Input Strip places */
+    StripPlanRoomAux(8, 0x01, 0x07, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 0, "aux: pool 3 with 11 Input Strip places: aux 0x07 fits");
+    StripPlanRoomAux(8, 0x01, 0x08, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 11,
+          "aux: ... AUX 2 R needs the 12th place: refused (code 11, pool 3)");
+
+    /* the plan hash: aux strips change it; the pinned x8p hash and every plan without them as before */
+    h = StripPlanHashPm(0xF01FF, 8, 9, 48000, 1, 6, &p);
+    Check(h != 0 && h != ADOPT_X8P_PLAN_HASH && h != StripPlanHashPm(0x1FF, 8, 9, 48000, 1, 6, &p) &&
+          h != StripPlanHashPm(0x701FF, 8, 9, 48000, 1, 6, &p) && h != StripPlanHashPm(0xF01FF, 8, 6, 48000, 1, 6, &p) &&
+          h != StripPlanHashPm(0xF01FF, 8, 9, 48000, 2, 6, &p),
+          "adopt: aux strips change the plan hash (which ones, the stage, the DSP)");
+    Check(StripPlanHashPm(StripPlanPmAux(0xFF, 0, 0), 8, 9, 48000, 1, 6, &p) == ADOPT_X8P_PLAN_HASH,
+          "adopt: StripAuxMask 0: the pinned x8p plan hash, unchanged");
+
+    /* the record: version 3 with aux strips; versions 1 and 2 as before; an older build refuses version 3 */
+    memset(&r, 0, sizeof(r));
+    r.Anchored = 1;
+    AdoptLivePm(&r, 0xF01FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r);
+    Check(r.Version == STRIP_REC_VERSION_AUX && StripRecordValid(&r, sizeof(r)) && !V2RecordValid(&r, sizeof(r)) &&
+          !OldRecordValid(&r, sizeof(r)),
+          "record: + aux 0x0f: version 3, valid here, refused by the Virtual build and by older ones (they ask for a power cycle)");
+    r2 = r;
+    AdoptLivePm(&r2, 0x10000, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 3 && StripRecordValid(&r2, sizeof(r2)), "record: aux strips alone: version 3");
+    r2 = r;
+    r2.Version = 2;
+    r2.Check = StripRecordSum(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: aux strips under version 2: not trusted");
+    r2 = r;
+    r2.Mask = 0x1FF;
+    r2.Version = 3;
+    r2.Check = StripRecordSum(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: version 3 without aux strips: not trusted");
+    r2 = r;
+    AdoptLivePm(&r2, 0x1FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 2 && StripRecordValid(&r2, sizeof(r2)) && V2RecordValid(&r2, sizeof(r2)),
+          "record: VIRTUAL 1, no aux strip: version 2 as before, valid here and for the Virtual build");
+    AdoptLivePm(&r2, 0xFF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 1 && StripRecordValid(&r2, sizeof(r2)) && OldRecordValid(&r2, sizeof(r2)) && V2RecordValid(&r2, sizeof(r2)),
+          "record: StripMask 0xff alone: version 1 as before, valid for every build");
+    r2 = r;
+    StripRecordClearStrips(&r2, STRIP_REC_NONE);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 1 && OldRecordValid(&r2, sizeof(r2)), "record: torn down: version 1 again");
+
+    /* the decision: an aux plan rebuilds as every plan does (StripWarmRebuild, the x8p's default 1) */
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 1, 0xF01FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td,
+          "decide: a record with aux strips, this start the same, rebuilds on: REBUILD after a teardown (never adopted)");
+    {
+        /* the rebuild's teardown (strips.c StripsWarmDecide) stops every slot the record's plan mask names */
+        ULONG started = 0, synchs = 0;
+
+        for (i = 0; i < STRIP_PLAN_SLOTS; i++)
+            if ((r.Mask & (1u << i)) && r.Limit >= STRIP_STEP_SYNCH) {
+                started |= 1u << i;
+                if (i >= STRIP_SLOT_AUX0)
+                    synchs |= 1u << (StripSlotSynch(i) - STRIP_AUX_SYNCH0);
+            }
+        Check(started == 0xF01FF && synchs == 0x0F, "decide: that teardown stops inputs 1-8, VIRTUAL 1 and SYNCH 0 at 0x10-0x13");
+    }
+    n.WarmRebuild = 0;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_ADOPTED && !td,
+          "decide: ... with StripWarmRebuild 0: ADOPTED (the record covers the aux strips word for word)");
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0x1FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS,
+          "decide: a record with aux strips, this start without them (StripAuxMask 0 or refused): PLAN_DIFFERS");
+    n.WarmRebuild = 1;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td, "decide: ... with rebuilds: REBUILD after a teardown");
+    r2 = r;
+    AdoptLivePm(&r2, 0x1FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0xF01FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS,
+          "decide: a record of the Virtual build, this start with aux strips: PLAN_DIFFERS (nothing adopted the record does not cover)");
+    n.WarmRebuild = 1;
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_REBUILD && td, "decide: ... with rebuilds: REBUILD after a teardown");
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 1, 0x301FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    n.WarmRebuild = 0;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS, "decide: another aux mask: PLAN_DIFFERS");
+}
+
 /* --print-pm <plan mask>: the pass for the x8p (8 Mic slots), every transaction. */
 static void PrintPassPm(ULONG Pm)
 {
@@ -2200,8 +2544,10 @@ static void PrintPassPm(ULONG Pm)
             (void)StripPlanPrepareSlot(in, 8, 0, 48000, &p);
             if (in < STRIP_SLOT_VIRTUAL0)
                 sprintf_s(name, sizeof(name), "input %lu", in + 1);
-            else
+            else if (in < STRIP_SLOT_AUX0)
                 sprintf_s(name, sizeof(name), "VIRTUAL %lu", in - STRIP_SLOT_VIRTUAL0 + 1);
+            else
+                sprintf_s(name, sizeof(name), "AUX %lu %c", ((in - STRIP_SLOT_AUX0) >> 1) + 1, ((in - STRIP_SLOT_AUX0) & 1) ? 'R' : 'L');
             printf("Transaction %lu: PREPARE %s (StripSteps 0), on the strip DSP:\n", k + 1, name);
             PrintPlan(&p);
         } else if (kind == STRIP_XACT_START) {
@@ -2409,7 +2755,34 @@ int main(int argc, char **argv)
     CheckModels();          /* [Twin X G5] */
     CheckAdopt();           /* [Warm] */
     CheckVirtual();         /* [Virtual] */
+    CheckAux();             /* [AuxStrips] */
 
+    if (argc > 1 && strcmp(argv[1], "--aux-room") == 0) {
+        /* [AuxStrips] the pool words each plan books below the tops, and what the measured pools have above the scratch */
+        static const struct { const char *Who; ULONG Mic, V, A; const ULONG *Size, *Base, *Scr; } rows[] = {
+            { "x8p  8 Mic",                       8, 0x00, 0x0, kSize, kBase, kScr },
+            { "x8p  8 Mic + VIRTUAL 1",           8, 0x01, 0x0, kSize, kBase, kScr },
+            { "x8p  8 Mic + VIRTUAL 1 + aux 0xf", 8, 0x01, 0xF, kSize, kBase, kScr },
+            { "x8p  all 20 strips",               8, 0xFF, 0xF, kSize, kBase, kScr },
+            { "TwX  2 Mic + VIRTUAL 1-4 + aux 0xf", 2, 0x0F, 0xF, kTwxSize, kTwxBase, kTwxScr },
+        };
+        ULONG room[4], pool, ii;
+
+        for (ii = 0; ii < sizeof(rows) / sizeof(rows[0]); ii++) {
+            StripPlanRoomAux(rows[ii].Mic, rows[ii].V, rows[ii].A, room);
+            printf("%-36s check %2lu, room", rows[ii].Who, StripPlanLayoutCheckRoom(rows[ii].Size, rows[ii].Base, rows[ii].Scr,
+                                                                                        room, STRIP_CODE_WORDS));
+            for (pool = 1; pool < 4; pool++) {
+                ULONG start = rows[ii].Base[pool] + (rows[ii].Base[pool] & 1), top = start + (rows[ii].Size[pool] & ~1u);
+                ULONG scr = rows[ii].Scr[pool] + (rows[ii].Scr[pool] & 1);
+
+                if (scr < kStripScratch[pool])
+                    scr = kStripScratch[pool];
+                printf("  p%lu 0x%05lx of 0x%07lx", pool, room[pool], top - start - scr);
+            }
+            printf("\n");
+        }
+    }
     if (argc > 1 && strcmp(argv[1], "--adopt-hash") == 0)
         printf("x8p plan hash (0xFF, stage 9, 48 kHz, DSP 1 of 6): 0x%08lXu; modules 0x%08lXu\n",
                StripPlanHash(0xFF, 9, 48000, 1, 6, &p), AdoptModulesHash());
@@ -2419,7 +2792,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--print-probe") == 0)
         PrintProbe(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFF : 0xFF);
     if (argc > 1 && strcmp(argv[1], "--print-pm") == 0)
-        PrintPassPm(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFFFF : 0x1FF);
+        PrintPassPm(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFFFFF : 0x1FF);
     if (argc > 1 && strcmp(argv[1], "--digests") == 0) {
         unsigned long long d[PLAN_DIGESTS];
 

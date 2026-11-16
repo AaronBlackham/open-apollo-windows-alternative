@@ -79,11 +79,21 @@
  *   aux to a cue       {bus 0x10 / 0x12, param 1/2/5/6 (CUE 1-4), L / R}: 10^(dB/20) with the pan law (encode_aux_fader +
  *                      _write_send), 0.0 while that cue is muted.
  *   The aux bus mix itself is the DSPs' (bus enable type 3/4 is on by default, the kext's cache starts all-enabled,
- *   spec-dsp-mixer 6.3). Aux returns go to DSP 0, or to the DSP an aux insert chain runs on and DSP 0 (cues.c
- *   ApolloCuesAuxOwner, plugin.c). Aux MONO (0x0A / 0x0F, S6 / S7 [9:8]) is not offered: on the x8p those settings
- *   are not decoded and may hold other fields. Not run on hardware: whether the aux returns (synch 0x10-0x13) carry
- *   audio without an Input Strip there is unproven (DSP inputs with no strip "mix nothing" for the Virtual inputs,
- *   oa:driver/ua_strips.c:19-25); the aux outputs record on the x8p's record slots 28-31 either way.
+ *   spec-dsp-mixer 6.3; BusEnable sends changed nothing, Nov 16 2026). Aux returns go to DSP 0, or to the DSP an aux
+ *   insert chain runs on and DSP 0 (cues.c ApolloCuesAuxOwner, plugin.c). Aux MONO (0x0A / 0x0F, S6 / S7 [9:8]) is not
+ *   offered: on the x8p those settings are not decoded and may hold other fields.
+ *   [AuxStrips] The aux returns are DSP inputs 0x10-0x13 (AUX 1 L, AUX 1 R, AUX 2 L, AUX 2 R), and like the Virtual inputs
+ *   they mix nothing and record silence without an Input Strip (docs/STRIPS.md 14, measured on the x8p Nov 16 2026: the
+ *   plain Input Strip moved onto 0x10 carried VIRTUAL 1's -40 dBFS tone, sent at 0 dB, into AUX 1 L's record slot 28 at
+ *   -43.0 dBFS (-3 dB is the send's pan law), Mic 1's noise sent at +12 dB arrived too, and 0x11 without a strip stayed
+ *   exact zero). StripAuxMask builds them (strips.c). While a return's strips run (Strips bit a): the return is mixed on
+ *   the strip DSP (ApolloCuesAuxOwner) and its cells are a stereo pair, both inputs written: the L input (0x10 / 0x12)
+ *   left entry = the weight, right 0.0; the R input (0x11 / 0x13) left 0.0, right = the weight; the aux-to-cue sends the
+ *   same split with the pan law as a balance (ApolloAuxReturnCells / ApolloAuxCueCells). Measured with a strip on 0x10
+ *   and the single left entry: that entry set only MON's left side, the right side heard 0x10 at the DSP's own default.
+ *   So the moment the strips go live every cell is written: the host's value, else 0.0. Without strips (StripAuxMask 0)
+ *   the single left-entry write on DSP 0, as every build before. The aux outputs record on record slots 28-31 (x8p and
+ *   Twin X: AUX 1 L/R, AUX 2 L/R).
  *
  * Not here: per-output speaker trims (Speaker Utilities): no mailbox field or bus coefficient is known for
  * a monitor output's trim (the surround trims 0x4B-0x52 / 0x6B-0x72 have no decoded encoding,
@@ -982,6 +992,7 @@ typedef struct _APOLLO_AUX_STATE {
     unsigned char   CueLevel[APOLLO_MON_AUX_BUSES][APOLLO_MON_CUES_MAX];
     signed char     CuePan[APOLLO_MON_AUX_BUSES][APOLLO_MON_CUES_MAX];
     unsigned long   Owner[APOLLO_MON_AUX_BUSES];                /* the DSP an aux insert chain runs the return on (0 = none) */
+    unsigned long   Strips;     /* [AuxStrips] bit a: aux a's return Input Strips run (strips.c): its cells are a stereo pair */
 } APOLLO_AUX_STATE;
 
 /* ------------------------------------------------------------------ */
@@ -1224,10 +1235,10 @@ static __inline long ApolloAuxLevel(const APOLLO_AUX_STATE *S, unsigned long Aux
  * level added (10^((send + fader)/20)/sqrt2, the engine's encode_input_fader(gain_db + fader_db)), 0.0 when the input
  * is muted, solo-silenced or its fader is off.
  */
-static __inline void ApolloAuxSendCoef(const APOLLO_CUE_STATE *S, unsigned long Aux, unsigned long Bus, unsigned long *Left,
-                                       unsigned long *Right)
+static __inline void ApolloAuxSendCoefPan(const APOLLO_CUE_STATE *S, unsigned long Aux, unsigned long Bus, long p,
+                                          unsigned long *Left, unsigned long *Right)
 {
-    long h, f, p;
+    long h, f;
     unsigned long lin;
 
     *Left = 0;
@@ -1236,7 +1247,6 @@ static __inline void ApolloAuxSendCoef(const APOLLO_CUE_STATE *S, unsigned long 
         return;
     }
     h = ApolloAuxLevel(&S->Aux, Aux, Bus);
-    p = (long)S->Aux.Pan[Aux][Bus];
     if (((S->Aux.Post[Aux] >> Bus) & 1ul) == 0) {
         ApolloMonSendCoef(h, p, 0, Left, Right);
         return;
@@ -1252,6 +1262,16 @@ static __inline void ApolloAuxSendCoef(const APOLLO_CUE_STATE *S, unsigned long 
     }
     *Left = ApolloMonF32Mul(lin, ApolloMonPanBits(p));
     *Right = ApolloMonF32Mul(lin, ApolloMonPanBits(-p));
+}
+
+static __inline void ApolloAuxSendCoef(const APOLLO_CUE_STATE *S, unsigned long Aux, unsigned long Bus, unsigned long *Left,
+                                       unsigned long *Right)
+{
+    *Left = 0;
+    *Right = 0;
+    if (Aux < APOLLO_MON_AUX_BUSES && Bus < APOLLO_MON_BUSES) {
+        ApolloAuxSendCoefPan(S, Aux, Bus, (long)S->Aux.Pan[Aux][Bus], Left, Right);
+    }
 }
 
 /* Aux Aux's return weight (side 0 only): 10^(dB/20), 0.0 when muted or off. */
@@ -1291,6 +1311,79 @@ static __inline void ApolloAuxCueCoef(const APOLLO_CUE_STATE *S, unsigned long A
     /* _write_send: left = linear x sqrt2 x cos((p+1) pi/4), right = ... sin; ApolloMonPanBits = sqrt2 x cos */
     *Left = ApolloMonF32Mul(lin, ApolloMonPanBits(p));
     *Right = ApolloMonF32Mul(lin, ApolloMonPanBits(-p));
+}
+
+/*
+ * [AuxStrips] The writes of one aux-return cell (cues.c sends each to the return's owner and DSP 0), as {bus, param, left,
+ * right, left entry only}. Without the return's strips (Strips bit clear): ONE write, exactly every earlier build's, {0x10 /
+ * 0x12, ...}. With them: TWO, one per return input, {0x10 / 0x12, ...} carrying the left channel and {0x11 / 0x13, ...}
+ * the right.
+ */
+typedef struct _APOLLO_AUX_CELL {
+    unsigned long   Bus, Sub, Left, Right;
+    int             LeftOnly;           /* the left entry only (side 0) */
+} APOLLO_AUX_CELL;
+
+static __inline void ApolloAuxCellSet(APOLLO_AUX_CELL *C, unsigned long Bus, unsigned long Sub, unsigned long Left,
+                                      unsigned long Right, int LeftOnly)
+{
+    C->Bus = Bus;
+    C->Sub = Sub;
+    C->Left = Left;
+    C->Right = Right;
+    C->LeftOnly = LeftOnly;
+}
+
+/* [AuxStrips] Does aux Aux's return Input Strip run (a mono aux bus on the L input: its return on both monitor sides,
+   its sends the left entry at the centre value)? The name is the GET_STRIPS field's (AuxReturnStereo). */
+static __inline int ApolloAuxStereo(const APOLLO_AUX_STATE *S, unsigned long Aux)
+{
+    return Aux < APOLLO_MON_AUX_BUSES && ((S->Strips >> Aux) & 1ul) != 0;
+}
+
+/*
+ * [AuxStrips] Aux Aux's return into the monitor mix (param 0): its writes into Out, how many (1; 0 for a bad Aux).
+ * Without strips {0x10 / 0x12, 0, weight, -, left only}. With its strip (the L input only: a mono aux bus, strip_plan.h)
+ * {L input, 0, weight, weight}: both monitor sides, the weight 0.0 while the host never set the return (the strip must
+ * not play at the DSP's default). Nov 16 2026, x8p: return 0 dB put a -43.0 dBFS aux on MON L and R alike, -12 dB
+ * -54.9, mute the noise floor. Out keeps room for two cells (a stereo strip pair, if one is ever proven).
+ */
+static __inline unsigned long ApolloAuxReturnCells(const APOLLO_AUX_STATE *S, unsigned long Aux, APOLLO_AUX_CELL Out[2])
+{
+    unsigned long g, bus;
+
+    if (Aux >= APOLLO_MON_AUX_BUSES) {
+        return 0;
+    }
+    bus = APOLLO_MON_AUX_RETURN_BUS(Aux);
+    if (!ApolloAuxStereo(S, Aux)) {
+        ApolloAuxCellSet(&Out[0], bus, APOLLO_MIX_SUB, ApolloAuxReturnBits(S, Aux), 0, 1);
+        return 1;
+    }
+    g = ((S->RetSet >> Aux) & 1ul) != 0 ? ApolloAuxReturnBits(S, Aux) : 0;
+    ApolloAuxCellSet(&Out[0], bus, APOLLO_MIX_SUB, g, g, 0);
+    return 1;
+}
+
+/*
+ * [AuxStrips] Aux Aux's return into cue Cue (param 1/2/5/6): its writes into Out, how many (1; 0 for a bad Aux or Cue).
+ * {0x10 / 0x12, sub, L, R} with the pan law (ApolloAuxCueCoef), with or without the return's strip (a mono aux bus on
+ * the L input); with the strip 0.0 on both while the send was never set (not the DSP's default).
+ */
+static __inline unsigned long ApolloAuxCueCells(const APOLLO_CUE_STATE *S, unsigned long Aux, unsigned long Cue,
+                                                APOLLO_AUX_CELL Out[2])
+{
+    unsigned long l = 0, r = 0, bus, sub = ApolloCueSub(Cue);
+
+    if (Aux >= APOLLO_MON_AUX_BUSES || sub == 0) {
+        return 0;
+    }
+    bus = APOLLO_MON_AUX_RETURN_BUS(Aux);
+    if (!ApolloAuxStereo(&S->Aux, Aux) || ((S->Aux.CueSet[Aux] >> Cue) & 1ul) != 0) {
+        ApolloAuxCueCoef(S, Aux, Cue, &l, &r);
+    }
+    ApolloAuxCellSet(&Out[0], bus, sub, l, r, 0);
+    return 1;
 }
 
 /* Records an aux write (already validated by ApolloMonEncode). The Set bits are the caller's (cues.c). */

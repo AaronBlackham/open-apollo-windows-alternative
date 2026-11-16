@@ -57,6 +57,8 @@ DEFINE_GUID(GUID_DEVINTERFACE_APOLLO,
 /* [Virtual] still 8: GET_STRIPS grows at its end (its own Version 4, the Virtual Input Strips; a shorter buffer gets
    version 3 or 2 as before), and SET_MONITOR_PARAM's mix, cue and aux codes take the buses 0x18-0x1F (VIRTUAL 1-8)
    on a unit whose StripVirtualMask builds their strips */
+/* [AuxStrips] still 8: GET_STRIPS grows at its end again (Version 5, the aux returns' Input Strips; a buffer of the
+   version 4 size gets version 4, then 3 or 2 as before); every SET_MONITOR_PARAM code unchanged */
 
 #define FILE_DEVICE_APOLLO          0x8A70u     /* unsigned: << 16 overflows int */
 #define APOLLO_CTL(fn, access) \
@@ -421,7 +423,9 @@ typedef struct _APOLLO_MIXER_SETTING {
 /*
  * [Aux] The two stereo aux buses, both models (driver\monitor_plan.h has the encoding and the evidence). a = 0 (AUX 1)
  * or 1 (AUX 2); b = the input's bus as for the cue sends; c = the cue (0-3, the model's cues). Nothing reads back:
- * the host keeps what it set (the driver replays it after every connect).
+ * the host keeps what it set (the driver replays it after every connect). [AuxStrips] An aux bus carries audio (its
+ * record slots, its return) only where the unit's StripAuxMask builds the Input Strips of its return (GET_STRIPS
+ * version 5 AuxMask); while they run, the return and its cue sends are written as a stereo pair, the pan as a balance.
  */
 #define APOLLO_MON_AUX_SEND(a, b)   (0x6000u | ((a) << 5) | (b))    /* input b's send to aux a: half-dB -120..24, -121 off */
 #define APOLLO_MON_AUX_PAN(a, b)    (0x6100u | ((a) << 5) | (b))    /* -100 left .. 100 right */
@@ -611,6 +615,9 @@ typedef struct _APOLLO_READBACK {
 #define APOLLO_STRIP_INPUTS             8   /* preamps 1-8 */
 #define APOLLO_STRIP_VIRTUALS           8   /* [Virtual] VIRTUAL 1-8 (Input Strips, GET_STRIPS version 4) */
 #define APOLLO_STRIP_VIRTUAL_BUS0       0x18    /* DSP input = mixer bus of VIRTUAL 1 (VIRTUAL n = 0x18 + n - 1) */
+#define APOLLO_STRIP_AUXES              4   /* [AuxStrips] the aux returns AUX 1 L/R, AUX 2 L/R (GET_STRIPS version 5) */
+#define APOLLO_STRIP_AUX_BUS0           0x10    /* DSP input = bus of AUX 1 L (aux return k = 0x10 + k) */
+#define APOLLO_STRIP_AUX_RETURNS        2   /* AUX 1, AUX 2: return k/2 */
 
 #define APOLLO_STRIP_NONE               0   /* per input: nothing sent */
 #define APOLLO_STRIP_QUEUED             1   /* its transaction published, not proven taken */
@@ -697,10 +704,29 @@ typedef struct _APOLLO_STRIPS_INFO {
     ULONG   VStripHeader[APOLLO_STRIP_VIRTUALS];    /* instance header address on the strip DSP */
     ULONG   VStripAckMs[APOLLO_STRIP_VIRTUALS];     /* its PREPARE: publish to taken */
     ULONG   VBusOwner[APOLLO_STRIP_VIRTUALS];       /* DSP that mixes VIRTUAL n's bus (0 = default) */
+    /*
+     * Version 5 [AuxStrips]: the Input Strips on the aux returns (docs/STRIPS.md 14). A driver fills as much of the
+     * structure as the caller's buffer holds, down to the version 4 size (APOLLO_STRIPS_INFO_V4_SIZE), then 3, then 2.
+     * Index k below is DSP input AuxBus0 + k: 0 AUX 1 L, 1 AUX 1 R, 2 AUX 2 L, 3 AUX 2 R.
+     */
+    ULONG   AuxMask;            /* the aux-return strips this start builds or adopted (bit k = DSP input 0x10 + k) */
+    ULONG   AuxAsked;           /* registry StripAuxMask */
+    ULONG   AuxLayoutWhy;       /* 0, or the pool check's code (8 + pool: no room) that refused AuxAsked */
+    ULONG   AuxBus0;            /* APOLLO_STRIP_AUX_BUS0 */
+    ULONG   AStripState[APOLLO_STRIP_AUXES];        /* APOLLO_STRIP_NONE/QUEUED/TAKEN */
+    ULONG   AStripStarted[APOLLO_STRIP_AUXES];      /* 1 = its SYNCH went out */
+    ULONG   AStripHeader[APOLLO_STRIP_AUXES];       /* instance header address on the strip DSP */
+    ULONG   AStripAckMs[APOLLO_STRIP_AUXES];        /* its PREPARE: publish to taken */
+    ULONG   ABusOwner[APOLLO_STRIP_AUXES];          /* DSP that mixes that return input's bus (0 = default) */
+    ULONG   AuxReturnOwner[APOLLO_STRIP_AUX_RETURNS];   /* DSP the return's coefficients go to besides DSP 0 (0 = DSP 0 only):
+                                                       the strip DSP while its strips run, an aux insert chain's DSP */
+    ULONG   AuxReturnStereo;    /* bit a: AUX a+1's return and its cue sends go out as a stereo pair (L input left entry,
+                                   R input right entry), because its Input Strips run; 0 = the single left-entry write */
 } APOLLO_STRIPS_INFO, *PAPOLLO_STRIPS_INFO;
 
 #define APOLLO_STRIPS_INFO_V2_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, Adopt))
 #define APOLLO_STRIPS_INFO_V3_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, VirtualMask))
+#define APOLLO_STRIPS_INFO_V4_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, AuxMask))
 
 /* Version 3: Adopt (= driver\strip_adopt.h STRIP_ADOPT_*) */
 #define APOLLO_STRIPS_ADOPT_NONE            0   /* not a warm start, or strips off */

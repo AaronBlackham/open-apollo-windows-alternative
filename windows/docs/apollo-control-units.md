@@ -584,19 +584,33 @@ the baseline back (CUSTOM off, 80 ms, the gains, GainC read back). What is missi
 | `auxcuepan:<a>:<c>` | -100..100 | its pan |
 
 Nothing reads back (as the cue sends): the UI keeps what it set (in `cfg.mixes[x8p | unit id].aux`, say) and the driver
-replays it after every connect. The zero state is "nothing set": until the UI sends a return level the unit keeps its own
-default (bus coefficients zero = the aux returns silent), so the Aux section should send each aux's return (0 dB) and
-mute state once per connection, as the monitor mix does. Coefficients (`driver/monitor_plan.h`): sends as the cue sends
-(10^(dB/20)/sqrt2 with the pan law), post-fader with the input's fader added in dB and 0.0 while it is muted or
-solo-silenced; the return 10^(dB/20), one left entry on bus 0x10 / 0x12; returns into the cues 10^(dB/20) with the pan
-law, 0.0 while that cue is muted. Aux MONO (kext 0x0A / 0x0F) is not offered: its settings are not decoded on the x8p.
+replays it after every connect. The zero state is "nothing set", so the Aux section should send each aux's return level
+and mute state once per connection, as the monitor mix does. Coefficients (`driver/monitor_plan.h`): sends as the cue
+sends (10^(dB/20)/sqrt2 with the pan law), post-fader with the input's fader added in dB and 0.0 while it is muted or
+solo-silenced; the return 10^(dB/20); returns into the cues 10^(dB/20) with the pan law, 0.0 while that cue is muted. Aux
+MONO (kext 0x0A / 0x0F) is not offered: its settings are not decoded on the x8p.
+
+**The aux returns need Input Strips (measured on the x8p, Nov 16 2026; docs/STRIPS.md 14).** The returns are DSP inputs
+0x10/0x11 (AUX 1 L/R) and 0x12/0x13 (AUX 2 L/R), and like the Virtual inputs they mix nothing and record silence without
+a strip: the input sends were always right, but AUX 1 and 2 stayed at exact zero. A throwaway build with the plain Input
+Strip on 0x10 carried VIRTUAL 1's -40 dBFS tone, sent at 0 dB, into AUX 1 L's record slot (28) at -43.0 dBFS (-3 dB is
+the send's pan law) and Mic 1's noise sent at +12 dB, while 0x11 without a strip stayed exact zero. The unit value
+**`StripAuxMask`** (bit 0 AUX 1, bit 2 AUX 2: one strip on each return's L input, 0x10 / 0x12; a strip on an R input
+covered input 1's record slot, so the models refuse bits 1 and 3) builds them in the strip pass. **The x8p's default is
+0x5: AUX 1 and AUX 2 work out of the box** (proven on the x8p Nov 16 2026: sends reach the buses, `auxret` reaches both
+MON sides at its level, `auxmute` silences it); the Twin X's is 0 (not run there). The aux buses are mono: `auxret` goes
+to the L input's left and right entries, `auxcue` / `auxcuepan` to its one cell with the pan law, and the input sends
+into a strip-backed aux take the left entry at the centre value (an aux send's pan does nothing there). The moment the
+strip starts every return and cue cell is written, the UI's value or 0.0, so a new strip never joins MON at the DSP's own
+level. GET_STRIPS version 5 (`AuxMask`, `AuxReturnStereo` = the strip runs) tells the UI whether an aux carries audio;
+without the strips (StripAuxMask 0) every write is the single left entry on bus 0x10 / 0x12 of before.
 
 Aux inserts: the chain runs on the aux return (DSP inputs 0x10/0x11, 0x12/0x13) with the plain Input Strip carrier,
 before the monitor and cue mixes, so "a reverb on the headphones while tracking dry" is AUX 1 with an insert, inputs'
 AUX 1 sends, `auxcue:1:<c>` into the headphone cue and `auxret:1` -121 (or a level) for the speakers. Off by default
-(`Parameters\AuxInserts` = 1 turns it on, an administrator's registry value): no strip ever ran on those inputs
-(upstream builds Input Strips only on the Virtual inputs), so the first test is whether the aux return passes audio at
-all on our driver, with and without a chain.
+(`Parameters\AuxInserts` = 1 turns it on, an administrator's registry value), never run on hardware. An aux insert on a
+return whose Input Strips StripAuxMask builds is refused (`STATUS_RESOURCE_IN_USE` 0xC0000708, logged "plugins: an aux
+insert on AUX n refused"): the chain would SYNCH the same inputs. The other return stays open to inserts.
 
 #### 1.9.7 What the UI does with it
 

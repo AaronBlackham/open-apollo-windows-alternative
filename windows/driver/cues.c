@@ -32,6 +32,12 @@
  * that cue. The returns go to DSP 0, and also to the DSP an aux insert chain runs on while it runs
  * (ApolloCuesAuxOwner, plugin.c).
  *
+ * [AuxStrips] The aux returns are DSP inputs 0x10-0x13 and carry audio only with an Input Strip on them (StripAuxMask,
+ * docs/STRIPS.md 14). While a return's strips run (ApolloCuesAuxStrips, from strips.c) it is mixed on the strip DSP (the
+ * owner, ApolloCuesAuxOwner) and every return cell is a stereo pair, both inputs written (monitor_plan.h
+ * ApolloAuxReturnCells / ApolloAuxCueCells); the moment they go live every cell is written, the host's value or 0.0.
+ * Without them (StripAuxMask 0) every write is the single left-entry one of before, owner DSP 0.
+ *
  * DevLock held for every function here (ioctl.c, strips.c, mixer.c ApolloMixerInit).
  *
  * SPDX-License-Identifier: GPL-2.0-only
@@ -66,6 +72,9 @@ C_ASSERT(APOLLO_MP_AUX_SEND(1, 0x0A) == APOLLO_MON_AUX_SEND(1, 0x0A) && APOLLO_M
          APOLLO_MP_AUX_MUTE(0) == APOLLO_MON_AUX_MUTE(0) && APOLLO_MP_AUX_CUE(1, 3) == APOLLO_MON_AUX_CUE(1, 3) &&
          APOLLO_MP_AUX_CUE_PAN(0, 1) == APOLLO_MON_AUX_CUE_PAN(0, 1));
 C_ASSERT(APOLLO_MON_AUX_RETURN_BUS(1) < APOLLO_MON_BUSES && APOLLO_MON_AUX_BUSES == APOLLO_PLUGIN_AUX_BUSES);
+/* [AuxStrips] the return inputs GET_STRIPS numbers are the encoder's return buses and their R partners */
+C_ASSERT(APOLLO_STRIP_AUX_BUS0 == APOLLO_MON_AUX_RETURN_BUS(0) && APOLLO_STRIP_AUX_RETURNS == APOLLO_MON_AUX_BUSES &&
+         APOLLO_STRIP_AUXES == 2 * APOLLO_MON_AUX_BUSES && APOLLO_MON_AUX_RETURN_BUS(1) + 1 < APOLLO_MON_VIRTUAL_BUS0);
 
 #define CUES_LOG_BUSY_MAX   5       /* "ring full" lines per device, then only the counter */
 
@@ -213,45 +222,78 @@ static ULONG AuxOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux)
     return CuesUsable(Ctx, (Aux < APOLLO_MON_AUX_BUSES) ? Ctx->Cues.Aux.Owner[Aux] : 0);
 }
 
-/* Bus's send to aux Aux as it stands (param 3 / 4): to the input's mixing DSP and DSP 0, or (OwnerOnly) the owner. */
+/*
+ * Bus's send to aux Aux as it stands (param 3 / 4): to the input's mixing DSP and DSP 0, or (OwnerOnly) the owner.
+ * [AuxStrips] With the aux's return strip running, the aux bus is mono (its left side, strip_plan.h): the left entry
+ * only, at the centre value whatever the send's pan (upstream's default send write: oa:mixer-engine/hardware.py
+ * _write_send without --stereo-sends), so a panned send never drops out of it.
+ */
 static NTSTATUS AuxSendCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG Bus, _In_ BOOLEAN OwnerOnly,
                             _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
     ULONG l, r, owner;
+    BOOLEAN mono;
 
     if (Aux >= APOLLO_MON_AUX_BUSES || Bus >= APOLLO_MON_BUSES) {
         return STATUS_INVALID_PARAMETER;
     }
     owner = CuesOwner(Ctx, Bus);
-    ApolloAuxSendCoef(&Ctx->Cues, Aux, Bus, &l, &r);
-    return CuesPutCell(Ctx, owner, OwnerOnly, Bus, APOLLO_AUX_SUB(Aux), l, r, FALSE, Pass);
+    mono = ApolloAuxStereo(&Ctx->Cues.Aux, Aux) ? TRUE : FALSE;
+    if (mono) {
+        ApolloAuxSendCoefPan(&Ctx->Cues, Aux, Bus, 0, &l, &r);
+    } else {
+        ApolloAuxSendCoef(&Ctx->Cues, Aux, Bus, &l, &r);
+    }
+    return CuesPutCell(Ctx, owner, OwnerOnly, Bus, APOLLO_AUX_SUB(Aux), l, r, mono, Pass);
 }
 
-/* Aux Aux's return into the monitor mix: bus 0x10 / 0x12, param 0, the left entry only. */
+/* [AuxStrips] An aux-return cell's writes (monitor_plan.h): each to Owner and (unless OwnerOnly) DSP 0; the first failure. */
+static NTSTATUS AuxPutCells(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Owner, _In_ BOOLEAN OwnerOnly,
+                            _In_reads_(N) const APOLLO_AUX_CELL *C, _In_ ULONG N, _Inout_opt_ APOLLO_CUE_PASS *Pass)
+{
+    NTSTATUS status = (N != 0) ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER, st;
+    ULONG i;
+
+    for (i = 0; i < N; i++) {
+        st = CuesPutCell(Ctx, Owner, OwnerOnly, C[i].Bus, C[i].Sub, C[i].Left, C[i].Right, C[i].LeftOnly ? TRUE : FALSE, Pass);
+        if (NT_SUCCESS(status)) {
+            status = st;
+        }
+    }
+    return status;
+}
+
+/*
+ * Aux Aux's return into the monitor mix: bus 0x10 / 0x12, param 0, the left entry only. [AuxStrips] While its strips run:
+ * both return inputs, a stereo pair (ApolloAuxReturnCells).
+ */
 static NTSTATUS AuxReturnCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ BOOLEAN OwnerOnly, _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
-    ULONG owner;
+    APOLLO_AUX_CELL c[2];
+    ULONG n;
 
     if (Aux >= APOLLO_MON_AUX_BUSES) {
         return STATUS_INVALID_PARAMETER;
     }
-    owner = AuxOwner(Ctx, Aux);
-    return CuesPutCell(Ctx, owner, OwnerOnly, APOLLO_MON_AUX_RETURN_BUS(Aux), APOLLO_MIX_SUB,
-                       ApolloAuxReturnBits(&Ctx->Cues.Aux, Aux), 0, TRUE, Pass);
+    n = ApolloAuxReturnCells(&Ctx->Cues.Aux, Aux, c);
+    return AuxPutCells(Ctx, AuxOwner(Ctx, Aux), OwnerOnly, c, n, Pass);
 }
 
-/* Aux Aux's return into cue Cue: bus 0x10 / 0x12, the cue's param, L and R. */
+/*
+ * Aux Aux's return into cue Cue: bus 0x10 / 0x12, the cue's param, L and R. [AuxStrips] While its strips run: both return
+ * inputs, the pan law as a balance (ApolloAuxCueCells).
+ */
 static NTSTATUS AuxCueCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG Cue, _In_ BOOLEAN OwnerOnly,
                            _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
-    ULONG l, r, owner, sub = ApolloCueSub(Cue);
+    APOLLO_AUX_CELL c[2];
+    ULONG n;
 
-    if (Aux >= APOLLO_MON_AUX_BUSES || sub == 0) {
+    if (Aux >= APOLLO_MON_AUX_BUSES || ApolloCueSub(Cue) == 0) {
         return STATUS_INVALID_PARAMETER;
     }
-    owner = AuxOwner(Ctx, Aux);
-    ApolloAuxCueCoef(&Ctx->Cues, Aux, Cue, &l, &r);
-    return CuesPutCell(Ctx, owner, OwnerOnly, APOLLO_MON_AUX_RETURN_BUS(Aux), sub, l, r, FALSE, Pass);
+    n = ApolloAuxCueCells(&Ctx->Cues, Aux, Cue, c);
+    return AuxPutCells(Ctx, AuxOwner(Ctx, Aux), OwnerOnly, c, n, Pass);
 }
 
 /* The post-fader aux sends of every bus in Buses, again (a monitor-mix change moved their fader, mute or solo). */
@@ -408,27 +450,46 @@ NTSTATUS ApolloCuesApply(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_MON_WRITE *
  * strips.c, right after BusOwner[Bus] became the strip's DSP: that DSP mixes the input from now on, so it
  * gets the bus's cached sends (DSP 0 has them already). [Mix] Its monitor-mix weights first, if the host set
  * them. Returns how many went out.
+ * A strip that goes live starts with the DSP's own default in every send cell nobody wrote (Nov 16 2026, x8p: about
+ * -20.7 dB; VIRTUAL 1 reached AUX 2 at -60.7 dBFS from a -40 tone with no send set, and the AUX 1 return fed AUX 2 the
+ * same way), while Console's sends start off. So every cue and aux send the host has not set goes out as 0.0 to the
+ * new owner; an aux return's own aux sends (0x10-0x13 into AUX 1/2, which Console does not have) are always 0.0. The
+ * monitor-mix weight keeps the DSP default (Console's input fader starts at 0 dB). The return's own cue sends follow in
+ * ApolloCuesAuxStrips.
  */
 ULONG ApolloCuesBusMoved(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus)
 {
-    ULONG c, n = 0;
+    const APOLLO_MON_MODEL *m = ApolloMonModelFor(Ctx->Ident.Model);
+    ULONG c, n = 0, owner, cues = (m != 0) ? m->Cues : 0;
     APOLLO_CUE_PASS pass = { 0, 0 };
 
     if (Bus >= APOLLO_MON_BUSES || !CuesReady(Ctx)) {
         return 0;
     }
+    owner = CuesOwner(Ctx, Bus);
     if ((Ctx->Cues.Mix.Set & (1ul << Bus)) != 0 && NT_SUCCESS(MixSendCell(Ctx, Bus, TRUE, &pass))) {
         n++;
     }
     for (c = 0; c < APOLLO_MON_CUES_MAX; c++) {
-        if ((Ctx->Cues.Set[c] & (1ul << Bus)) != 0 && NT_SUCCESS(CuesSendCell(Ctx, c, Bus, TRUE, &pass))) {
-            n++;
+        if ((Ctx->Cues.Set[c] & (1ul << Bus)) != 0) {
+            if (NT_SUCCESS(CuesSendCell(Ctx, c, Bus, TRUE, &pass))) {
+                n++;
+            }
+        } else if (c < cues && ApolloCueSub(c) != 0 &&
+                   NT_SUCCESS(CuesPutCell(Ctx, owner, TRUE, Bus, ApolloCueSub(c), 0, 0, FALSE, &pass))) {
+            n++;                                /* never set: off, not the DSP default */
         }
     }
     for (c = 0; c < APOLLO_MON_AUX_BUSES; c++) {
         /* [Aux] its aux sends */
-        if ((Ctx->Cues.Aux.Set[c] & (1ul << Bus)) != 0 && NT_SUCCESS(AuxSendCell(Ctx, c, Bus, TRUE, &pass))) {
-            n++;
+        BOOLEAN isReturn = Bus >= APOLLO_MON_AUX_RETURN_BUS(0) && Bus < APOLLO_MON_AUX_RETURN_BUS(0) + 2ul * APOLLO_MON_AUX_BUSES;
+
+        if (!isReturn && (Ctx->Cues.Aux.Set[c] & (1ul << Bus)) != 0) {
+            if (NT_SUCCESS(AuxSendCell(Ctx, c, Bus, TRUE, &pass))) {
+                n++;
+            }
+        } else if (NT_SUCCESS(CuesPutCell(Ctx, owner, TRUE, Bus, APOLLO_AUX_SUB(c), 0, 0, FALSE, &pass))) {
+            n++;                                /* never set, or an aux return: off */
         }
     }
     Ctx->Cues.Replays += n;
@@ -462,6 +523,74 @@ ULONG ApolloCuesAuxOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG Ds
     Ctx->Cues.Replays += n;
     ApolloLogU(Ctx, "aux: AUX %lu return mixed on DSP %lu: %lu cell(s) re-sent there", Aux + 1, Dsp, n);
     return n;
+}
+
+/*
+ * [AuxStrips] strips.c, DevLock held: the Input Strips of aux Aux's return (StripAuxMask, DSP inputs 0x10 + 2 Aux and
+ * 0x11 + 2 Aux) went live on DSP Dsp (Live), or are gone (!Live). Live: from now on the return's cells are a stereo pair
+ * (monitor_plan.h ApolloAuxReturnCells / ApolloAuxCueCells), the return is mixed there (ApolloCuesAuxOwner: the owner
+ * moves and gets what the host set), and then every cell of the return is written explicitly to that DSP and DSP 0, the
+ * monitor return and its send into each of the model's cues: the host's value where it set one, else 0.0. A strip that
+ * goes live on a DSP input joins the monitor mix at the DSP's own default until its coefficients are written (Nov 16
+ * 2026, a strip on 0x10: MON's right side heard it at the default), so a new strip never plays unasked. Gone: the
+ * single left-entry write of before, on DSP 0 (nothing sent; nothing at all where no strip was live). Returns how many
+ * cells went out.
+ */
+ULONG ApolloCuesAuxStrips(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ BOOLEAN Live, _In_ ULONG Dsp)
+{
+    APOLLO_AUX_STATE *x = &Ctx->Cues.Aux;
+    const APOLLO_MON_MODEL *m = ApolloMonModelFor(Ctx->Ident.Model);
+    APOLLO_CUE_PASS pass = { 0, 0 };
+    ULONG bit, c, n, done = 0, failed = 0, cues = (m != 0) ? m->Cues : 0;
+
+    if (Aux >= APOLLO_MON_AUX_BUSES) {
+        return 0;
+    }
+    bit = 1ul << Aux;
+    if (!Live) {
+        if ((x->Strips & bit) == 0) {
+            return 0;
+        }
+        x->Strips &= ~bit;
+        (VOID)ApolloCuesAuxOwner(Ctx, Aux, 0);
+        ApolloLogU(Ctx, "aux: AUX %lu return: its Input Strips are gone; single left-entry writes on DSP 0 again", Aux + 1);
+        return 0;
+    }
+    x->Strips |= bit;
+    n = ApolloCuesAuxOwner(Ctx, Aux, Dsp);
+    if (!CuesReady(Ctx)) {
+        ApolloLogU(Ctx, "aux: AUX %lu return: Input Strips live on DSP %lu; the mixer is not ready: its cells follow at the replay",
+                   Aux + 1, Dsp);
+        return n;
+    }
+    if (NT_SUCCESS(AuxReturnCell(Ctx, Aux, FALSE, &pass))) {
+        done++;
+    } else {
+        failed++;
+    }
+    for (c = 0; c < cues && c < APOLLO_MON_CUES_MAX; c++) {
+        if (NT_SUCCESS(AuxCueCell(Ctx, Aux, c, FALSE, &pass))) {
+            done++;
+        } else {
+            failed++;
+        }
+    }
+    /* the sends into this aux that the host set, again in the mono form (AuxSendCell): the inputs' buses moved before */
+    for (c = 0; c < APOLLO_MON_BUSES; c++) {
+        if ((x->Set[Aux] & (1ul << c)) != 0) {
+            if (NT_SUCCESS(AuxSendCell(Ctx, Aux, c, FALSE, &pass))) {
+                done++;
+            } else {
+                failed++;
+            }
+        }
+    }
+    Ctx->Cues.Replays += done;
+    ApolloLogU(Ctx, "aux: AUX %lu return: Input Strips live on DSP %lu (inputs 0x%02lx/0x%02lx): the return and its %lu cue send(s) "
+               "written as a stereo pair, %lu cell(s) to DSP %lu and DSP 0, %lu failed (return %s, cues set 0x%lx, the rest 0.0)",
+               Aux + 1, Dsp, APOLLO_MON_AUX_RETURN_BUS(Aux), APOLLO_MON_AUX_RETURN_BUS(Aux) + 1, cues, done, Dsp, failed,
+               (x->RetSet & bit) ? "set" : "never set: 0.0", x->CueSet[Aux]);
+    return n + done;
 }
 
 /*
@@ -569,11 +698,16 @@ VOID ApolloCuesReplay(_In_ PDEVICE_CONTEXT Ctx)
         ApolloLogU(Ctx, "cues: %lu cached send(s) re-sent after the connect, %lu failed; muted cues 0x%lx; "
                   "waited %lu ms, busy DSPs 0x%lx", n, failed, Ctx->Cues.Muted, (ULONG)(pass.Waited / 10000ULL), pass.Busy);
     }
-    /* [Aux] the aux sends, returns and returns into the cues the host set; an aux chain did not survive the connect */
+    /*
+     * [Aux] the aux sends, returns and returns into the cues the host set; an aux chain did not survive the connect.
+     * [AuxStrips] Neither did a return's Input Strips (a bring-up forgets them first; strips.c ApolloCuesAuxStrips writes the
+     * stereo pair again when they go live): the single left-entry write here.
+     */
     n = 0;
     failed = 0;
     for (c = 0; c < APOLLO_MON_AUX_BUSES; c++) {
         Ctx->Cues.Aux.Owner[c] = 0;
+        Ctx->Cues.Aux.Strips &= ~(1ul << c);
         for (b = 0; b < APOLLO_MON_BUSES; b++) {
             if ((Ctx->Cues.Aux.Set[c] & (1ul << b)) != 0) {
                 if (NT_SUCCESS(AuxSendCell(Ctx, c, b, FALSE, &pass))) {

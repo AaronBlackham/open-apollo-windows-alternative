@@ -1387,6 +1387,112 @@ static void CheckAux(void)
     (void)ApolloMonEncode(ApolloMonModelFor(X), APOLLO_MP_AUX_CUE_PAN(1, 2), -40, &w);
     ApolloAuxStore(&st.Aux, &w);
     Check(st.Aux.Post[1] == (1ul << 4) && st.Aux.RetMuted == 1 && st.Aux.CuePan[1][2] == -40, "aux: store post, mute, cue pan");
+
+    /*
+     * [AuxStrips] The cells cues.c sends (docs/STRIPS.md 14). Without the return's strips: exactly the one write of every
+     * earlier build (the hardware sees what it saw). With them: a stereo pair, both return inputs, the weight on the L
+     * input's left entry and the R input's right entry, 0.0 on the other two, 0.0 everywhere while muted or never set.
+     */
+    {
+        APOLLO_AUX_CELL c[2];
+        ULONG cue, set;
+        LONG mute;
+
+        memset(&st, 0, sizeof(st));
+        Check(st.Aux.Strips == 0, "aux strips: the zero state has none (every return cell the single write of before)");
+        for (bad = 0, a = 0; a < 2; a++) {
+            for (h = APOLLO_CUE_SEND_OFF; h <= APOLLO_CUE_SEND_MAX; h++) {
+                for (mute = 0; mute <= 1; mute++) {
+                    for (set = 0; set <= 1; set++) {
+                        st.Aux.RetLevel[a] = (signed char)h;
+                        st.Aux.RetMuted = (ULONG)mute << a;
+                        st.Aux.RetSet = set << a;
+                        bad += ApolloAuxReturnCells(&st.Aux, a, c) != 1 || c[0].Bus != 0x10ul + 2 * a || c[0].Sub != 0 ||
+                               c[0].Left != ApolloAuxReturnBits(&st.Aux, a) || c[0].Right != 0 || !c[0].LeftOnly;
+                    }
+                }
+            }
+        }
+        Check(bad == 0, "aux strips off: the return is the single left-entry write of before (bus 0x10/0x12, param 0, 10^(dB/20)), "
+                        "every level, mute and set state");
+        for (bad = 0, a = 0; a < 2; a++) {
+            for (cue = 0; cue < 4; cue++) {
+                for (h = APOLLO_CUE_SEND_MIN; h <= APOLLO_CUE_SEND_MAX; h += 9) {
+                    for (p = -100; p <= 100; p += 50) {
+                        for (mute = 0; mute <= 1; mute++) {
+                            st.Aux.CueLevel[a][cue] = (unsigned char)(h + 122);
+                            st.Aux.CuePan[a][cue] = (signed char)p;
+                            st.Aux.CueSet[a] = (h & 1) ? (1ul << cue) : 0;
+                            st.Muted = (ULONG)mute << cue;
+                            ApolloAuxCueCoef(&st, a, cue, &l, &r);
+                            bad += ApolloAuxCueCells(&st, a, cue, c) != 1 || c[0].Bus != 0x10ul + 2 * a ||
+                                   c[0].Sub != ApolloCueSub(cue) || c[0].Left != l || c[0].Right != r || c[0].LeftOnly;
+                        }
+                    }
+                }
+            }
+        }
+        Check(bad == 0, "aux strips off: a return-to-cue send is the one {0x10/0x12, cue param, L, R} write of before");
+        Check(ApolloAuxReturnCells(&st.Aux, 2, c) == 0 && ApolloAuxCueCells(&st, 2, 0, c) == 0 && ApolloAuxCueCells(&st, 0, 4, c) == 0,
+              "aux strips: a third aux or a fifth cue: no write");
+
+        /* AUX 1's strips run, AUX 2's do not */
+        memset(&st, 0, sizeof(st));
+        st.Aux.Strips = 1;
+        st.Aux.RetSet = 3;
+        st.Aux.RetLevel[0] = -20;                       /* -10 dB */
+        Check(ApolloAuxStereo(&st.Aux, 0) && !ApolloAuxStereo(&st.Aux, 1) && !ApolloAuxStereo(&st.Aux, 2), "aux strips: per return");
+        /* Nov 16 2026: strips on the L returns only (a mono aux bus): one cell {L input, 0, g, g}, both monitor sides */
+        Check(ApolloAuxReturnCells(&st.Aux, 0, c) == 1 && c[0].Bus == 0x10 && c[0].Sub == 0 && !c[0].LeftOnly &&
+              c[0].Left == ApolloAuxReturnBits(&st.Aux, 0) && fabs(D(c[0].Left) - 0.316228) < 1e-6 && c[0].Right == c[0].Left,
+              "aux strips on: the return is one cell on the L input, both sides: 0x10 {L 0.316228 (-10 dB), R 0.316228}");
+        Check(ApolloAuxReturnCells(&st.Aux, 1, c) == 1 && c[0].Bus == 0x12 && c[0].LeftOnly && c[0].Left == F32(1.0),
+              "aux strips on AUX 1 only: AUX 2's return stays the single left-entry write");
+        st.Aux.Strips = 2;
+        st.Aux.RetLevel[1] = 0;
+        Check(ApolloAuxReturnCells(&st.Aux, 1, c) == 1 && c[0].Bus == 0x12 && c[0].Left == F32(1.0) && c[0].Right == F32(1.0),
+              "aux strips on AUX 2: 0x12, 0 dB = 1.0 on both sides");
+        st.Aux.RetMuted = 2;
+        Check(ApolloAuxReturnCells(&st.Aux, 1, c) == 1 && c[0].Left == 0 && c[0].Right == 0, "aux strips on: a muted return is 0.0");
+        st.Aux.RetMuted = 0;
+        st.Aux.RetSet = 1;                              /* AUX 2's return never set: its 0 dB zero state is not sent */
+        Check(ApolloAuxReturnCells(&st.Aux, 1, c) == 1 && c[0].Left == 0 && c[0].Right == 0,
+              "aux strips on: a return the host never set is 0.0 (not the zero state's 0 dB, not the DSP default)");
+
+        /* into a cue: the one {L input, cue param, L, R} write with the pan law; 0.0 while muted or never set */
+        st.Aux.Strips = 1;
+        st.Aux.CueSet[0] = 1ul << 1;
+        for (bad = 0, h = APOLLO_CUE_SEND_MIN; h <= APOLLO_CUE_SEND_MAX; h += 5) {
+            for (p = -100; p <= 100; p += 10) {
+                st.Aux.CueLevel[0][1] = (unsigned char)(h + 122);
+                st.Aux.CuePan[0][1] = (signed char)p;
+                ApolloAuxCueCoef(&st, 0, 1, &l, &r);
+                bad += ApolloAuxCueCells(&st, 0, 1, c) != 1 || c[0].Bus != 0x10 || c[0].Sub != 2 || c[0].Left != l ||
+                       c[0].Right != r || c[0].LeftOnly;
+            }
+        }
+        Check(bad == 0, "aux strips on: AUX 1 into CUE 2 = 0x10 {pan-law L, pan-law R}, every level and pan");
+        st.Muted = 1ul << 1;
+        Check(ApolloAuxCueCells(&st, 0, 1, c) == 1 && c[0].Left == 0 && c[0].Right == 0, "aux strips on: a muted cue: 0.0");
+        st.Muted = 0;
+        st.Aux.CuePan[0][1] = 0;
+        Check(ApolloAuxCueCells(&st, 0, 2, c) == 1 && c[0].Sub == 5 && c[0].Left == 0 && c[0].Right == 0,
+              "aux strips on: a cue send the host never set (CUE 3): 0.0");
+
+        /* a send into a strip-backed (mono) aux: cues.c writes the left entry only, at the centre value, whatever the pan */
+        memset(&st, 0, sizeof(st));
+        st.Aux.Level[0][3] = (unsigned char)(0 + 122);   /* input 4 into AUX 1 at 0 dB, pre-fader */
+        for (bad = 0, p = -100; p <= 100; p += 25) {
+            unsigned long l0, r0;
+
+            st.Aux.Pan[0][3] = (signed char)p;
+            ApolloAuxSendCoefPan(&st, 0, 3, 0, &l, &r);
+            st.Aux.Pan[0][3] = 0;
+            ApolloAuxSendCoef(&st, 0, 3, &l0, &r0);
+            bad += l != l0 || l == 0;
+        }
+        Check(bad == 0, "aux send into a mono aux: the centre value whatever the send's pan (never dropped by a hard pan)");
+    }
 }
 
 /*

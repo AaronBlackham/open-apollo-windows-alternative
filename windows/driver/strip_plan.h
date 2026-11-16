@@ -22,6 +22,9 @@
  * and ONE START for all of them (the "plan mask" Pm: bits 0-7 Mic, 8-15 VIRTUAL 1-8). Every function
  * above that section is pinned by strip-plan-test's golden digests.
  *
+ * [AuxStrips] (docs/STRIPS.md 14) The same Input Strip on the aux returns, DSP inputs 0x10-0x13 (AUX 1 L/R,
+ * AUX 2 L/R): Pm bits 16-19, PREPAREd after every Virtual strip, started in the same single START.
+ *
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #pragma once
@@ -32,7 +35,7 @@
 #define STRIP_PLAN_START_ENTS   4       /* per input: SYNCH, span, span, route */
 #define STRIP_PLAN_ENTS_MAX     (STRIP_PLAN_START_ENTS * STRIP_PLAN_INPUTS)    /* 32: a Mic-only transaction */
 #define STRIP_PLAN_PAYLOAD_MAX  96      /* dwords: memspec 19 + header 9 + parameters 55 = 83 */
-#define STRIP_PLAN_ENT_SLOTS    64      /* [Virtual] entries a plan holds: the START of 8 Mic + 8 Input Strips */
+#define STRIP_PLAN_ENT_SLOTS    80      /* [Virtual] entries a plan holds: the START of 8 Mic + 8 Virtual + [AuxStrips] 4 aux Input Strips */
 
 #define STRIP_CMD_ZERO          0x00080004u     /* {cmd, addr, 0, dwords} */
 #define STRIP_CMD_SYNCH         0x001F0004u     /* {cmd, 0x20 << 16 | synch, header (0 = stop), 0} */
@@ -530,7 +533,7 @@ static __inline ULONG StripPassStep(ULONG Mask, ULONG Steps, ULONG K, ULONG *Inp
  */
 #define STRIP_PLAN_VIRTUALS     8u      /* VIRTUAL 1-8 */
 #define STRIP_PLAN_VROWS        6u      /* Input Strip: instance header, m0, c0-c3 */
-#define STRIP_PLAN_SLOTS        16u     /* a pass's strips: 0-7 Mic, 8-15 Virtual */
+#define STRIP_PLAN_SLOTS        20u     /* a pass's strips: 0-7 Mic, 8-15 Virtual, [AuxStrips] 16-19 the aux returns */
 #define STRIP_SLOT_VIRTUAL0     8u      /* slot of VIRTUAL 1 */
 #define STRIP_VIRTUAL_SYNCH0    0x18u   /* DSP input (synch) of VIRTUAL 1 = its mixer bus; every model's FirstVirtual */
 #define STRIP_PLAN_VPREPARE_ENTS 9u     /* 6 zero-fills + 3 DMA refs */
@@ -570,10 +573,43 @@ static __inline ULONG StripPlanPm(ULONG Mask, ULONG VMask)
     return (Mask & STRIP_PM_MIC) | ((VMask & 0xFFu) << 8);
 }
 
-/* The DSP input (= the mixer bus) of slot Slot: preamp i -> i, VIRTUAL n -> 0x18 + n - 1. */
+/*
+ * ---- [AuxStrips] The aux returns' Input Strips (docs/STRIPS.md 14) ----
+ *
+ * The aux returns are DSP inputs 0x10-0x13 (AUX 1 L, AUX 1 R, AUX 2 L, AUX 2 R; oa:driver/ua_apollo.h:816-817
+ * UA_BUS_AUX1_RETURN 0x10 / AUX2_RETURN 0x12, the R inputs 0x11 / 0x13; plugin_plan.h PlugAuxSynch), on the x8p and the
+ * Twin X alike. Like a Virtual input they mix nothing and record silence without an Input Strip: measured on the x8p
+ * Nov 16 2026, the plain Input Strip (0x83E) on 0x10 carried VIRTUAL 1's tone into the AUX 1 L record slot (28) at the
+ * send's level, while 0x11 without one stayed exact zero. The same strip, the same words (StripPlanPrepareInput), on
+ * slots 16-19 (Pm bits 16-19 = StripAuxMask bits 0-3).
+ *
+ * Placement: the Input Strips are one area below the model's Mic room, Input Strip n (0-based) n places down: VIRTUAL
+ * 1-8 are n = 0-7 (as before), the aux return k (0 = 0x10) is n = 8 + k, right below VIRTUAL 8's fixed place. So no
+ * Virtual strip moves when aux strips come or go, every slot keeps one fixed address per model, and the plug-in ledger
+ * still books one block per pool from the top (StripPlanRoomAux). x8p, 8 Mic strips: AUX 1 L's header 0x9cde0.
+ */
+#define STRIP_PLAN_AUXES        4u      /* DSP inputs 0x10-0x13 */
+#define STRIP_SLOT_AUX0         16u     /* slot of the AUX 1 L return (DSP input 0x10) */
+#define STRIP_AUX_SYNCH0        0x10u   /* DSP input (synch) of AUX 1 L = its bus (UA_BUS_AUX1_RETURN) */
+#define STRIP_PM_AUX            0x000F0000u
+#define STRIP_PLAN_INPUT_STRIPS (STRIP_PLAN_VIRTUALS + STRIP_PLAN_AUXES)    /* 12 Input Strip places */
+
+/* [AuxStrips] The plan mask with the aux-return strips: StripMask | StripVirtualMask << 8 | StripAuxMask << 16. */
+static __inline ULONG StripPlanPmAux(ULONG Mask, ULONG VMask, ULONG AMask)
+{
+    return StripPlanPm(Mask, VMask) | ((AMask & 0xFu) << 16);
+}
+
+/* The DSP input (= the mixer bus) of slot Slot: preamp i -> i, VIRTUAL n -> 0x18 + n - 1, [AuxStrips] aux k -> 0x10 + k. */
 static __inline ULONG StripSlotSynch(ULONG Slot)
 {
-    return (Slot < STRIP_SLOT_VIRTUAL0) ? Slot : STRIP_VIRTUAL_SYNCH0 + ((Slot - STRIP_SLOT_VIRTUAL0) & 7u);
+    if (Slot < STRIP_SLOT_VIRTUAL0) {
+        return Slot;
+    }
+    if (Slot < STRIP_SLOT_AUX0) {
+        return STRIP_VIRTUAL_SYNCH0 + ((Slot - STRIP_SLOT_VIRTUAL0) & 7u);
+    }
+    return STRIP_AUX_SYNCH0 + ((Slot - STRIP_SLOT_AUX0) & 3u);
 }
 
 /* The slot whose strip mixes bus Bus (DSP input), or STRIP_PLAN_SLOTS: none. */
@@ -585,28 +621,32 @@ static __inline ULONG StripBusSlot(ULONG Bus)
     if (Bus >= STRIP_VIRTUAL_SYNCH0 && Bus < STRIP_VIRTUAL_SYNCH0 + STRIP_PLAN_VIRTUALS) {
         return STRIP_SLOT_VIRTUAL0 + (Bus - STRIP_VIRTUAL_SYNCH0);
     }
+    if (Bus >= STRIP_AUX_SYNCH0 && Bus < STRIP_AUX_SYNCH0 + STRIP_PLAN_AUXES) {
+        return STRIP_SLOT_AUX0 + (Bus - STRIP_AUX_SYNCH0);      /* [AuxStrips] */
+    }
     return STRIP_PLAN_SLOTS;
 }
 
 /*
- * VIRTUAL V+1's six private addresses (Addr[6..9] = 0): below the room of MicSlots Mic strips, slot after
- * slot, top-down in each pool. 0, or 1 for V or MicSlots out of range (Addr all 0).
+ * Input Strip N's six private addresses (Addr[6..9] = 0): below the room of MicSlots Mic strips, place after place,
+ * top-down in each pool (N 0-7 = VIRTUAL N+1, [AuxStrips] 8-11 = the aux return N-8). 0, or 1 for N or MicSlots out of
+ * range (Addr all 0).
  */
-static __inline ULONG StripPlanVirtualAddrs(ULONG MicSlots, ULONG V, ULONG Addr[STRIP_PLAN_ROWS])
+static __inline ULONG StripPlanInputAddrs(ULONG MicSlots, ULONG N, ULONG Addr[STRIP_PLAN_ROWS])
 {
     ULONG cur[4], s, j;
 
     for (j = 0; j < STRIP_PLAN_ROWS; j++) {
         Addr[j] = 0;
     }
-    if (V >= STRIP_PLAN_VIRTUALS || MicSlots > STRIP_PLAN_INPUTS) {
+    if (N >= STRIP_PLAN_INPUT_STRIPS || MicSlots > STRIP_PLAN_INPUTS) {
         return 1;
     }
     cur[0] = 0;
     cur[1] = g_StripTop[1] - MicSlots * STRIP_POOL1_PER_STRIP;
     cur[2] = g_StripTop[2] - MicSlots * STRIP_POOL2_PER_STRIP;
     cur[3] = g_StripTop[3] - MicSlots * STRIP_POOL3_PER_STRIP;
-    for (s = 0; s <= V; s++) {
+    for (s = 0; s <= N; s++) {
         for (j = 0; j < STRIP_PLAN_VROWS; j++) {
             ULONG p = g_StripVRows[j].Pool & 3;
 
@@ -615,6 +655,27 @@ static __inline ULONG StripPlanVirtualAddrs(ULONG MicSlots, ULONG V, ULONG Addr[
         }
     }
     return 0;
+}
+
+/*
+ * VIRTUAL V+1's six private addresses (Addr[6..9] = 0): below the room of MicSlots Mic strips, slot after
+ * slot, top-down in each pool. 0, or 1 for V or MicSlots out of range (Addr all 0).
+ */
+static __inline ULONG StripPlanVirtualAddrs(ULONG MicSlots, ULONG V, ULONG Addr[STRIP_PLAN_ROWS])
+{
+    if (V >= STRIP_PLAN_VIRTUALS) {
+        return StripPlanInputAddrs(STRIP_PLAN_INPUTS + 1, 0, Addr);     /* out of range: Addr all 0, 1 */
+    }
+    return StripPlanInputAddrs(MicSlots, V, Addr);
+}
+
+/* [AuxStrips] The aux return A's six private addresses (A 0-3 = DSP input 0x10 + A): Input Strip 8 + A. 0, or 1. */
+static __inline ULONG StripPlanAuxAddrs(ULONG MicSlots, ULONG A, ULONG Addr[STRIP_PLAN_ROWS])
+{
+    if (A >= STRIP_PLAN_AUXES) {
+        return StripPlanInputAddrs(STRIP_PLAN_INPUTS + 1, 0, Addr);     /* out of range: Addr all 0, 1 */
+    }
+    return StripPlanInputAddrs(MicSlots, STRIP_PLAN_VIRTUALS + A, Addr);
 }
 
 /* Slot Slot's private addresses (Mic rows 0-9, or the Input Strip's 0-5). 0, or 1 for a slot out of range. */
@@ -627,7 +688,7 @@ static __inline ULONG StripPlanSlotAddrs(ULONG Slot, ULONG MicSlots, ULONG Addr[
         return 0;
     }
     if (Slot < STRIP_PLAN_SLOTS) {
-        return StripPlanVirtualAddrs(MicSlots, Slot - STRIP_SLOT_VIRTUAL0, Addr);
+        return StripPlanInputAddrs(MicSlots, Slot - STRIP_SLOT_VIRTUAL0, Addr);    /* Virtual, then the aux returns */
     }
     for (j = 0; j < STRIP_PLAN_ROWS; j++) {
         Addr[j] = 0;
@@ -636,18 +697,19 @@ static __inline ULONG StripPlanSlotAddrs(ULONG Slot, ULONG MicSlots, ULONG Addr[
 }
 
 /*
- * The PREPARE transaction for VIRTUAL V+1 (ua_strip_build_input's stages 2-5, nothing started): zero-fills of
- * its six blocks (stage 2), the 11-word memspec (3), the header {0x00140009, hdr, 0x24, 0x40000000, 1, 1, 0x22,
- * 1, 0x83E} (4), the m0 parameters {0x0014000B, m0, g_StripVM0} (5). Each DMA command is its own DMA_REF, as
- * ua_strip_dma packs them. Returns 0, or nonzero on a planner error.
+ * The PREPARE transaction for Input Strip N (N 0-7 = VIRTUAL N+1, [AuxStrips] 8-11 = the aux return N-8;
+ * ua_strip_build_input's stages 2-5, nothing started): zero-fills of its six blocks (stage 2), the 11-word memspec (3),
+ * the header {0x00140009, hdr, 0x24, 0x40000000, 1, 1, 0x22, 1, 0x83E} (4), the m0 parameters {0x0014000B, m0,
+ * g_StripVM0} (5). Each DMA command is its own DMA_REF, as ua_strip_dma packs them. The words depend on the strip's
+ * addresses only, never on its DSP input. Returns 0, or nonzero on a planner error.
  */
-static __inline ULONG StripPlanPrepareVirtual(ULONG V, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
+static __inline ULONG StripPlanPrepareInput(ULONG N, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
 {
     const ULONG *a = P->Addr;
     ULONG j, *w;
 
     StripPlanReset(P);
-    if (StripPlanVirtualAddrs(MicSlots, V, P->Addr) != 0) {
+    if (StripPlanInputAddrs(MicSlots, N, P->Addr) != 0) {
         P->Err = 1;
         return P->Err;
     }
@@ -696,7 +758,21 @@ static __inline ULONG StripPlanPrepareVirtual(ULONG V, ULONG MicSlots, ULONG Ste
     return P->Err;
 }
 
-/* Slot Slot's PREPARE at Rate (the Mic strip's rate words; the Input Strip's are the same at every rate). */
+/* The PREPARE transaction for VIRTUAL V+1 (Input Strip V): StripPlanPrepareInput. Returns 0, or nonzero on a planner error. */
+static __inline ULONG StripPlanPrepareVirtual(ULONG V, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
+{
+    if (V >= STRIP_PLAN_VIRTUALS) {
+        StripPlanReset(P);
+        P->Err = 1;
+        return P->Err;
+    }
+    return StripPlanPrepareInput(V, MicSlots, Steps, P);
+}
+
+/*
+ * Slot Slot's PREPARE at Rate (the Mic strip's rate words; the Input Strip's are the same at every rate). [AuxStrips]
+ * Slots 8-19 are Input Strips 0-11: VIRTUAL 1-8, then the aux returns 0x10-0x13.
+ */
 static __inline ULONG StripPlanPrepareSlot(ULONG Slot, ULONG MicSlots, ULONG Steps, ULONG Rate, STRIP_PLAN *P)
 {
     if (Slot < STRIP_SLOT_VIRTUAL0) {
@@ -707,14 +783,15 @@ static __inline ULONG StripPlanPrepareSlot(ULONG Slot, ULONG MicSlots, ULONG Ste
         P->Err = 1;
         return P->Err;
     }
-    return StripPlanPrepareVirtual(Slot - STRIP_SLOT_VIRTUAL0, MicSlots, Steps, P);
+    return StripPlanPrepareInput(Slot - STRIP_SLOT_VIRTUAL0, MicSlots, Steps, P);
 }
 
 /*
- * The START transaction for every slot in Pm (Mic input 1 first, then VIRTUAL 1, ...), up to stage Steps: per
- * slot SYNCH {0x001F0004, 0x20 << 16 | synch, header, 0} (stage 6), then span none twice and the route word
- * (stage 7; ua_strip_build_start: the same words for both kinds). Inline only, at most 64 entries. A Pm of
- * 0..0xFF gives StripPlanStart's entries. Returns 0, or nonzero on a planner error.
+ * The START transaction for every slot in Pm (Mic input 1 first, then VIRTUAL 1, ..., [AuxStrips] then the aux returns
+ * 0x10-0x13), up to stage Steps: per slot SYNCH {0x001F0004, 0x20 << 16 | synch, header, 0} (stage 6), then span none
+ * twice and the route word (stage 7; ua_strip_build_start: the same words for every kind). Inline only, at most 80
+ * entries. A Pm of 0..0xFF gives StripPlanStart's entries, a Pm of 0..0xFFFF the Virtual build's. Returns 0, or
+ * nonzero on a planner error.
  */
 static __inline ULONG StripPlanStartPm(ULONG Pm, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
 {
@@ -750,8 +827,8 @@ static __inline ULONG StripPlanStartPm(ULONG Pm, ULONG MicSlots, ULONG Steps, ST
 
 /*
  * The pass over Pm: transaction K is STRIP_XACT_PREPARE (*Slot) for every slot in Pm, ascending (every Mic
- * strip, then every Virtual one), then one STRIP_XACT_START at SYNCH or beyond, then STRIP_XACT_END. A Pm of
- * 0..0xFF gives StripPassStep's list.
+ * strip, then every Virtual one, [AuxStrips] then every aux return), then one STRIP_XACT_START at SYNCH or beyond,
+ * then STRIP_XACT_END. A Pm of 0..0xFF gives StripPassStep's list.
  */
 static __inline ULONG StripPassStepPm(ULONG Pm, ULONG Steps, ULONG K, ULONG *Slot)
 {
@@ -789,15 +866,48 @@ static __inline ULONG StripVirtualSlots(ULONG VMask)
     return n;
 }
 
-/* Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Virtual slots of VMask. */
-static __inline void StripPlanRoom(ULONG MicSlots, ULONG VMask, ULONG Room[4])
+/* [AuxStrips] Aux places the room must hold for AMask (bit k = DSP input 0x10 + k): up to the highest one. */
+static __inline ULONG StripAuxSlots(ULONG AMask)
 {
-    ULONG v = StripVirtualSlots(VMask);
+    ULONG n = 0, k;
+
+    for (k = 0; k < STRIP_PLAN_AUXES; k++) {
+        if (AMask & (1u << k)) {
+            n = k + 1;
+        }
+    }
+    return n;
+}
+
+/*
+ * [AuxStrips] Input Strip places the room must hold: the Virtual slots of VMask, or with any aux strip all eight Virtual
+ * places and the aux places up to the highest (each aux return sits below VIRTUAL 8's place, StripPlanAuxAddrs).
+ */
+static __inline ULONG StripPlanInputSlots(ULONG VMask, ULONG AMask)
+{
+    ULONG a = StripAuxSlots(AMask);
+
+    return (a != 0) ? STRIP_PLAN_VIRTUALS + a : StripVirtualSlots(VMask);
+}
+
+/*
+ * [AuxStrips] Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Input Strip places of
+ * VMask and AMask (StripPlanInputSlots). An AMask of 0 gives StripPlanRoom's words.
+ */
+static __inline void StripPlanRoomAux(ULONG MicSlots, ULONG VMask, ULONG AMask, ULONG Room[4])
+{
+    ULONG v = StripPlanInputSlots(VMask, AMask);
 
     Room[0] = 0;
     Room[1] = STRIP_POOL1_PER_STRIP * MicSlots + STRIP_VPOOL1_PER_STRIP * v;
     Room[2] = STRIP_POOL2_PER_STRIP * MicSlots + STRIP_VPOOL2_PER_STRIP * v;
     Room[3] = STRIP_POOL3_PER_STRIP * MicSlots + STRIP_VPOOL3_PER_STRIP * v;
+}
+
+/* Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Virtual slots of VMask. */
+static __inline void StripPlanRoom(ULONG MicSlots, ULONG VMask, ULONG Room[4])
+{
+    StripPlanRoomAux(MicSlots, VMask, 0, Room);
 }
 
 /*
@@ -957,6 +1067,7 @@ typedef struct _STRIP_MODEL {
     ULONG           LayoutStrips;       /* the pool check reserves room for this many strips */
     ULONG           ModuleId[STRIP_MODULE_IDS];     /* uploaded in this order; apollo_strip_pins.h must agree */
     unsigned short  RecId[STRIP_PLAN_INPUTS];       /* record channel ID strip i feeds (0 = none) */
+    ULONG           AuxAllowed;         /* [AuxStrips] StripAuxMask is ANDed with this (bit k = DSP input 0x10 + k) */
 } STRIP_MODEL;
 
 /* The plan of a model that builds strips, or 0. */
@@ -970,6 +1081,11 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
             STRIP_MODEL_X8P, "Apollo x8p", 8, 0xFF, 0, 0x18, 0xFF, 1, 0x0F, 8,
             { 0x0EB, 0x0DA, 0x0A5, 0x0C2, 0x12B },
             { 0x0001, 0x0002, 0x0103, 0x0104, 0x0305, 0x0306, 0x0307, 0x0308 },
+            /* [AuxStrips] the LEFT return inputs only, 0x10 (AUX 1) and 0x12 (AUX 2): the aux buses run mono. Nov 16 2026
+               on this x8p a mono Input Strip on 0x11 or 0x13 put its output over input 1's record slot (slot 0 exact
+               zero with either one built, live with 0x10/0x12 alone) and never reached slots 29/31; a stereo strip
+               (SYNCH in2 = the R input) is unproven. AUX 1 L / AUX 2 L record on slots 28/30. */
+            0x05,
         },
         {
             /*
@@ -984,6 +1100,9 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
             STRIP_MODEL_TWINX, "Apollo Twin X (Gen 1)", 2, 0x03, 0, 0x18, 0x0F, 1, 0x03, 2,
             { 0x0EB, 0x0DA, 0x0A5, 0x0C2, 0x12B },
             { 0x0001, 0x0002, 0, 0, 0, 0, 0, 0 },
+            /* [AuxStrips] the left return inputs only, as on the x8p (0x10, 0x12: mono aux buses; its record descriptor
+               has AUX1 L .. AUX2 R, 0x0201-0x0204, at slots 28-31). Not run on a Twin X. */
+            0x05,
         },
     };
     ULONG i;
@@ -1006,6 +1125,12 @@ static __inline ULONG StripModelMask(const STRIP_MODEL *M, ULONG Mask)
 static __inline ULONG StripModelVirtualMask(const STRIP_MODEL *M, ULONG VMask)
 {
     return (M != 0) ? (VMask & M->VirtualAllowed & 0xFFu) : 0;
+}
+
+/* [AuxStrips] StripAuxMask as the model takes it (aux return inputs it does not have are dropped). */
+static __inline ULONG StripModelAuxMask(const STRIP_MODEL *M, ULONG AMask)
+{
+    return (M != 0) ? (AMask & M->AuxAllowed & 0xFu) : 0;
 }
 
 /* StripDsp as the model takes it: an allowed DSP the unit has, else the default. */

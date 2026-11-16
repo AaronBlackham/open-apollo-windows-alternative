@@ -438,6 +438,57 @@ static void TestLedgerStrips(void)
         CHECK(ok2, "virtual: x8p with VIRTUAL 1, 1-2, ..., 1-8: one block per pool from the top, every Input Strip block inside "
                    "it, the largest plug-in reservation below it");
     }
+
+    /*
+     * [AuxStrips] docs/STRIPS.md 14: plugin.c books StripPlanRoomAux (the Mic strips, StripVirtualMask's and StripAuxMask's
+     * Input Strips). StripAuxMask 0: the Virtual build's booking. With aux strips: still one block per pool from the top,
+     * every aux Input Strip block inside it, no plug-in reservation on one; the aux returns are plugin_plan.h's pairs.
+     */
+    {
+        static PLUG_LEDGER L5, L6;
+        PLUG_LEASE s5[4], s6[4], a;
+        ULONG room[4], am, vm, k, ok3 = 1, a3[STRIP_PLAN_ROWS];
+        PLUG_USAGE u5[4];
+
+        for (vm = 0; vm <= 0xFF && ok3; vm = (vm << 1) | 1) {
+            StripPlanRoom(8, vm, room);
+            ok3 = PlugLedgerInit(&L5, kBase, kSize, kScr) == PLUG_OK && PlugLedgerBookStripRoom(&L5, STRIP_CODE_WORDS, room, s5) == PLUG_OK;
+            StripPlanRoomAux(8, vm, 0, room);
+            ok3 = ok3 && PlugLedgerInit(&L6, kBase, kSize, kScr) == PLUG_OK &&
+                  PlugLedgerBookStripRoom(&L6, STRIP_CODE_WORDS, room, s6) == PLUG_OK && memcmp(s5, s6, sizeof(s5)) == 0;
+        }
+        CHECK(ok3, "aux: StripAuxMask 0: the ledger books exactly what it booked before, for every Virtual mask");
+        for (am = 0x1; am <= 0xF && ok3; am++) {
+            StripPlanRoomAux(8, 0x01, am, room);
+            ok3 = PlugLedgerInit(&L6, kBase, kSize, kScr) == PLUG_OK &&
+                  PlugLedgerBookStripRoom(&L6, STRIP_CODE_WORDS, room, s6) == PLUG_OK && LedgerInvariant(&L6);
+            for (j = 1; ok3 && j < 4; j++)
+                ok3 = s6[j].Base + s6[j].Words == top[j] && s6[j].Words == room[j];
+            for (k = 0; ok3 && k < STRIP_PLAN_AUXES; k++) {
+                if (!(am & (1u << k)))
+                    continue;
+                ok3 = StripPlanAuxAddrs(8, k, a3) == 0;
+                for (j = 0; ok3 && j < STRIP_PLAN_VROWS; j++) {
+                    ULONG p = g_StripVRows[j].Pool;
+                    ok3 = a3[j] >= s6[p].Base && a3[j] + g_StripVRows[j].Dwords <= s6[p].Base + s6[p].Words;
+                }
+            }
+            PlugLedgerUsage(&L6, u5);
+            for (j = 1; ok3 && j < 4; j++) {
+                ok3 = PlugLedgerReserve(&L6, j, u5[j].Largest, 0, 0, &a) == PLUG_OK && a.Base + a.Words <= s6[j].Base;
+                (void)PlugLedgerRelease(&L6, &a, NULL);
+            }
+        }
+        CHECK(ok3, "aux: x8p 8 Mic + VIRTUAL 1 + every StripAuxMask: one block per pool from the top, every aux Input Strip "
+                   "block inside it, the largest plug-in reservation below it");
+        ok3 = 1;
+        for (k = 0; k < PLUG_AUX_BUSES; k++)
+            ok3 = ok3 && StripSlotSynch(STRIP_SLOT_AUX0 + 2 * k) == (PlugAuxSynch(k) & 0xFFFFu) &&
+                  StripSlotSynch(STRIP_SLOT_AUX0 + 2 * k + 1) == (PlugAuxSynch(k) >> 16) &&
+                  PlugAuxOf(StripSlotSynch(STRIP_SLOT_AUX0 + 2 * k) | (StripSlotSynch(STRIP_SLOT_AUX0 + 2 * k + 1) << 16)) == k;
+        CHECK(ok3 && STRIP_PLAN_AUXES == 2 * PLUG_AUX_BUSES,
+              "aux: the aux-return strips' DSP inputs are the aux insert pairs (0x10/0x11, 0x12/0x13): one AuxMask pair per aux bus");
+    }
 }
 
 /*

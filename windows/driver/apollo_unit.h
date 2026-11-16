@@ -37,6 +37,13 @@
 #define APOLLO_DEF_ENDPOINTS_TWINX  0x3Fu       /* = APOLLO_TWX_EP_DEFAULT: MON L/R, LINE 3-4, HP out, the
                                                    loopback, MIC/LINE 1-2 */
 #define APOLLO_DEF_BATCH_X8P        1u      /* = APOLLO_MIXER_BATCH_X8P_SAFE (unit.c asserts) */
+/*
+ * [AuxStrips] The x8p's built-in StripAuxMask (docs/STRIPS.md 14): 0x5, the Input Strips on the L returns of AUX 1 and
+ * AUX 2 (0x10, 0x12; the model allows no more, strip_plan.h). Nov 16 2026 on the x8p: sends reach the aux buses, the
+ * return reaches both MON sides at its level, mute works, input 1 and the other inputs record as before. ident-test
+ * checks the default against this constant; every other model stays 0.
+ */
+#define APOLLO_DEF_STRIP_AUX_MASK_X8P   0x5u
 
 /* Parameter ids */
 #define APOLLO_PARAM_MODE                   0
@@ -60,7 +67,8 @@
 #define APOLLO_PARAM_STRIP_WARM_PLUGINS     18  /* strips.c/plugin.c: plug-ins on adopted or rebuilt warm strips */
 #define APOLLO_PARAM_STRIP_VIRTUAL_MASK     19  /* strips.c: Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13) */
 #define APOLLO_PARAM_BUS_ENABLE             20  /* cues.c: DSP output buses switched on at every connect */
-#define APOLLO_PARAM_COUNT                  21
+#define APOLLO_PARAM_STRIP_AUX_MASK         21  /* strips.c: Input Strips on the aux returns 0x10-0x13 (docs/STRIPS.md 14) */
+#define APOLLO_PARAM_COUNT                  22
 
 /* Where a value came from (APOLLO_UNIT.Source, the driver log letter) */
 #define APOLLO_SRC_DEFAULT          0   /* D: built-in default of the model */
@@ -142,6 +150,13 @@ static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
         /* cues.c ApolloCuesBusEnable: {0x001C0003, bus, 1, 0} at every connect for each bus of bits 0-6 (0 monitor,
            1/2 CUE 1/2, 3/4 AUX 1/2, 5/6 CUE 3/4) on each DSP of bits 8-15 (none = every DSP). 0 = nothing sent. */
         { "BusEnable",               L"BusEnable",               0, 0, 1, 0 },
+        /* docs/STRIPS.md 14. Bits 0-3: the plain Input Strip (0x83E) on DSP inputs 0x10, 0x11, 0x12, 0x13 (AUX 1 L, AUX 1 R,
+           AUX 2 L, AUX 2 R, the aux returns), built with the Mic and Virtual strips in the same pass (StripsEnable 1). Without
+           one an aux return mixes nothing and records silence (measured on the x8p, Nov 16 2026). Only the L inputs are built
+           (the models allow 0x05: a mono strip on 0x11/0x13 covered input 1's record slot): mono aux buses, the return on
+           both monitor sides, the sends' left entry. The x8p and the Twin X have AUX 1-2; every other model: none. The
+           x8p's default: APOLLO_DEF_STRIP_AUX_MASK_X8P; the Twin X 0 (not run there). */
+        { "StripAuxMask",            L"StripAuxMask",            APOLLO_DEF_STRIP_AUX_MASK_X8P, 0, 1, 0 },
     };
 
     return (Id >= 0 && Id < APOLLO_PARAM_COUNT) ? &t[Id] : &t[APOLLO_PARAM_MODE];

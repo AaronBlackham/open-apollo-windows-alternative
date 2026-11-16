@@ -317,6 +317,22 @@ static BOOLEAN PlugAuxEnabled(VOID)
     return PlugRegULong(APOLLO_PLUGIN_REG_AUX) != 0;
 }
 
+/*
+ * [AuxStrips] DevLock held: does this start's StripAuxMask build the plain Input Strips of aux Aux's return (0x10 + 2 Aux,
+ * 0x11 + 2 Aux)? An aux insert chain SYNCHes the same pair with the same carrier, so it is refused there
+ * (STATUS_RESOURCE_IN_USE, logged); the other return stays open to aux inserts.
+ */
+static BOOLEAN PlugAuxStripsBuilt(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux)
+{
+    if (Aux >= PLUG_AUX_BUSES || ((ApolloStripsAuxReturns(Ctx) >> Aux) & 1u) == 0) {
+        return FALSE;
+    }
+    ApolloLogU(Ctx, "plugins: an aux insert on AUX %lu refused (0x%08x): StripAuxMask 0x%lx builds the plain Input Strips on its "
+               "return inputs 0x%02lx/0x%02lx; clear those bits (apollo-diag param StripAuxMask) for aux inserts there",
+               Aux + 1, STATUS_RESOURCE_IN_USE, Ctx->Strips.AMask, PLUG_AUX_FIRST_SYNCH + 2u * Aux, PLUG_AUX_FIRST_SYNCH + 2u * Aux + 1u);
+    return TRUE;
+}
+
 /* The unit's hosting plan (plugin_plan.h): the x8p and the Twin X Gen 1, else NULL (no hosting). */
 static const PLUG_MODEL *PlugModel(_In_ PDEVICE_CONTEXT Ctx)
 {
@@ -1596,10 +1612,11 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
         } else {
             /* pools 1-3 raised to max(register, the Mic strip's 0x1C0 / 0x80 / 0) and kept there as the
                ledger's floor (PlugLedgerStripScratch), then the strips' room;
-               [Virtual] the room includes this start's Virtual Input Strips, right below the Mic strips' */
+               [Virtual] the room includes this start's Virtual Input Strips, right below the Mic strips';
+               [AuxStrips] and its aux-return Input Strips, below every Virtual place (StripPlanRoomAux) */
             ULONG room[4];
 
-            StripPlanRoom(model != NULL ? model->LayoutStrips : STRIP_PLAN_INPUTS, s->VMask, room);
+            StripPlanRoomAux(model != NULL ? model->LayoutStrips : STRIP_PLAN_INPUTS, s->VMask, s->AMask, room);
             err = PlugLedgerBookStripRoom(d->Ledger, STRIP_CODE_WORDS, room, d->StripBook);
         }
         if (err == PLUG_OK && (d->StripBook[0].Base != APOLLO_STRIP_CODE_BASE ||
@@ -1611,8 +1628,9 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
     }
     if (err == PLUG_OK && D == s->Dsp) {
         /* the unit's own strips: x8p 8, Twin X 2 */
-        (VOID)RtlStringCbPrintfA(booked, sizeof(booked), " (strip room booked: code 0xe0000+994, the %lu strips + Virtual 0x%02lx at the pool tops)",
-                                 model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS, s->VMask);
+        (VOID)RtlStringCbPrintfA(booked, sizeof(booked), " (strip room booked: code 0xe0000+994, the %lu strips + Virtual 0x%02lx "
+                                 "+ Aux 0x%lx at the pool tops)",
+                                 model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS, s->VMask, s->AMask);
     }
     ApolloLogU(Ctx, "plugins: DSP %lu pools size %08x %08x %08x %08x base %08x %08x %08x %08x scratch %08x %08x %08x: %s%s",
                D, size[0], size[1], size[2], size[3], base[0], base[1], base[2], base[3], scr[1], scr[2], scr[3],
@@ -2459,6 +2477,8 @@ static VOID PlugCreate(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _In
         /* [Ins] an aux return: no plain strip there to retain; the strip DSP once its pass is over */
         if (dsp != Ctx->Strips.Dsp || !PlugAuxEnabled()) {
             status = STATUS_NOT_SUPPORTED;
+        } else if (PlugAuxStripsBuilt(Ctx, R->Aux)) {
+            status = STATUS_RESOURCE_IN_USE;    /* [AuxStrips] its plain Input Strips are StripAuxMask's */
         }
         if (NT_SUCCESS(status) && start && PlugRoutedOverlap(H, in, dsp, q->Synch)) {
             status = STATUS_DEVICE_BUSY;
@@ -2841,6 +2861,8 @@ static VOID PlugStartStaged(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H
         }
     } else if (NT_SUCCESS(status) && in != NULL && !PlugAuxEnabled()) {
         status = STATUS_NOT_SUPPORTED;          /* [Ins] AuxInserts turned off since the CREATE */
+    } else if (NT_SUCCESS(status) && in != NULL && PlugAuxStripsBuilt(Ctx, in->AuxBus - 1)) {
+        status = STATUS_RESOURCE_IN_USE;        /* [AuxStrips] StripAuxMask builds that return's Input Strips */
     }
     if (!NT_SUCCESS(status)) {
         ApolloLogU(Ctx, "plugins: START of instance %lu refused (0x%08x): nothing sent", q->Handle, status);

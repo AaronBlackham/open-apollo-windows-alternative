@@ -86,6 +86,10 @@ C_ASSERT(STRIP_PLAN_PAYLOAD_MAX * 4 <= XACT_PAGE);
 C_ASSERT(STRIP_PLAN_SLOTS == APOLLO_STRIP_SLOTS && STRIP_PLAN_VIRTUALS == APOLLO_STRIP_VIRTUALS &&
          STRIP_SLOT_VIRTUAL0 == APOLLO_STRIP_INPUTS && STRIP_VIRTUAL_SYNCH0 == APOLLO_STRIP_VIRTUAL_BUS0 &&
          STRIP_PLAN_SLOTS * STRIP_PLAN_START_ENTS == STRIP_PLAN_ENT_SLOTS);
+/* [AuxStrips] slots 16-19 = the aux returns 0x10-0x13 = GET_STRIPS version 5; a return is two of them */
+C_ASSERT(STRIP_PLAN_AUXES == APOLLO_STRIP_AUXES && STRIP_SLOT_AUX0 == APOLLO_STRIP_INPUTS + APOLLO_STRIP_VIRTUALS &&
+         STRIP_AUX_SYNCH0 == APOLLO_STRIP_AUX_BUS0 && STRIP_PLAN_AUXES == 2 * APOLLO_STRIP_AUX_RETURNS &&
+         STRIP_PM_AUX == (((1u << STRIP_PLAN_AUXES) - 1) << STRIP_SLOT_AUX0) && STRIP_REC_VERSION_AUX == 3);
 /* A pass holds every PREPARE buffer until the START is taken, plus the START itself. */
 C_ASSERT(STRIP_PLAN_SLOTS + 1 < XACT_SLOTS);
 
@@ -190,12 +194,22 @@ static VOID StripsForgetModules(_Inout_ APOLLO_STRIPS *S)
     RtlZeroMemory(S->ModState, sizeof(S->ModState));
 }
 
-/* Nothing of ours runs any more (or it is not ours to stop): strip state and bus owners back. */
+/*
+ * Nothing of ours runs any more (or it is not ours to stop): strip state and bus owners back. DevLock held.
+ * [AuxStrips] The aux returns too: their cells go back to the single left-entry write on DSP 0 (cues.c; nothing is sent,
+ * and nothing changes where no aux strip ever ran).
+ */
 static VOID StripsForgetStrips(_Inout_ APOLLO_STRIPS *S)
 {
+    PDEVICE_CONTEXT ctx = CONTAINING_RECORD(S, DEVICE_CONTEXT, Strips);
+    ULONG a;
+
     RtlZeroMemory(S->StripState, sizeof(S->StripState));
     RtlZeroMemory(S->StripStarted, sizeof(S->StripStarted));
     RtlZeroMemory(S->BusOwner, sizeof(S->BusOwner));    /* every bus back on DSP 0 */
+    for (a = 0; a < APOLLO_STRIP_AUX_RETURNS; a++) {
+        (VOID)ApolloCuesAuxStrips(ctx, a, FALSE, 0);
+    }
 }
 
 static ULONG StripsStarted(_In_ const APOLLO_STRIPS *S)
@@ -210,13 +224,15 @@ static ULONG StripsStarted(_In_ const APOLLO_STRIPS *S)
     return n;
 }
 
-/* [Virtual] "input 3" or "VIRTUAL 1": slot K as the Console names it (log lines). */
+/* [Virtual] "input 3", "VIRTUAL 1" or [AuxStrips] "AUX 1 R": slot K as the Console names it (log lines). */
 static PCSTR StripsSlotName(_In_ ULONG K, _Out_writes_z_(Chars) PCHAR Out, _In_ size_t Chars)
 {
     if (K < STRIP_SLOT_VIRTUAL0) {
         (VOID)RtlStringCchPrintfA(Out, Chars, "input %lu", K + 1);
-    } else {
+    } else if (K < STRIP_SLOT_AUX0) {
         (VOID)RtlStringCchPrintfA(Out, Chars, "VIRTUAL %lu", K - STRIP_SLOT_VIRTUAL0 + 1);
+    } else {
+        (VOID)RtlStringCchPrintfA(Out, Chars, "AUX %lu %c", ((K - STRIP_SLOT_AUX0) >> 1) + 1, ((K - STRIP_SLOT_AUX0) & 1) ? 'R' : 'L');
     }
     return Out;
 }
@@ -224,13 +240,16 @@ static PCSTR StripsSlotName(_In_ ULONG K, _Out_writes_z_(Chars) PCHAR Out, _In_ 
 /* [Virtual] The strip kind's name for the log. */
 static PCSTR StripsSlotKind(_In_ ULONG K)
 {
-    return (K < STRIP_SLOT_VIRTUAL0) ? "Mic Input Strip" : "Input Strip";
+    return (K < STRIP_SLOT_VIRTUAL0) ? "Mic Input Strip" : (K < STRIP_SLOT_AUX0) ? "Input Strip" : "aux return Input Strip";
 }
 
-/* [Virtual] The plan mask of this start: StripMask (bits 0-7) and the Virtual strips (bits 8-15). DevLock held. */
+/*
+ * [Virtual] The plan mask of this start: StripMask (bits 0-7), the Virtual strips (bits 8-15), [AuxStrips] the aux-return
+ * strips (bits 16-19). DevLock held.
+ */
 static ULONG StripsPm(_In_ const APOLLO_STRIPS *S)
 {
-    return StripPlanPm(S->Mask, S->VMask);
+    return StripPlanPmAux(S->Mask, S->VMask, S->AMask);
 }
 
 static PCSTR StripsStepName(_In_ ULONG Steps)
@@ -496,10 +515,10 @@ static NTSTATUS StripsRecWrite(_In_ PDEVICE_CONTEXT Ctx, _In_z_ PCSTR Why)
     s->RecStatus = status;
     s->RecHave = NT_SUCCESS(status) ? TRUE : FALSE;
     if (NT_SUCCESS(status)) {
-        ApolloLogU(Ctx, "strips: record (%s): %s, strips %s%s, StripMask 0x%02lx Virtual 0x%02lx (v%lu), %lu plug-in(s)%s, write %lu",
-                  Why, s->Cur.Anchored ? "anchored" : "NOT anchored", StripsRecStateText(s->Cur.State),
+        ApolloLogU(Ctx, "strips: record (%s): %s, strips %s%s, StripMask 0x%02lx Virtual 0x%02lx Aux 0x%lx (v%lu), %lu plug-in(s)%s, "
+                  "write %lu", Why, s->Cur.Anchored ? "anchored" : "NOT anchored", StripsRecStateText(s->Cur.State),
                   (s->Cur.State == STRIP_REC_RUNNING && s->Cur.Keep) ? " (kept at exit)" : "", s->Cur.Mask & STRIP_PM_MIC,
-                  (s->Cur.Mask & STRIP_PM_VIRTUAL) >> 8, s->Cur.Version,
+                  (s->Cur.Mask & STRIP_PM_VIRTUAL) >> 8, (s->Cur.Mask & STRIP_PM_AUX) >> 16, s->Cur.Version,
                   s->Cur.Plugins & ~STRIP_REC_PLUGINS_STALE,
                   (s->Cur.Plugins & STRIP_REC_PLUGINS_STALE) ? " (stale: plug-ins after a power cycle)" : "", s->Cur.Writes);
     } else {
@@ -661,6 +680,10 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
     s->VMaskAsked = ApolloUnitParam(Ctx, APOLLO_PARAM_STRIP_VIRTUAL_MASK);
     s->VMask = StripModelVirtualMask(model, s->VMaskAsked);
     s->VLayoutWhy = 0;
+    /* [AuxStrips] docs/STRIPS.md 14: the Input Strips on the aux returns 0x10-0x13 (both models' AUX 1-2); the pool check may drop them */
+    s->AMaskAsked = ApolloUnitParam(Ctx, APOLLO_PARAM_STRIP_AUX_MASK);
+    s->AMask = StripModelAuxMask(model, s->AMaskAsked);
+    s->ALayoutWhy = 0;
     s->MixerBatch = ApolloUnitParam(Ctx, APOLLO_PARAM_MIXER_INIT_BATCH);
     /*
      * StripProbe, diagnostics only (docs/STRIPS.md 10.9): 2 = measure + repair ladder, 1 = measure
@@ -699,9 +722,14 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
             ApolloLogU(Ctx, "strips: StripVirtualMask 0x%02lx names Virtual inputs the %s has no strip for (VIRTUAL inputs "
                       "0x%02lx): 0x%02lx is used", s->VMaskAsked, model->Name, model->VirtualAllowed, s->VMask);
         }
+        if (s->AMaskAsked != s->AMask) {
+            ApolloLogU(Ctx, "strips: StripAuxMask 0x%lx names aux return inputs the %s has no strip for (aux inputs 0x%lx): "
+                      "0x%lx is used", s->AMaskAsked, model->Name, model->AuxAllowed, s->AMask);
+        }
     }
     if (s->Enable == 0) {
         s->VMask = 0;                           /* [Virtual] no strips, no Virtual buses for the mixer either */
+        s->AMask = 0;                           /* [AuxStrips] no aux-return strips: the aux returns as before */
     }
     if (s->Probe > STRIP_PROBE_REPAIR) {
         s->Probe = STRIP_PROBE_REPAIR;
@@ -761,6 +789,11 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
     if (s->Enable != 0 && s->VMask != 0) {
         ApolloLogU(Ctx, "strips: Virtual Input Strips (0x83E) on VIRTUAL mask 0x%02lx (bus 0x18 + n - 1), built in the same pass "
                   "as the Mic strips; their buses take mix, cue and aux sends", s->VMask);
+    }
+    if (s->Enable != 0 && s->AMask != 0) {
+        ApolloLogU(Ctx, "strips: aux return Input Strips (0x83E) on StripAuxMask 0x%lx (DSP inputs 0x10 + k: AUX 1 L/R, AUX 2 L/R), "
+                  "built in the same pass after the Virtual strips; while they run each return is mixed on the strip DSP as a "
+                  "stereo pair", s->AMask);
     }
     if (s->Enable == 1) {
         ApolloLogU(Ctx, "strips: stage %lu: %s", StripPlanSteps(s->Steps),
@@ -927,6 +960,22 @@ static VOID StripsReadLayout(_In_ PDEVICE_CONTEXT Ctx)
             s->VMask = 0;
         }
     }
+    /*
+     * [AuxStrips] Then the aux-return strips below every Virtual place (strip_plan.h StripPlanRoomAux): a StripAuxMask that
+     * does not fit is refused whole (AMask 0, ALayoutWhy the code, logged once); the Mic and Virtual strips go on.
+     */
+    if (s->AMask != 0 && s->LayoutWhy == 0) {
+        StripPlanRoomAux(StripsLayoutStrips(Ctx), s->VMask, s->AMask, room);
+        why = StripPlanLayoutCheckRoom(size, base, scr, room, codeWords);
+        if (why != 0) {
+            ApolloLogU(Ctx, "strips: StripAuxMask 0x%lx REFUSED: %s (code %lu): DSP %lu pools need %lx / %lx / %lx words for the "
+                      "%lu Mic strip(s) and %lu Input Strip place(s); the aux-return strips are off, the Mic and Virtual strips "
+                      "go on", s->AMask, StripsLayoutText(why), why, s->Dsp, room[1], room[2], room[3], StripsLayoutStrips(Ctx),
+                      StripPlanInputSlots(s->VMask, s->AMask));
+            s->ALayoutWhy = why;
+            s->AMask = 0;
+        }
+    }
 }
 
 /*
@@ -1034,6 +1083,10 @@ VOID ApolloStripsProbeLayout(_In_ PDEVICE_CONTEXT Ctx)
     ApolloLogU(Ctx, "strips: layout %s (code %lu) for %lu strips + Virtual 0x%02lx; %s",
               s->LayoutWhy == 0 ? "matches the recipe" : "does NOT match", s->LayoutWhy,
               StripsLayoutStrips(Ctx), s->VMask, s->Enable == 1 ? "uploads may follow" : "nothing sent");
+    if (s->AMaskAsked != 0 && s->Enable != 0) {
+        ApolloLogU(Ctx, "strips: layout for the aux-return strips: StripAuxMask 0x%lx %s", s->AMask,
+                  s->ALayoutWhy == 0 ? "fits" : "REFUSED (see above)");
+    }
     StripsRecRefresh(Ctx);                      /* [Warm] this start's anchor, the record's boot words */
 }
 
@@ -1255,6 +1308,26 @@ VOID ApolloStripsFillInfo(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_STRIPS_INFO I)
         I->VStripAckMs[j] = s->StripAckMs[k];
         I->VBusOwner[j] = s->BusOwner[k];
     }
+
+    /* Version 5 [AuxStrips]: the Input Strips on the aux returns (slots 16-19, DSP inputs 0x10-0x13) */
+    I->Version = 5;
+    I->AuxMask = s->AMask;
+    I->AuxAsked = s->AMaskAsked;
+    I->AuxLayoutWhy = s->ALayoutWhy;
+    I->AuxBus0 = APOLLO_STRIP_AUX_BUS0;
+    for (j = 0; j < APOLLO_STRIP_AUXES; j++) {
+        ULONG k = STRIP_SLOT_AUX0 + j;
+
+        I->AStripState[j] = s->StripState[k];
+        I->AStripStarted[j] = s->StripStarted[k] ? 1 : 0;
+        I->AStripHeader[j] = s->StripHeader[k];
+        I->AStripAckMs[j] = s->StripAckMs[k];
+        I->ABusOwner[j] = s->BusOwner[k];
+    }
+    for (j = 0; j < APOLLO_STRIP_AUX_RETURNS; j++) {
+        I->AuxReturnOwner[j] = Ctx->Cues.Aux.Owner[j];
+    }
+    I->AuxReturnStereo = Ctx->Cues.Aux.Strips & ((1u << APOLLO_STRIP_AUX_RETURNS) - 1);
 }
 
 /*
@@ -1270,10 +1343,34 @@ ULONG ApolloStripsVirtualBuses(_In_ PDEVICE_CONTEXT Ctx)
     return (s->Enable != 0) ? ((s->VMask & 0xFFu) << APOLLO_STRIP_VIRTUAL_BUS0) : 0;
 }
 
-/* [Virtual] cues.c: the strip slot whose strip mixes Bus (ANALOG i -> i, VIRTUAL n -> 7 + n), APOLLO_STRIP_SLOTS for none. */
+/*
+ * [Virtual] cues.c: the strip slot whose strip mixes Bus (ANALOG i -> i, VIRTUAL n -> 7 + n, [AuxStrips] aux return input
+ * 0x10 + k -> 16 + k), APOLLO_STRIP_SLOTS for none.
+ */
 ULONG ApolloStripsBusSlot(_In_ ULONG Bus)
 {
     return StripBusSlot(Bus);
+}
+
+/*
+ * [AuxStrips] plugin.c, DevLock held: the aux returns (bit a = AUX a+1) whose Input Strips this start builds or adopted
+ * (StripAuxMask as the model and the pools take it, either input of the pair). An aux insert chain would SYNCH the same
+ * inputs: it is refused there.
+ */
+ULONG ApolloStripsAuxReturns(_In_ PDEVICE_CONTEXT Ctx)
+{
+    const APOLLO_STRIPS *s = &Ctx->Strips;
+    ULONG a, m = 0;
+
+    if (s->Enable == 0) {
+        return 0;
+    }
+    for (a = 0; a < APOLLO_STRIP_AUX_RETURNS; a++) {
+        if ((s->AMask >> (2 * a)) & 3u) {
+            m |= 1u << a;
+        }
+    }
+    return m;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2054,6 +2151,22 @@ static BOOLEAN StripsPrepareOne(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Slot, _In_ 
 }
 
 /*
+ * [AuxStrips] DevLock held: the strips of plan mask Pm run now, their buses moved to the strip DSP (stage 8 on). Each aux
+ * return with a strip on either of its inputs is mixed there from now on, its cells a stereo pair, every one written
+ * (cues.c ApolloCuesAuxStrips: the host's values, else 0.0). Nothing for a Pm without aux strips.
+ */
+static VOID StripsAuxLive(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm)
+{
+    ULONG a;
+
+    for (a = 0; a < APOLLO_STRIP_AUX_RETURNS; a++) {
+        if (((Pm >> (STRIP_SLOT_AUX0 + 2 * a)) & 3u) != 0) {
+            (VOID)ApolloCuesAuxStrips(Ctx, a, TRUE, Ctx->Strips.Dsp);
+        }
+    }
+}
+
+/*
  * StripLock held, DevLock not held. The START transaction, sent once every PREPARE of the pass
  * was taken: per slot in Pm (Mic input 1 first, [Virtual] then VIRTUAL 1, ...) SYNCH with its header,
  * and from stage 7 span, span and the route word (strip_plan.h StripPlanStartPm; Pm 0..0xFF =
@@ -2163,6 +2276,9 @@ static BOOLEAN StripsStartAll(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm, _In_ ULON
                 ApolloLogU(Ctx, "strips: %s: bus %lu now mixed on DSP %lu (%lu cached mix/cue send(s) "
                           "re-sent); route 0x1ffff sent to %lu other DSP(s)", name, bus, s->Dsp, cached,
                           sent);
+            }
+            if (Limit >= STRIP_STEP_OTHERS) {
+                StripsAuxLive(Ctx, Pm);         /* [AuxStrips] the returns' monitor and cue cells, as a stereo pair */
             }
         } else if (!s->Quarantined && s->State == APOLLO_STRIPS_STATE_BUILDING) {
             s->State = APOLLO_STRIPS_STATE_FAILED;
@@ -2782,7 +2898,7 @@ static VOID StripsLogDryRun(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm, _In_ ULONG 
         }
     }
     /* [Virtual] the Input Strips, after every Mic strip */
-    for (i = STRIP_SLOT_VIRTUAL0; i < APOLLO_STRIP_SLOTS; i++) {
+    for (i = STRIP_SLOT_VIRTUAL0; i < STRIP_SLOT_AUX0; i++) {
         ULONG synch = StripSlotSynch(i);
 
         if (!(Pm & (1u << i))) {
@@ -2798,6 +2914,33 @@ static VOID StripsLogDryRun(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm, _In_ ULONG 
         if (Limit >= STRIP_STEP_SYNCH) {
             ApolloLogU(Ctx, "strips: dry run plan: VIRTUAL %lu START {%08x %08lx %08lx 0}%s; route 0x1ffff to DSP mask 0x%02lx",
                       i - STRIP_SLOT_VIRTUAL0 + 1, STRIP_CMD_SYNCH, (ULONG)((STRIP_SYNCH_MONO << 16) | synch), plan->Addr[0],
+                      Limit >= STRIP_STEP_INPUT ? " + span, span, route 0x1ffff" : "",
+                      Limit >= STRIP_STEP_OTHERS ? routes : 0);
+        }
+    }
+    /* [AuxStrips] the aux returns' Input Strips, after every Virtual strip */
+    if ((Pm & STRIP_PM_AUX) != 0) {
+        ApolloLogU(Ctx, "strips: dry run plan: StripAuxMask 0x%lx (it has 0x%lx): pools checked for %lu Input Strip place(s); "
+                  "while they run each aux return is mixed on DSP %lu as a stereo pair", (Pm & STRIP_PM_AUX) >> 16,
+                  model->AuxAllowed, StripPlanInputSlots((Pm & STRIP_PM_VIRTUAL) >> 8, (Pm & STRIP_PM_AUX) >> 16), s->Dsp);
+    }
+    for (i = STRIP_SLOT_AUX0; i < APOLLO_STRIP_SLOTS; i++) {
+        ULONG synch = StripSlotSynch(i);
+
+        if (!(Pm & (1u << i))) {
+            continue;
+        }
+        (VOID)StripsSlotName(i, name, sizeof(name));
+        if (StripPlanPrepareSlot(i, StripsLayoutStrips(Ctx), Limit, Ctx->SampleRate, plan) != 0) {
+            ApolloLogU(Ctx, "strips: dry run plan: %s: planner error", name);
+            continue;
+        }
+        ApolloLogU(Ctx, "strips: dry run plan: %s = DSP input 0x%02lx: Input Strip 0x83E, header 0x%05lx, m0 0x%05lx, c0 0x%08lx; "
+                  "PREPARE %lu entries, %lu payload dwords", name, synch, plan->Addr[0], plan->Addr[1], plan->Addr[2], plan->N,
+                  plan->Len);
+        if (Limit >= STRIP_STEP_SYNCH) {
+            ApolloLogU(Ctx, "strips: dry run plan: %s START {%08x %08lx %08lx 0}%s; route 0x1ffff to DSP mask 0x%02lx", name,
+                      STRIP_CMD_SYNCH, (ULONG)((STRIP_SYNCH_MONO << 16) | synch), plan->Addr[0],
                       Limit >= STRIP_STEP_INPUT ? " + span, span, route 0x1ffff" : "",
                       Limit >= STRIP_STEP_OTHERS ? routes : 0);
         }
@@ -2895,6 +3038,7 @@ static VOID StripsAdoptApply(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Verdict)
     const STRIP_RECORD *r = &s->Rec;
     ULONG mask = r->Mask & ((1u << APOLLO_STRIP_INPUTS) - 1), limit = r->Limit, i, j, n = 0, cached = 0;
     ULONG vmask = (r->Mask & STRIP_PM_VIRTUAL) >> 8, nv = 0, addr[STRIP_PLAN_ROWS];
+    ULONG amask = (r->Mask & STRIP_PM_AUX) >> 16;
     CHAR built[32], name[16];
 
     s->AdoptPending = FALSE;
@@ -2934,15 +3078,29 @@ static VOID StripsAdoptApply(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Verdict)
             nv++;
         }
     }
+    /* [AuxStrips] the record's aux-return strips (its plan mask bits 16-19, a version 3 record): the same, at their places */
+    for (i = 0; i < APOLLO_STRIP_AUXES; i++) {
+        ULONG k = STRIP_SLOT_AUX0 + i;
+
+        s->StripAckMs[k] = 0;
+        s->StripHeader[k] = 0;
+        if ((amask & (1u << i)) && StripPlanAuxAddrs(StripsLayoutStrips(Ctx), i, addr) == 0) {
+            s->StripHeader[k] = addr[0];
+            s->StripState[k] = APOLLO_STRIP_TAKEN;
+            s->StripStarted[k] = (limit >= STRIP_STEP_SYNCH) ? TRUE : FALSE;
+            nv++;
+        }
+    }
     s->StepsDone = min(limit, (ULONG)STRIP_STEP_OTHERS);
     s->State = APOLLO_STRIPS_STATE_LIVE;
     if (limit >= STRIP_STEP_OTHERS) {
         for (i = 0; i < APOLLO_STRIP_SLOTS; i++) {
             if ((r->Mask & (1u << i)) && s->StripState[i] == APOLLO_STRIP_TAKEN) {
-                s->BusOwner[i] = s->Dsp;        /* bus = the DSP input: input i -> i, VIRTUAL n -> 0x18+n-1 */
+                s->BusOwner[i] = s->Dsp;        /* bus = the DSP input: input i -> i, VIRTUAL n -> 0x18+n-1, aux 0x10+k */
                 cached += ApolloCuesBusMoved(Ctx, StripSlotSynch(i));
             }
         }
+        StripsAuxLive(Ctx, r->Mask);            /* [AuxStrips] the returns as a stereo pair, every cell written */
     }
     /*
      * Plug-ins on the adopted strip DSP (docs/STRIPS.md 12.5): the record proves only this driver used the DSPs since
@@ -2957,9 +3115,9 @@ static VOID StripsAdoptApply(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Verdict)
                      STRIPS_WARM_UPLOADS_NA;
     StripsDateText(r->BuiltDate, built, sizeof(built));
     StripsSetWhy(s, "warm start: adopted %lu strip(s) built %s; nothing sent", n + nv, built);
-    ApolloLogU(Ctx, "strips: adopted %lu strip(s) this driver left running (StripMask 0x%02lx, Virtual 0x%02lx, DSP %lu, %lu Hz, "
-              "stage %lu, built %s, adoption %lu): nothing sent", n + nv, mask, vmask, s->Dsp, r->Rate, limit, built,
-              r->Adoptions + 1);
+    ApolloLogU(Ctx, "strips: adopted %lu strip(s) this driver left running (StripMask 0x%02lx, Virtual 0x%02lx, Aux 0x%lx, DSP %lu, "
+              "%lu Hz, stage %lu, built %s, adoption %lu): nothing sent", n + nv, mask, vmask, amask, s->Dsp, r->Rate, limit,
+              built, r->Adoptions + 1);
     for (i = 0; i < APOLLO_STRIP_SLOTS; i++) {
         if (s->StripState[i] == APOLLO_STRIP_TAKEN && (r->Mask & (1u << i))) {
             ApolloLogU(Ctx, "strips: %s: %s at 0x%05lx on DSP %lu, adopted", StripsSlotName(i, name, sizeof(name)),
@@ -2967,8 +3125,8 @@ static VOID StripsAdoptApply(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Verdict)
         }
     }
     if (limit >= STRIP_STEP_OTHERS) {
-        ApolloLogU(Ctx, "strips: buses of StripMask 0x%02lx and Virtual 0x%02lx mixed on DSP %lu (%lu cached mix/cue send(s) "
-                  "re-sent)", mask, vmask, s->Dsp, cached);
+        ApolloLogU(Ctx, "strips: buses of StripMask 0x%02lx, Virtual 0x%02lx and Aux 0x%lx mixed on DSP %lu (%lu cached mix/cue "
+                  "send(s) re-sent)", mask, vmask, amask, s->Dsp, cached);
     }
     ApolloLogU(Ctx, "strips: plug-ins on DSP %lu after this adoption: %s", s->Dsp,
               s->PlugAdoptOk ? "allowed (the record proves the DSPs ours since power-up and the room beside the strips "
@@ -3014,14 +3172,15 @@ static ULONG StripsWarmDecide(_In_ PDEVICE_CONTEXT Ctx)
     StripsDateText(s->Rec.BuiltDate, built, sizeof(built));
     ApolloLogU(Ctx, "strips: warm start check: anchor %lu (%s); pools %s", s->Anchor, StripAnchorText(s->Anchor),
               now.LayoutOk ? "fit the recipe" : "do NOT fit the recipe");
-    ApolloLogU(Ctx, "strips: warm start check: this start StripMask 0x%02lx Virtual 0x%02lx, %lu Hz, stage %lu, DSP %lu, plan %08lx, "
-              "modules %08lx; StripAdopt %lu, StripWarmRebuild %lu", now.Mask & STRIP_PM_MIC, (now.Mask & STRIP_PM_VIRTUAL) >> 8,
-              now.Rate, now.Limit, now.Dsp, now.PlanHash, now.ModuleHash, now.Adopt, now.WarmRebuild);
+    ApolloLogU(Ctx, "strips: warm start check: this start StripMask 0x%02lx Virtual 0x%02lx Aux 0x%lx, %lu Hz, stage %lu, DSP %lu, "
+              "plan %08lx, modules %08lx; StripAdopt %lu, StripWarmRebuild %lu", now.Mask & STRIP_PM_MIC,
+              (now.Mask & STRIP_PM_VIRTUAL) >> 8, (now.Mask & STRIP_PM_AUX) >> 16, now.Rate, now.Limit, now.Dsp, now.PlanHash,
+              now.ModuleHash, now.Adopt, now.WarmRebuild);
     if (s->RecFound) {
-        ApolloLogU(Ctx, "strips: warm start check: record v%lu strips %s%s, StripMask 0x%02lx Virtual 0x%02lx, %lu Hz, stage %lu, "
-                  "DSP %lu, plan %08lx, modules %08lx, pools %s, %lu plug-in(s), built %s, adopted %lu time(s)", s->Rec.Version,
-                  StripsRecStateText(s->Rec.State), s->Rec.Keep ? " (kept at exit)" : "", s->Rec.Mask & STRIP_PM_MIC,
-                  (s->Rec.Mask & STRIP_PM_VIRTUAL) >> 8, s->Rec.Rate,
+        ApolloLogU(Ctx, "strips: warm start check: record v%lu strips %s%s, StripMask 0x%02lx Virtual 0x%02lx Aux 0x%lx, %lu Hz, "
+                  "stage %lu, DSP %lu, plan %08lx, modules %08lx, pools %s, %lu plug-in(s), built %s, adopted %lu time(s)",
+                  s->Rec.Version, StripsRecStateText(s->Rec.State), s->Rec.Keep ? " (kept at exit)" : "",
+                  s->Rec.Mask & STRIP_PM_MIC, (s->Rec.Mask & STRIP_PM_VIRTUAL) >> 8, (s->Rec.Mask & STRIP_PM_AUX) >> 16, s->Rec.Rate,
                   s->Rec.Limit, s->Rec.Dsp, s->Rec.PlanHash, s->Rec.ModuleHash,
                   StripRecordGeomSame(&s->Rec, &now) ? "the same" : "DIFFERENT", s->Rec.Plugins, built,
                   s->Rec.Adoptions);
@@ -3222,6 +3381,9 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
                   "nothing sent", dsp, ApolloRateText(Ctx->SampleRate));
         ApolloLogU(Ctx, "strips: dry run: would go to stage %lu (%s) on StripMask 0x%02lx, StripVirtualMask 0x%02lx", limit,
                   StripsStepName(limit), mask, s->VMask);
+        if (s->AMask != 0) {
+            ApolloLogU(Ctx, "strips: dry run: and on StripAuxMask 0x%lx (the aux returns' Input Strips)", s->AMask);
+        }
         StripsLogDryRun(Ctx, pm, limit);        /* the whole pass, per input, not sent */
         s->State = APOLLO_STRIPS_STATE_IDLE;
         StripsSetWhy(s, "dry run complete: every gate passed, nothing sent");
@@ -3241,6 +3403,10 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
     if (s->VMask != 0) {
         ApolloLogU(Ctx, "strips: this pass also builds the Input Strips (0x83E, modules 0x0a5 and 0x0c2) on Virtual mask 0x%02lx",
                   s->VMask);
+    }
+    if (s->AMask != 0) {
+        ApolloLogU(Ctx, "strips: this pass also builds the aux return Input Strips (0x83E) on StripAuxMask 0x%lx (DSP inputs "
+                  "0x10-0x13), after the Virtual strips", s->AMask);
     }
     /* [Warm] the record: a pass is under way, so what the DSP holds is unknown until it ends */
     StripsRecSetPlan(Ctx, STRIP_REC_UNKNOWN, pm, limit, 0);
@@ -3283,7 +3449,7 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
     if (pm == 0) {
         s->State = APOLLO_STRIPS_STATE_LIVE;
         StripsSetWhy(s, "5 modules resident on DSP %lu; StripMask selects no input", dsp);
-        ApolloLogU(Ctx, "strips: 5 modules resident; StripMask and StripVirtualMask are 0: no strip");
+        ApolloLogU(Ctx, "strips: 5 modules resident; StripMask, StripVirtualMask and StripAuxMask are 0: no strip");
         StripsRecLive(Ctx, pm, limit);          /* [Warm] */
         goto unlock;
     }
@@ -3327,7 +3493,11 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
     if (s->Gen == gen && s->State == APOLLO_STRIPS_STATE_BUILDING) {
         s->State = APOLLO_STRIPS_STATE_LIVE;
         s->StepsDone = min(limit, (ULONG)STRIP_STEP_OTHERS);
-        if ((pm & STRIP_PM_VIRTUAL) != 0) {
+        if ((pm & STRIP_PM_AUX) != 0) {
+            StripsSetWhy(s, "stage %lu done on StripMask 0x%02lx + Virtual 0x%02lx + Aux 0x%lx, DSP %lu%s",
+                         s->StepsDone, mask, (pm & STRIP_PM_VIRTUAL) >> 8, (pm & STRIP_PM_AUX) >> 16, dsp,
+                         s->RebuiltWarm ? " (warm rebuild)" : "");
+        } else if ((pm & STRIP_PM_VIRTUAL) != 0) {
             StripsSetWhy(s, "stage %lu (%s) done on StripMask 0x%02lx + Virtual 0x%02lx, DSP %lu%s",
                          s->StepsDone, StripsStepName(s->StepsDone), mask, (pm & STRIP_PM_VIRTUAL) >> 8, dsp,
                          s->RebuiltWarm ? " (warm rebuild)" : "");
@@ -3558,16 +3728,16 @@ VOID ApolloStripsExit(PDEVICE_CONTEXT Ctx, BOOLEAN Keep)
         s->Gen++;                               /* nothing more is sent for these strips by this start */
         s->KeptAtExit = TRUE;
         s->PlugAdoptOk = FALSE;
-        for (i = 0; i < APOLLO_STRIP_SLOTS; i++) {      /* [Virtual] bits 8-15: the Input Strips */
+        for (i = 0; i < APOLLO_STRIP_SLOTS; i++) {      /* [Virtual] bits 8-15: the Input Strips; [AuxStrips] 16-19 */
             if (s->StripStarted[i]) {
                 mask |= 1u << i;
             }
         }
-        StripsSetWhy(s, "left running at the D0 exit for the next start (StripMask 0x%02lx, Virtual 0x%02lx)",
-                     mask & STRIP_PM_MIC, (mask & STRIP_PM_VIRTUAL) >> 8);
-        ApolloLogU(Ctx, "strips: D0 exit: StripMask 0x%02lx and Virtual 0x%02lx left running on DSP %lu for the next start "
-                  "(StripAdopt=1; the record names them, %lu plug-in(s) on the DSP): nothing sent", mask & STRIP_PM_MIC,
-                  (mask & STRIP_PM_VIRTUAL) >> 8, s->Dsp, s->Cur.Plugins);
+        StripsSetWhy(s, "left running at the D0 exit for the next start (StripMask 0x%02lx, Virtual 0x%02lx, Aux 0x%lx)",
+                     mask & STRIP_PM_MIC, (mask & STRIP_PM_VIRTUAL) >> 8, (mask & STRIP_PM_AUX) >> 16);
+        ApolloLogU(Ctx, "strips: D0 exit: StripMask 0x%02lx, Virtual 0x%02lx and Aux 0x%lx left running on DSP %lu for the next "
+                  "start (StripAdopt=1; the record names them, %lu plug-in(s) on the DSP): nothing sent", mask & STRIP_PM_MIC,
+                  (mask & STRIP_PM_VIRTUAL) >> 8, (mask & STRIP_PM_AUX) >> 16, s->Dsp, s->Cur.Plugins);
     }
     WdfWaitLockRelease(Ctx->DevLock);
     WdfWaitLockRelease(Ctx->StripLock);

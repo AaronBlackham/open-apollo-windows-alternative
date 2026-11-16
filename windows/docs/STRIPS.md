@@ -1733,7 +1733,8 @@ VIRTUAL 1's memspec: `0015000b 0009cf16 0009cef2 0009cf00 08fede80 0009cf01 08fe
 One list of slots: 0-7 Mic, 8-15 VIRTUAL 1-8; the plan mask Pm = StripMask | StripVirtualMask << 8. Every PREPARE
 (Mic first), then **one START** for all of them (SYNCH, span, span, route per strip, slot order), as 10.8: no strip runs
 while any strip's memory is written. 16 PREPARE buffers stay held until the START is taken (`XACT_SLOTS` 20), and the
-START of 16 strips is 64 entries (`XACT_ENTS_MAX` 64, `STRIP_PLAN_ENT_SLOTS`). A Pm of 0..0xFF gives exactly the
+START of 16 strips is 64 entries (`XACT_ENTS_MAX` 64, `STRIP_PLAN_ENT_SLOTS`; 24 and 80 since the aux-return strips,
+section 14, slots 16-19). A Pm of 0..0xFF gives exactly the
 Mic-only functions' words (strip-plan-test). The teardown stops every started slot (`SYNCH 0` at its synch), then the
 releases. The probe and the 48V resync stay Mic-only.
 
@@ -1808,3 +1809,140 @@ This driver sends the route word only as the strips' START and stage-8 words (th
 alike, and the Level for no input (the Mic strips work without it). If the Input Strip is Live (`apollo-diag strips`:
 taken, SYNCH sent) and record slot 18 stays at exact zero with a tone on playback slots 20-21, the 0x16 level on synch
 0x18 is the next thing to try.
+
+## 14. Aux-return Input Strips (Nov 16 2026)
+
+**Measured on the x8p.** The aux sends were right all along: `cues.c AuxSendCell` writes {input bus, param 3 (AUX 1) /
+4 (AUX 2), L/R} to the input's mixing DSP and DSP 0. Nothing reached the aux buses because the aux returns, DSP inputs
+0x10-0x13 (AUX 1 L, AUX 1 R, AUX 2 L, AUX 2 R), need an Input Strip, the same rule as the Virtual inputs (13: no strip
+on VIRTUAL 2 = exact zero). A throwaway build moved VIRTUAL 2's plain Input Strip (0x83E) to DSP input 0x10:
+
+- AUX 1 L's record slot (28) carried VIRTUAL 1's -40 dBFS tone at -43.0 dBFS when sent at 0 dB (-3 dB is the send's pan
+  law), and Mic 1's noise sent at +12 dB arrived as expected; AUX 1 R (slot 29) stayed exact zero: 0x11 had no strip.
+- With the return's owner forced to the strip DSP (DSP 1) and the return written as before ({bus 0x10, param 0, the
+  LEFT entry only}), that entry set only MON's left side; the right side still heard the 0x10 strip at the DSP's own
+  default coefficient. A strip that goes live on a DSP input joins the monitor mix at the DSP default, as VIRTUAL 1 did,
+  until its coefficients are written.
+- The DSP bus enable (`APOLLO_DSP_CMD_BUS_ENABLE`, unit value BusEnable) is not needed: it changed nothing.
+
+Code: `driver/strip_plan.h` ("[AuxStrips]"), `driver/strips.c`, `driver/strip_adopt.h` / `strip_record.h` (record
+version 3), `driver/monitor_plan.h` (`ApolloAuxReturnCells`, `ApolloAuxCueCells`), `driver/cues.c`
+(`ApolloCuesAuxStrips`), `driver/plugin.c` (ledger room, aux insert refusal).
+
+**The hardware run (Nov 16 2026, x8p) changed the design: the aux buses are MONO, a strip on each L return only.**
+This supersedes the stereo pair described in 14.1 and 14.3 below.
+
+- A mono Input Strip on a RIGHT return (0x11 or 0x13) put its output over **input 1's record slot** (slot 0 exact zero
+  with either one built; live with no aux strip, with 0x10 alone, with 0x12 alone) and never reached slots 29/31. The
+  SYNCH word names two inputs (`in2 << 16 | in1`, in2 0x20 = none): a stereo strip with in2 = the R input is unproven.
+  So the models allow 0x05 (`AuxAllowed`), and the x8p's default is **0x5** (AUX 1 and AUX 2, L inputs); the Twin X
+  stays 0 (not run there).
+- Cells with the L strip running: the return {L input, param 0, weight, weight} (both monitor sides); the aux-to-cue
+  sends {L input, cue param, L, R} with the pan law; sends INTO the aux the left entry only at the centre value whatever
+  their pan (upstream's default send write, `_write_send` without `--stereo-sends`). Never set or muted: 0.0.
+- Every strip that goes live (Mic, Virtual, aux) starts with the DSP's own default in every send cell (about -20.7 dB:
+  VIRTUAL 1 reached AUX 2 at -60.7 dBFS from a -40 tone with nothing set, and the AUX 1 return fed AUX 2 the same way).
+  `ApolloCuesBusMoved` now writes every cue and aux send the host never set as 0.0 on the new owner, and an aux return's
+  own aux sends always 0.0 (Console has no aux-to-aux sends).
+- Results with the default 0x5 after a warm rebuild: VIRTUAL 1 sent at 0 dB records -43.0 dBFS on AUX 1 (slot 28) and
+  AUX 2 (slot 30), nothing leaks into the other aux; return 0 dB puts -43.0 on MON L and R, -12 dB -54.9, mute the noise
+  floor; Mic 1 at +12 dB reaches AUX 1; every Mic input records as before (input 1 included); the two-insert plug-in
+  chain passes; 48/96 kHz rebuild the aux strips; nothing quarantined. Not checkable here: the aux-to-cue sends (no
+  record slot carries a cue; listen on the headphones).
+
+### 14.1 Registry and what it builds
+
+`StripAuxMask` (unit value id 21, after BusEnable; REG_DWORD, hex in the log), bits 0-3 = the Input Strip on DSP inputs
+0x10, 0x11, 0x12, 0x13. **0 on every model**; the x8p's built-in default is the one constant
+`APOLLO_DEF_STRIP_AUX_MASK_X8P` in `driver/apollo_unit.h` (0xF once the hardware run passes; ident-test checks it).
+Both the x8p and the Twin X take 0xF (`StripModelFor` `AuxAllowed`: monitor_plan.h has AUX 1-2 on both, and both
+record AUX1 L .. AUX2 R, 0x0201-0x0204, on slots 28-31); any other model none. It needs `StripsEnable=1` and follows
+`StripSteps` like the Mic and Virtual strips. With StripAuxMask 0 nothing changes anywhere: the same transactions,
+plan hash, record and coefficients as before (the golden digests, the pinned hash 0x209A8BDB, mon-plan-test's
+byte-for-byte checks of the old return writes).
+
+### 14.2 The strips: slots 16-19, one pass
+
+The same Input Strip as 13.2, word for word (`StripPlanPrepareInput`; the words depend on the address only), on slots
+16-19, synch 0x10 + k. Pm bit 16 + k; every PREPARE (Mic, then Virtual, then aux), then **one START** for all.
+`XACT_SLOTS` 24 (20 PREPAREs held + the START), `XACT_ENTS_MAX` / `STRIP_PLAN_ENT_SLOTS` 80 (a START of 20 strips).
+StripMask 0xFF + VIRTUAL 1 + aux 0xF is 13 PREPAREs and a START of 52 entries.
+
+**Placement.** The Input Strips are one area below the model's Mic room: Input Strip n is n places down, VIRTUAL n =
+n - 1 (as before), aux return k = 8 + k, right below VIRTUAL 8's fixed place. No Virtual strip moves when aux strips come
+or go; with every Virtual strip built it is upstream's packing of Input Strips 9-12. x8p (8 Mic strips):
+
+| Return | synch | hdr | m0 | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|---|---|---|
+| AUX 1 L | 0x10 | 0x9CDE0 | 0x9CDC2 | 0x08FEBE80 | 0x08FEBD80 | 0x08FEBC80 | 0x08FEBB80 |
+| AUX 1 R | 0x11 | 0x9CDBA | 0x9CD9C | 0x08FEBA80 | 0x08FEB980 | 0x08FEB880 | 0x08FEB780 |
+| AUX 2 L | 0x12 | 0x9CD94 | 0x9CD76 | 0x08FEB680 | 0x08FEB580 | 0x08FEB480 | 0x08FEB380 |
+| AUX 2 R | 0x13 | 0x9CD6E | 0x9CD50 | 0x08FEB280 | 0x08FEB180 | 0x08FEB080 | 0x08FEAF80 |
+
+`strip-plan-test --print-pm 0xf01ff` prints the whole pass.
+
+**Pool room** (`StripPlanRoomAux`): the Mic strips plus, with any aux strip, all eight Virtual places and the aux places
+up to the highest bit. Checked after the Virtual room at every pool read; a StripAuxMask that does not fit is refused
+whole (`strips: StripAuxMask 0x.. REFUSED: no room in pool p (code 8+p) ...; the aux-return strips are off, the Mic and
+Virtual strips go on`, GET_STRIPS `AuxLayoutWhy`). The plug-in ledger books the same room. `strip-plan-test --aux-room`:
+
+| Plan | pool 1 | pool 2 | pool 3 | free above the scratch (1 / 2 / 3) |
+|---|---|---|---|---|
+| x8p 8 Mic | 0x2A0 | 0x80 | 0x10080 | 0xA7F8 / 0x1F7E / 0xFED16A |
+| x8p 8 Mic + VIRTUAL 1 + aux 0xF | 0x468 | 0x80 | 0x13080 | the same |
+| x8p all 20 strips | 0x468 | 0x80 | 0x13080 | the same |
+| Twin X 2 Mic + VIRTUAL 1-4 + aux 0xF | 0x270 | 0x20 | 0x7020 | 0xA7F8 / 0x1F7E / 0xFED1AE |
+
+### 14.3 Going live: the bus owners and the return in the mix
+
+From stage 8 each started aux slot's bus moves to the strip DSP like any strip's (`BusOwner[16 + k]`,
+`ApolloCuesBusMoved`, the route word to every other DSP). Then, per aux return with a strip on either input,
+`ApolloCuesAuxStrips` (cues.c):
+
+- the return is mixed on the strip DSP: `ApolloCuesAuxOwner(aux, strip DSP)`, which re-sends what the host set;
+- its cells become a **stereo pair**, both inputs written, to the strip DSP and DSP 0: the monitor return {L input
+  0x10 / 0x12, param 0, left = the return weight, right 0.0} and {R input 0x11 / 0x13, param 0, left 0.0, right = the
+  weight}; each aux-to-cue send the same split with the pan law as a balance (left = the law's left weight on the L input,
+  right = its right weight on the R input; centred at 0 dB each side is 1.0). Muted, or never set by the host: 0.0 on both;
+- the moment they go live every cell (the return, and its send into each of the model's cues) is written explicitly,
+  the host's value or 0.0, so a new strip never plays at the DSP's default.
+
+When the strips are forgotten (teardown, D0 exit, rate change, taint, a new bring-up) the return goes back to DSP 0 and
+the single left-entry write. Below stage 8 the strips start but no bus moves (as for every strip).
+
+### 14.4 Warm starts
+
+A record whose plan mask has bits 16-19 is sealed as **version 3**; versions 1 and 2 keep their meaning and are read as
+before; the validator now takes mask bits up to 19 (nothing past). A build without aux strips (versions 1-2, nothing past
+bit 15) refuses a version 3 record (power cycle). Warm starts rebuild by default (StripWarmRebuild, 12): a record with
+aux strips is rebuilt the same way, its teardown stopping slots 16-19 too (SYNCH 0 at 0x10-0x13); a record without them
+and a start with them (or the reverse) is PLAN_DIFFERS / REBUILD; with StripWarmRebuild 0 the same plan is ADOPTED and the
+returns go live as after a build.
+
+### 14.5 Aux inserts
+
+`AuxInserts` (plugin.c, experimental, off) SYNCHes the same return pair with the same carrier. An aux insert on a return
+whose strips StripAuxMask builds is refused at CREATE and at START with `STATUS_RESOURCE_IN_USE` (0xC0000708) and the log
+line `plugins: an aux insert on AUX n refused ... StripAuxMask 0x.. builds the plain Input Strips on its return inputs`.
+
+### 14.6 GET_STRIPS version 5
+
+Appended after version 4 (`APOLLO_STRIPS_INFO_V4_SIZE` = offset of `AuxMask`): `AuxMask` (built), `AuxAsked`,
+`AuxLayoutWhy`, `AuxBus0` (0x10), per input k `AStripState`, `AStripStarted`, `AStripHeader`, `AStripAckMs`,
+`ABusOwner`, then `AuxReturnOwner[2]` (the return's DSP besides DSP 0) and `AuxReturnStereo` (bit a: the stereo pair).
+A version 4 caller's buffer gets its whole version 4 part, then 3 or 2 as before. `apollo-diag strips` prints the aux rows
+and each return's owner and layout.
+
+### 14.7 Tests and the hardware run
+
+strip-plan-test: slots, synchs and the plan mask; both models' masks against monitor_plan.h; AUX 1 L word by word; every
+aux strip at every stage against the port of `ua_strip_build_input` at its address and DSP input; the single START (52 and
+80 entries) and the pass order; the stream checks (no write after a SYNCH, own rows, link words); all blocks disjoint,
+inside the pools and the booked room (x8p 8 Mic + VIRTUAL 1 + aux 0xF, all 20, the Twin X); the refusal (codes 9 and 11);
+the hash (pinned unchanged with StripAuxMask 0); record versions 1-3; the decisions. mon-plan-test: the old single
+writes byte for byte without strips, the stereo pair, balance, mute and unset 0.0. plugin-plan-test: the ledger booking,
+the aux insert pairs. ident-test: the value. Hardware (not run): the coordinator's run, after `apollo-diag --unit x8p
+param StripAuxMask 0xF` and a restart of the unit: `strips` (AUX 1 L .. AUX 2 R taken, SYNCH sent, bus on DSP 1, both
+returns "stereo pair"), a -40 dBFS tone on playback slots 20/21 (VIRTUAL 1) with `aux 1 send v1 0`: record slots 28 and 29
+at about -43 dBFS (30/31 with `aux 2 send v1 0`), then `aux 1 return 0` / `-121` and MON (slots 26/27) left and right
+together.

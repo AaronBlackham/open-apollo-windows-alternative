@@ -23,7 +23,7 @@
 #define IOCTL_APOLLO_SET_PARAM          APOLLO_CTL(0x58, APOLLO_ADMIN)
 
 #define APOLLO_PARAMS_VERSION           1
-#define APOLLO_PARAMS_MAX               32      /* room; the driver has APOLLO_PARAM_COUNT (20 today) */
+#define APOLLO_PARAMS_MAX               32      /* room; the driver has APOLLO_PARAM_COUNT (22 today) */
 #define APOLLO_PARAM_NAME_LEN           24
 
 /* APOLLO_PARAM_ENTRY.Source: as the driver log's letters D U M G X */
