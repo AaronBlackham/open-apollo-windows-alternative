@@ -1,6 +1,6 @@
 /*
  * The few apollo.sys IOCTLs apollo-helper reads (idle-wait, check), copied from
- * include\apollo_ioctl.h (IOCTL versions 5-7). ioctl_check.cpp compiles against the payload's own
+ * include\apollo_ioctl.h (IOCTL version 5 on). ioctl_check.cpp compiles against the payload's own
  * apollo_ioctl.h and fails the build if any code, size or offset used here no longer matches the
  * driver being packaged. All are read-only USER IOCTLs: a normal or elevated GENERIC_READ handle
  * may send them, and a Twin X in observe mode answers them too.
@@ -77,7 +77,7 @@ typedef struct _HELPER_INFO {
     ULONG   OwnerDescInCount;
     ULONG   OwnerDescOutVersion;
     ULONG   OwnerDescOutCount;
-    ULONG   Reserved6[4];       /* version 7: ClockSrcsLive, BringupSteps, BringupFailStep, Reserved7 */
+    ULONG   Reserved6[4];       /* version 7: ClockSrcsLive, BringupSteps, BringupFailStep, BringupApplies */
 } HELPER_INFO;
 
 #define HELPER_INFO_V5_BYTES        ((ULONG)offsetof(HELPER_INFO, HwUidLo))

@@ -11,12 +11,14 @@
  */
 #pragma once
 
+#include <memory>
 #include <string>
 #include "..\..\include\apollo_params.h"
 
 namespace paramshost {
 
 using Post = void (*)(const std::string &Utf8Json);
+using corrhost::Q;
 
 static inline bool Owns(const std::wstring &Cmd)
 {
@@ -26,41 +28,34 @@ static inline bool Owns(const std::wstring &Cmd)
 static inline std::string StateMsg(const std::string &Id)
 {
     APOLLO_INFO info{};
-    APOLLO_PARAMS_INFO *p = new APOLLO_PARAMS_INFO{};
+    auto p = std::make_unique<APOLLO_PARAMS_INFO>();
     DWORD err = 0, ret = 0;
     HANDLE h = corrhost::OpenUnit(Id, info, err);
-    std::string j = "{\"type\":\"params\",\"unit\":" + corrhost::Q(Id);
+    std::string j = "{\"type\":\"params\",\"unit\":" + Q(Id);
 
     if (h == INVALID_HANDLE_VALUE) {
-        delete p;
         return j + ",\"present\":false,\"error\":" + std::to_string(err ? err : ERROR_FILE_NOT_FOUND) + "}";
     }
-    BOOL ok = DeviceIoControl(h, IOCTL_APOLLO_GET_PARAMS, nullptr, 0, p, sizeof(*p), &ret, nullptr);
+    BOOL ok = DeviceIoControl(h, IOCTL_APOLLO_GET_PARAMS, nullptr, 0, p.get(), sizeof(*p), &ret, nullptr);
     err = ok ? 0 : GetLastError();
     CloseHandle(h);
     if (!ok || ret < sizeof(*p) || p->Version != APOLLO_PARAMS_VERSION) {
-        delete p;
         return j + ",\"present\":true,\"error\":" + std::to_string(ok ? ERROR_INVALID_DATA : err) +
-               ",\"detail\":" + corrhost::Q(ok ? "driver and app are out of step" : corrhost::ErrText(err)) + "}";
+               ",\"detail\":" + Q(ok ? "driver and app are out of step" : corrhost::ErrText(err)) + "}";
     }
     static const char src[] = "DUMGX";
-    char key[sizeof(p->UnitKey) + 1] = {};
-    memcpy(key, p->UnitKey, sizeof(p->UnitKey));
-    j += ",\"present\":true,\"key\":" + corrhost::Q(key) + ",\"resolved\":" + (p->Resolved ? "true" : "false") +
-         ",\"entries\":[";
+    j += ",\"present\":true,\"key\":" + Q(corrhost::Text(p->UnitKey, sizeof(p->UnitKey))) + ",\"resolved\":" +
+         (p->Resolved ? "true" : "false") + ",\"entries\":[";
     for (ULONG i = 0; i < p->Count && i < APOLLO_PARAMS_MAX; i++) {
         const APOLLO_PARAM_ENTRY &e = p->Entry[i];
-        char name[APOLLO_PARAM_NAME_LEN + 1] = {};
-        memcpy(name, e.Name, APOLLO_PARAM_NAME_LEN);
         if (i) j += ",";
-        j += "{\"name\":" + corrhost::Q(name) + ",\"value\":" + std::to_string(e.Value) +
+        j += "{\"name\":" + Q(corrhost::Text(e.Name, APOLLO_PARAM_NAME_LEN)) + ",\"value\":" + std::to_string(e.Value) +
              ",\"default\":" + std::to_string(e.Default) +
              ",\"stored\":" + ((e.Flags & APOLLO_PARAM_F_STORED) ? std::to_string(e.Stored) : std::string("null")) +
              ",\"src\":\"" + std::string(1, e.Source < 5 ? src[e.Source] : '?') + "\"" +
              ",\"hex\":" + ((e.Flags & APOLLO_PARAM_F_HEX) ? "true" : "false") +
              ",\"pending\":" + ((e.Flags & APOLLO_PARAM_F_PENDING) ? "true" : "false") + "}";
     }
-    delete p;
     return j + "]}";
 }
 

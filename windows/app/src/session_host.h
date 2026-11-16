@@ -1,6 +1,6 @@
 /*
  * session_host.h - [Sess] Apollo Control's sessions on disk (docs/apollo-control-units.md 1.11), included by main.cpp
- * after its helpers (Widen, Narrow, KnownFolder) and routed from HandleUiJson ("session-*").
+ * after its helpers (Widen, Narrow, KnownFolder, ReadAll, WriteAtomicErr) and routed from HandleUiJson ("session-*").
  *
  *   session-list                      -> {"type":"sessions","dir":..,"list":[{name,file,saved,version,units,inserts,bad}],
  *                                         "last":{file,saved}|null}
@@ -41,19 +41,7 @@ static std::string g_dlgJson;                   /* UI thread: an export / import
 
 static inline bool Owns(const std::wstring &cmd) { return cmd.rfind(L"session-", 0) == 0; }
 
-static inline std::string Q(const std::string &s)
-{
-    std::string o = "\"";
-    for (unsigned char c : s) {
-        if (c == '"' || c == '\\') { o += '\\'; o += (char)c; }
-        else if (c == '\n') o += "\\n";
-        else if (c == '\r') o += "\\r";
-        else if (c == '\t') o += "\\t";
-        else if (c < 0x20) { char b[8]; snprintf(b, sizeof(b), "\\u%04x", c); o += b; }
-        else o += (char)c;
-    }
-    return o + "\"";
-}
+using corrhost::Q;
 
 static inline std::wstring Dir()
 {
@@ -90,37 +78,17 @@ static inline bool PlainFile(const std::wstring &f)
            f.size() > 5 && _wcsicmp(f.c_str() + f.size() - 5, L".json") == 0;
 }
 
+/* A session file (not empty, at most kMaxBytes), less a BOM from an editor. */
 static inline bool ReadUtf8(const std::wstring &path, std::string &out)
 {
-    out.clear();
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER size{};
-    bool ok = GetFileSizeEx(f, &size) && size.QuadPart > 0 && (ULONGLONG)size.QuadPart <= kMaxBytes;
-    if (ok) {
-        out.resize((size_t)size.QuadPart);
-        DWORD got = 0;
-        ok = ReadFile(f, out.data(), (DWORD)out.size(), &got, nullptr) && got == out.size();
+    if (!ReadAll(path, out, kMaxBytes) || out.empty()) {
+        out.clear();
+        return false;
     }
-    CloseHandle(f);
-    if (ok && out.size() >= 3 && (unsigned char)out[0] == 0xEF && (unsigned char)out[1] == 0xBB && (unsigned char)out[2] == 0xBF) {
-        out.erase(0, 3);                                /* a BOM from an editor */
+    if (out.size() >= 3 && (unsigned char)out[0] == 0xEF && (unsigned char)out[1] == 0xBB && (unsigned char)out[2] == 0xBF) {
+        out.erase(0, 3);
     }
-    if (!ok) out.clear();
-    return ok;
-}
-
-static inline DWORD WriteUtf8(const std::wstring &path, const std::string &data)
-{
-    std::wstring tmp = path + L".tmp";
-    HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return GetLastError();
-    DWORD put = 0, err = 0;
-    if (!WriteFile(f, data.data(), (DWORD)data.size(), &put, nullptr) || put != data.size() || !FlushFileBuffers(f)) err = GetLastError();
-    CloseHandle(f);
-    if (err == 0 && !MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) err = GetLastError();
-    if (err != 0) DeleteFileW(tmp.c_str());
-    return err;
+    return true;
 }
 
 /* The text is one session object: the format word and an integer version. */
@@ -139,9 +107,8 @@ static inline std::string Err(DWORD e)
 static inline std::string Result(const char *op, bool ok, const std::string &name, const std::wstring &file, const std::string &why,
                                  bool cancelled = false)
 {
-    std::wstring f = file;
     return std::string("{\"type\":\"session-result\",\"op\":\"") + op + "\",\"ok\":" + (ok ? "true" : "false") +
-           ",\"cancelled\":" + (cancelled ? "true" : "false") + ",\"name\":" + Q(name) + ",\"file\":" + Q(Narrow(f)) +
+           ",\"cancelled\":" + (cancelled ? "true" : "false") + ",\"name\":" + Q(name) + ",\"file\":" + Q(Narrow(file)) +
            ",\"why\":" + Q(why) + "}";
 }
 
@@ -252,7 +219,7 @@ static inline void Handle(const std::string &json, HWND hwnd, UINT dlgMsg, Post 
         std::wstring file = autosave ? std::wstring(kLastFile) : FileOf(name);
         if (!autosave && name.empty()) { post(Result(op, false, name, file, "a session needs a name")); return; }
         if (!s || !IsSession(*s)) { post(Result(op, false, name, file, "not a session")); return; }
-        DWORD e = WriteUtf8(Dir() + L"\\" + file, json.substr(s->begin, s->end - s->begin) + "\n");
+        DWORD e = WriteAtomicErr(Dir() + L"\\" + file, json.substr(s->begin, s->end - s->begin) + "\n");
         post(Result(op, e == 0, name, file, e ? Err(e) : std::string()));
         if (!autosave) post(ListJson());
     } else if (cmd == "session-load") {
@@ -336,7 +303,7 @@ static inline void RunDialog(HWND owner, Post post)
         aggjson::Parser sp(text);
         if (!sp.Parse(sv) || !IsSession(sv)) { post(Result(op, false, name, file, "not an Apollo Control session file")); return; }
     }
-    DWORD e = WriteUtf8(file, text);
+    DWORD e = WriteAtomicErr(file, text);
     post(Result(op, e == 0, name, file, e ? Err(e) : std::string()));
 }
 

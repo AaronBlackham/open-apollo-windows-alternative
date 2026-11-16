@@ -16,8 +16,9 @@
  *                                                     "error","detail"}
  *
  * The unit id is the one the "units" message carries: the driver's unit key (HW_UID as 16 hex digits,
- * or SN<serial>). Kept out of main.cpp so the plug-in UI work and this one merge without touching
- * each other; main.cpp only routes "corr-*" here (one marked hunk).
+ * or SN<serial>). main.cpp routes "corr-*" here. The small helpers below (Q, Bool, Text, KeyOf,
+ * OpenUnit, UnitIoctl, ErrText) are shared by rate_host.h, clock_host.h, endpoints_host.h,
+ * params_host.h and diag_host.h, which main.cpp includes after this file.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -37,13 +38,27 @@ static inline bool Owns(const std::wstring &Cmd)
 
 static inline std::string Q(const std::string &s)
 {
-    std::string o = "\"";
-    for (unsigned char c : s) {
-        if (c == '"' || c == '\\') { o += '\\'; o += (char)c; }
-        else if (c < 0x20) { char b[8]; snprintf(b, sizeof(b), "\\u%04x", c); o += b; }
-        else o += (char)c;
+    return aggjson::Quote(s);
+}
+
+static inline std::string Bool(bool b)
+{
+    return b ? "true" : "false";
+}
+
+/* A driver text field (CHAR[Cap], NUL-terminated unless full). */
+static inline std::string Text(const CHAR *s, size_t Cap)
+{
+    return std::string(s, strnlen(s, Cap));
+}
+
+/* A unit's id from its GET_INFO: the driver's unit key, else SN<serial>. */
+static inline std::string KeyOf(const APOLLO_INFO &Info, DWORD Bytes)
+{
+    if (ApolloInfoHasUnit(&Info, Bytes) && Info.UnitKey[0] != 0 && Info.UnitKey[sizeof(Info.UnitKey) - 1] == 0) {
+        return Info.UnitKey;
     }
-    return o + "\"";
+    return "SN" + Text(Info.Serial, sizeof(Info.Serial));
 }
 
 /* The unit with this id: a read-only handle and its GET_INFO, or INVALID_HANDLE_VALUE + a Win32 error. */
@@ -55,17 +70,7 @@ static inline HANDLE OpenUnit(const std::string &Id, APOLLO_INFO &Info, DWORD &E
     Err = ERROR_FILE_NOT_FOUND;
     for (int i = 0; i < n; i++) {
         const APOLLO_UNIT_ENTRY &e = units[(size_t)i];
-        std::string key;
-        if (e.Error != 0) {
-            continue;
-        }
-        if (ApolloInfoHasUnit(&e.Info, e.InfoBytes) && e.Info.UnitKey[0] != 0 &&
-            e.Info.UnitKey[sizeof(e.Info.UnitKey) - 1] == 0) {
-            key = e.Info.UnitKey;
-        } else {
-            key = "SN" + std::string(e.Info.Serial, strnlen(e.Info.Serial, sizeof(e.Info.Serial)));
-        }
-        if (key != Id) {
+        if (e.Error != 0 || KeyOf(e.Info, e.InfoBytes) != Id) {
             continue;
         }
         HANDLE h = CreateFileW(e.Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
@@ -79,6 +84,23 @@ static inline HANDLE OpenUnit(const std::string &Id, APOLLO_INFO &Info, DWORD &E
         return h;
     }
     return INVALID_HANDLE_VALUE;
+}
+
+/* One IOCTL on a short-lived handle of the unit: 0 or the Win32 error (ERROR_FILE_NOT_FOUND: no such unit). */
+static inline DWORD UnitIoctl(const std::string &Id, DWORD Code, void *In, DWORD InLen, void *Out, DWORD OutLen, DWORD &Ret)
+{
+    APOLLO_INFO info{};
+    DWORD err = 0;
+    HANDLE h = OpenUnit(Id, info, err);
+
+    Ret = 0;
+    if (h == INVALID_HANDLE_VALUE) {
+        return err ? err : ERROR_FILE_NOT_FOUND;
+    }
+    BOOL ok = DeviceIoControl(h, Code, In, InLen, Out, OutLen, &Ret, nullptr);
+    err = ok ? 0 : GetLastError();
+    CloseHandle(h);
+    return err;
 }
 
 static inline std::string ErrText(DWORD e)

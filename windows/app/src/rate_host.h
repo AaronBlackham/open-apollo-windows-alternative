@@ -1,9 +1,8 @@
 /*
  * rate_host.h - [Rate] Apollo Control's host commands for the sample rate (include\apollo_rate.h; the
  * UI contract is docs\apollo-control-units.md 1.6). The page posts {"cmd":"rate-...", ...} as a string
- * (like the agg-* and corr-* commands) and gets JSON back. Kept out of main.cpp, which only routes
- * "rate-*" here and joins the worker at exit (two marked hunks), so the UI rework merges without
- * touching it.
+ * (like the agg-* and corr-* commands) and gets JSON back. main.cpp routes "rate-*" here and joins
+ * the worker at exit.
  *
  *   rate-get {unit?}                  -> one {"type":"rate",...} per unit (every unit on apollo.sys
  *                                        when "unit" is left out)
@@ -38,10 +37,8 @@ static inline bool Owns(const std::wstring &Cmd)
     return Cmd.rfind(L"rate-", 0) == 0;
 }
 
-static inline std::string Q(const std::string &s)
-{
-    return corrhost::Q(s);
-}
+using corrhost::Q;
+using corrhost::Bool;
 
 static inline std::string Rates(ULONG Mask)
 {
@@ -76,14 +73,9 @@ static inline const char *Code(ULONG e)
     }
 }
 
-static inline std::string Bool(bool b)
-{
-    return b ? "true" : "false";
-}
-
 static inline std::string WhyOf(const APOLLO_RATE_INFO &r)
 {
-    return std::string(r.Why, strnlen(r.Why, sizeof(r.Why)));
+    return corrhost::Text(r.Why, sizeof(r.Why));
 }
 
 /* {"type":"rate",...} from a GET_RATE / SET_RATE answer. */
@@ -125,19 +117,11 @@ static inline std::string Absent(const std::string &Id, DWORD Err)
 
 static inline std::string StateMsg(const std::string &Id)
 {
-    APOLLO_INFO info{};
     APOLLO_RATE_INFO r{};
-    DWORD err = 0, ret = 0;
-    HANDLE h = corrhost::OpenUnit(Id, info, err);
+    DWORD ret = 0, err = corrhost::UnitIoctl(Id, IOCTL_APOLLO_GET_RATE, nullptr, 0, &r, sizeof(r), ret);
 
-    if (h == INVALID_HANDLE_VALUE) {
-        return Absent(Id, err ? err : ERROR_FILE_NOT_FOUND);
-    }
-    BOOL ok = DeviceIoControl(h, IOCTL_APOLLO_GET_RATE, nullptr, 0, &r, sizeof(r), &ret, nullptr);
-    err = ok ? 0 : GetLastError();
-    CloseHandle(h);
-    if (!ok || ret < sizeof(r) || r.Version != APOLLO_RATE_VERSION) {
-        return Absent(Id, ok ? ERROR_INVALID_DATA : err);
+    if (err != 0 || ret < sizeof(r) || r.Version != APOLLO_RATE_VERSION) {
+        return Absent(Id, err ? err : ERROR_INVALID_DATA);
     }
     return InfoJson(Id, r);
 }
@@ -150,14 +134,7 @@ static inline std::vector<std::string> UnitIds()
     int n = ApolloListUnits(units.data(), APOLLO_SELECT_MAX, nullptr, 0);
 
     for (int i = 0; i < n; i++) {
-        const APOLLO_UNIT_ENTRY &e = units[(size_t)i];
-        if (e.Error != 0) continue;
-        if (ApolloInfoHasUnit(&e.Info, e.InfoBytes) && e.Info.UnitKey[0] != 0 &&
-            e.Info.UnitKey[sizeof(e.Info.UnitKey) - 1] == 0) {
-            ids.push_back(e.Info.UnitKey);
-        } else {
-            ids.push_back("SN" + std::string(e.Info.Serial, strnlen(e.Info.Serial, sizeof(e.Info.Serial))));
-        }
+        if (units[(size_t)i].Error == 0) ids.push_back(corrhost::KeyOf(units[(size_t)i].Info, units[(size_t)i].InfoBytes));
     }
     return ids;
 }

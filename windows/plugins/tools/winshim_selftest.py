@@ -39,6 +39,7 @@ with tempfile.TemporaryDirectory() as tmp:
             f'open({marker.as_posix()!r},\\"w\\").write(str(os.getpid()));time.sleep(120)"]);time.sleep(120)')
     proc = subprocess.Popen([sys.executable, '-c', code], **winshim.new_group())
     group = winshim.Group(proc)
+    job = group.job is not None                     # read now: close() below sets it to None
     for _ in range(100):
         if marker.exists() and marker.read_text():
             break
@@ -46,7 +47,7 @@ with tempfile.TemporaryDirectory() as tmp:
     gpid = int(marker.read_text())
     group.kill(); proc.wait(); group.close(); time.sleep(0.5)
     alive = str(gpid) in subprocess.run(['tasklist', '/FI', f'PID eq {gpid}'], capture_output=True, text=True).stdout
-    print(('FAIL' if alive else 'PASS') + f'  Group.kill() ended the worker and its grandchild (job: {group.job is None})')
+    print(('FAIL' if alive else 'PASS') + f'  Group.kill() ended the worker and its grandchild (job: {job})')
     ok &= not alive
 print('all pass' if ok else 'FAILURES')
 sys.exit(0 if ok else 1)

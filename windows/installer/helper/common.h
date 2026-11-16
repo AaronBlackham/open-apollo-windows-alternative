@@ -46,22 +46,33 @@
 #define ENDPOINT_TAG_AGG    L"(Apollo)"
 #define ENDPOINT_TAG_UA     L"(Universal Audio Thunderbolt"
 
-/* ---- output (main.cpp) ---- */
+/* ---- output and small shared helpers (main.cpp) ---- */
 void Out(const wchar_t *fmt, ...);          /* stdout, UTF-8 when redirected */
 void Err(const wchar_t *fmt, ...);          /* stderr */
-void OutRaw(const std::wstring &s);
 std::wstring Fmt(const wchar_t *fmt, ...);
 std::wstring ErrText(DWORD err);            /* "message (0x....)" */
 bool IsElevated();
 bool RequireElevated(const wchar_t *what);  /* prints and returns false when not elevated */
-std::wstring ExeDir();
 std::wstring Lower(std::wstring s);
 bool ContainsI(const std::wstring &hay, const std::wstring &needle);
 bool EqualsI(const std::wstring &a, const std::wstring &b);
-std::wstring JsonStr(const std::wstring &s); /* quoted, escaped, ASCII-only */
+bool InListI(const std::vector<std::wstring> &list, const std::wstring &s);
 bool ReadFileBytes(const std::wstring &path, std::vector<BYTE> &data);
-std::string ToUtf8(const std::wstring &s);
-std::wstring FromUtf8(const std::string &s);
+std::vector<std::wstring> TextLines(const std::vector<BYTE> &utf8);    /* split at \n, a trailing \r dropped */
+bool WriteFileUtf8(const std::wstring &path, const std::wstring &text); /* false: GetLastError() says why */
+std::wstring ProcessPath(DWORD pid);        /* full image path, "" if unreadable */
+wchar_t AskKey();                           /* first non-blank key typed, lower case; '\n' = Enter, 'q' = no console */
+void *NtdllProc(const char *name);          /* an ntdll export, nullptr if missing */
+typedef LONG (WINAPI *NtQuerySystemInformationFn)(ULONG, PVOID, ULONG, PULONG);
+
+/* COM: release and clear. */
+template <class T> void Release(T *&p)
+{
+    if (p != nullptr) {
+        p->Release();
+        p = nullptr;
+    }
+}
 
 /* ---- devices and driver packages (pnp.cpp) ---- */
 struct Package {
@@ -79,13 +90,13 @@ struct ApolloInterface {
 };
 
 std::vector<Device> FindUaDevices(bool includePhantoms);
-std::wstring DeviceLabel(const Device &d);  /* "Apollo Twin X (PCI\...\...)" */
-std::vector<Package> FindApolloPackages();
-std::vector<Package> FindUaPackages();      /* uad2pcie.inf from Universal Audio, any signer */
+/* One pass over the driver store: our apollo.inf packages and UA's uad2pcie.inf ones (any signer).
+   Either list may be null. */
+void ScanDriverStore(std::vector<Package> *apollo, std::vector<Package> *ua);
+std::vector<Package> FindUaPackages();      /* ScanDriverStore's UA list alone */
 /* UA's package for this exact hardware ID: signed by Microsoft, lists the ID; the newest. */
 bool FindUaPackageFor(const std::vector<Package> &uaPackages, const std::wstring &hwid, Package &out);
 std::vector<ApolloInterface> FindApolloInterfaces();
-bool ProblemNeedsRestart(ULONG problem);
 std::wstring LoadedApolloImage();           /* the loaded apollo.sys's path, "" if not loaded */
 int CmdBind(const std::wstring &inf, const std::vector<UnitKind> &units, bool stageOnly);
 int CmdUnbind(const std::wstring &unit);    /* "" = every unit (uninstall), else x8p or twinx */
@@ -107,7 +118,6 @@ int CmdDefaultsSave(const std::wstring &file);
 int CmdDefaultsRestore(const std::wstring &file, int passes);
 /* Waits until nothing uses any of these units (see audio.cpp for what counts). */
 int CmdIdleWait(int seconds, bool interactive, const std::vector<UnitKind> &units);
-std::vector<std::wstring> ApolloBusyReasons(const std::vector<UnitKind> &units);
 
 /* ---- system state, certificates, registry (sys.cpp) ---- */
 std::wstring SecureBootState();             /* on, off, unsupported, unknown */

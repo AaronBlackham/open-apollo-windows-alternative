@@ -97,7 +97,7 @@ static __inline int ApolloSerialAlnum(unsigned char C)
 
 /*
  * The valid part of the serial. The x8p's 16 bytes hold 14 digits and then two bytes that are
- * not characters (the driver used to show them as "22532017106180??"). The serial is the text
+ * not characters (the driver used to show them as "20000000000001??"). The serial is the text
  * up to the first byte that is not printable ASCII (NUL, control, 0x7F and up, space), without
  * trailing punctuation (so a literal '?' fill goes too). Out gets 17 bytes, NUL padded.
  */

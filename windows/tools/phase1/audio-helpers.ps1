@@ -1,4 +1,4 @@
-# Windows audio helpers for install.ps1 / revert.ps1. Dot-source it:  . (Join-Path $PSScriptRoot 'audio-helpers.ps1')
+# Windows audio helpers for install.ps1, revert*.ps1 and step-*.ps1. Dot-source it:  . (Join-Path $PSScriptRoot 'audio-helpers.ps1')
 # PowerShell 5.1, ASCII only. Core Audio through COM interop (C# 5, compiled once per session by Add-Type).
 #   Get-AudioEndpoints                 active playback (Flow 0) and recording (Flow 1) endpoints
 #   Get-AudioDefaults                  default endpoint per flow and role (Console, Multimedia, Communications)
@@ -303,10 +303,9 @@ function Restore-AudioDefaults($saved) {
     }
 }
 
-# -Filter: endpoint name text of one unit. revert-unit.ps1 passes '(Apollo Twin X'.
-# [G2] '(Apollo x8p' without the closing parenthesis: Windows named the endpoints
-# "MON L/R (Apollo x8p (open driver, test build))", which '(Apollo x8p)' never matched.
-# [Endpoints] Default '(Apollo': every Apollo endpoint, "(Apollo x8p)", "(Apollo Twin X)" and the combined
+# -Filter: endpoint name text of one unit, without the closing parenthesis (Windows has named them e.g.
+# "MON L/R (Apollo x8p (open driver, test build))"). revert-unit.ps1 passes '(Apollo Twin X'.
+# Default '(Apollo': every Apollo endpoint, "(Apollo x8p)", "(Apollo Twin X)" and the combined
 # set's "(Apollo)" (the x8p hosts it, so an app on it holds the x8p too).
 function Get-ApolloAudioSessions([string]$Filter = '(Apollo') {
     foreach ($s in [AviumAudio.Audio]::ActiveSessions($Filter)) {

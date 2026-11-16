@@ -8,14 +8,12 @@
  */
 #include "common.h"
 #include "apollo_ioctl_min.h"
-#include <cfgmgr32.h>
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <propidl.h>
 #include <tlhelp32.h>
 #include <stddef.h>
 #include <string.h>
-#include <wctype.h>
 
 /* PKEY_Device_FriendlyName, defined here so no other header needs INITGUID. */
 static const PROPERTYKEY kFriendlyName = {
@@ -42,14 +40,7 @@ static const CLSID kPolicyConfigClient =
 
 static const wchar_t *kFlowNames[] = { L"playback", L"recording" };
 static const wchar_t *kRoleNames[] = { L"Console", L"Multimedia", L"Communications" };
-
-template <class T> static void Release(T *&p)
-{
-    if (p != nullptr) {
-        p->Release();
-        p = nullptr;
-    }
-}
+static const wchar_t kSavedHeader[] = L"apollo-helper audio defaults v1";
 
 struct Endpoint {
     int          Flow;
@@ -92,10 +83,9 @@ static std::wstring DeviceId(IMMDevice *d)
     return s;
 }
 
-/* Active playback and recording endpoints. */
-static std::vector<Endpoint> ActiveEndpoints(IMMDeviceEnumerator *en)
+/* fn(flow, device) for every active playback (flow 0) and recording (flow 1) endpoint. */
+template <class Fn> static void ForEachActiveEndpoint(IMMDeviceEnumerator *en, Fn fn)
 {
-    std::vector<Endpoint> r;
     for (int flow = 0; flow < 2; flow++) {
         IMMDeviceCollection *col = nullptr;
         UINT n = 0;
@@ -105,13 +95,19 @@ static std::vector<Endpoint> ActiveEndpoints(IMMDeviceEnumerator *en)
             for (UINT i = 0; i < n; i++) {
                 IMMDevice *d = nullptr;
                 if (SUCCEEDED(col->Item(i, &d)) && d != nullptr) {
-                    r.push_back({ flow, DeviceId(d), DeviceName(d) });
+                    fn(flow, d);
                     d->Release();
                 }
             }
         }
         col->Release();
     }
+}
+
+static std::vector<Endpoint> ActiveEndpoints(IMMDeviceEnumerator *en)
+{
+    std::vector<Endpoint> r;
+    ForEachActiveEndpoint(en, [&](int flow, IMMDevice *d) { r.push_back({ flow, DeviceId(d), DeviceName(d) }); });
     return r;
 }
 
@@ -146,7 +142,7 @@ int CmdDefaultsSave(const std::wstring &file)
         return EXIT_ERROR;
     }
     std::vector<Endpoint> eps = ActiveEndpoints(en);
-    std::wstring text = L"apollo-helper audio defaults v1\n";
+    std::wstring text = std::wstring(kSavedHeader) + L"\n";
     Out(L"Default audio devices now:");
     for (int flow = 0; flow < 2; flow++) {
         for (int role = 0; role < 3; role++) {
@@ -158,17 +154,8 @@ int CmdDefaultsSave(const std::wstring &file)
     }
     en->Release();
 
-    std::string u = ToUtf8(text);
-    HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    DWORD done = 0;
-    if (h == INVALID_HANDLE_VALUE) {
+    if (!WriteFileUtf8(file, text)) {
         Err(L"Cannot write %s: %s", file.c_str(), ErrText(GetLastError()).c_str());
-        return EXIT_ERROR;
-    }
-    BOOL ok = WriteFile(h, u.data(), (DWORD)u.size(), &done, nullptr);
-    CloseHandle(h);
-    if (!ok || done != u.size()) {
-        Err(L"Cannot write %s", file.c_str());
         return EXIT_ERROR;
     }
     return EXIT_OK;
@@ -186,17 +173,10 @@ static bool LoadSaved(const std::wstring &file, std::vector<Saved> &out)
     std::vector<BYTE> data;
     if (!ReadFileBytes(file, data))
         return false;
-    std::wstring text = FromUtf8(std::string(data.begin(), data.end()));
-    size_t pos = 0;
     bool header = false;
-    while (pos < text.size()) {
-        size_t eol = text.find(L'\n', pos);
-        std::wstring line = text.substr(pos, eol == std::wstring::npos ? std::wstring::npos : eol - pos);
-        pos = eol == std::wstring::npos ? text.size() : eol + 1;
-        if (!line.empty() && line.back() == L'\r')
-            line.pop_back();
+    for (auto &line : TextLines(data)) {
         if (!header) {
-            header = line == L"apollo-helper audio defaults v1";
+            header = line == kSavedHeader;
             if (!header)
                 return false;
             continue;
@@ -288,22 +268,13 @@ int CmdDefaultsRestore(const std::wstring &file, int passes)
 /* idle-wait                                                           */
 /* ------------------------------------------------------------------ */
 
+/* The image's file name, "?" if unreadable. */
 static std::wstring ProcessName(DWORD pid)
 {
-    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (h == nullptr)
+    std::wstring p = ProcessPath(pid);
+    if (p.empty())
         return L"?";
-    wchar_t buf[MAX_PATH * 2];
-    DWORD n = MAX_PATH * 2;
-    std::wstring r = L"?";
-    if (QueryFullProcessImageNameW(h, 0, buf, &n)) {
-        r.assign(buf, n);
-        size_t s = r.find_last_of(L'\\');
-        if (s != std::wstring::npos)
-            r = r.substr(s + 1);
-    }
-    CloseHandle(h);
-    return r;
+    return p.substr(p.find_last_of(L'\\') + 1);
 }
 
 /* "the Apollo x8p and the Apollo Twin X" */
@@ -369,8 +340,8 @@ static bool InterfaceUnitByDevice(const ApolloInterface &a, const std::vector<De
     return false;
 }
 
-/* The same from the driver's own GET_INFO DeviceType; an x8p if even that cannot tell (counted,
-   as before there was a second unit). */
+/* The same from the driver's own GET_INFO DeviceType; an x8p if even that cannot tell (so it
+   still counts). */
 static UnitKind InterfaceUnitByDriver(HANDLE h)
 {
     HELPER_INFO info;
@@ -422,13 +393,10 @@ DriverUnitInfo QueryDriverUnit(const std::wstring &instanceId)
 /* ACX streams and the ASIO client, from the driver itself (USER IOCTLs), on the interface of every
    unit being switched that is on our driver now. A unit that is not being switched is not opened
    at all (audio-helpers.ps1 [G2]: --unit). */
-static void DriverReasons(const std::vector<UnitKind> &units, std::vector<std::wstring> &why)
+static void DriverReasons(const std::vector<UnitKind> &units, const std::vector<Device> &present,
+                          std::vector<std::wstring> &why)
 {
-    std::vector<ApolloInterface> ifs = FindApolloInterfaces();
-    if (ifs.empty())
-        return;
-    std::vector<Device> present = FindUaDevices(false);
-    for (auto &a : ifs) {
+    for (auto &a : FindApolloInterfaces()) {
         UnitKind kind = UNIT_OTHER;
         bool known = InterfaceUnitByDevice(a, present, kind);
         if (known && !KindIn(units, kind))
@@ -445,26 +413,23 @@ static void DriverReasons(const std::vector<UnitKind> &units, std::vector<std::w
             }
         }
         const wchar_t *name = UnitKindName(kind);
-        HELPER_ENDPOINTS *e = (HELPER_ENDPOINTS *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(HELPER_ENDPOINTS));
+        HELPER_ENDPOINTS e = {};
         DWORD ret = 0;
-        if (e != nullptr &&
-            DeviceIoControl(h, HELPER_IOCTL_GET_ENDPOINTS, nullptr, 0, e, sizeof(*e), &ret, nullptr) &&
+        if (DeviceIoControl(h, HELPER_IOCTL_GET_ENDPOINTS, nullptr, 0, &e, sizeof(e), &ret, nullptr) &&
             ret >= offsetof(HELPER_ENDPOINTS, Endpoint)) {
-            ULONG rows = e->Count < HELPER_ENDPOINTS_MAX ? e->Count : HELPER_ENDPOINTS_MAX;
+            ULONG rows = e.Count < HELPER_ENDPOINTS_MAX ? e.Count : HELPER_ENDPOINTS_MAX;
             ULONG running = 0;
             for (ULONG i = 0; i < rows; i++) {
                 if (ret >= offsetof(HELPER_ENDPOINTS, Endpoint) + (i + 1) * sizeof(HELPER_ENDPOINT_INFO) &&
-                    (e->Endpoint[i].Flags & HELPER_EP_FLAG_RUNNING))
+                    (e.Endpoint[i].Flags & HELPER_EP_FLAG_RUNNING))
                     running++;
             }
             if (running > 0)
                 why.push_back(Fmt(L"%lu Windows audio stream(s) RUNNING on the %s (Windows refuses to remove the "
                                   L"driver under them)", running, name));
-            else if (e->Prepared > 0)
-                why.push_back(Fmt(L"%lu Windows audio stream(s) open (paused) on the %s", e->Prepared, name));
+            else if (e.Prepared > 0)
+                why.push_back(Fmt(L"%lu Windows audio stream(s) open (paused) on the %s", e.Prepared, name));
         }
-        if (e != nullptr)
-            HeapFree(GetProcessHeap(), 0, e);
 
         HELPER_ENGINE_STATS s = {};
         ret = 0;
@@ -482,7 +447,7 @@ static void DriverReasons(const std::vector<UnitKind> &units, std::vector<std::w
 /* Which endpoint names belong to the units being switched: "(Apollo x8p", "(Apollo Twin X", the
    combined set's "(Apollo)" (both units stream in it), and UA's "(Universal Audio Thunderbolt"
    while one of them is still on UA's driver (UA's endpoints do not say which unit they are). */
-static std::vector<std::wstring> EndpointTags(const std::vector<UnitKind> &units)
+static std::vector<std::wstring> EndpointTags(const std::vector<UnitKind> &units, const std::vector<Device> &present)
 {
     std::vector<std::wstring> tags;
     if (units.empty())
@@ -492,7 +457,7 @@ static std::vector<std::wstring> EndpointTags(const std::vector<UnitKind> &units
     if (KindIn(units, UNIT_TWINX))
         tags.push_back(ENDPOINT_TAG_TWINX);
     tags.push_back(ENDPOINT_TAG_AGG);
-    for (auto &d : FindUaDevices(false)) {
+    for (auto &d : present) {
         if (KindIn(units, d.Kind) && d.Owner() == OWNER_UA) {
             tags.push_back(ENDPOINT_TAG_UA);
             break;
@@ -502,71 +467,61 @@ static std::vector<std::wstring> EndpointTags(const std::vector<UnitKind> &units
 }
 
 /* Active audio sessions on those endpoints. */
-static void SessionReasons(const std::vector<UnitKind> &units, std::vector<std::wstring> &why)
+static void SessionReasons(const std::vector<UnitKind> &units, const std::vector<Device> &present,
+                           std::vector<std::wstring> &why)
 {
-    std::vector<std::wstring> tags = EndpointTags(units);
+    std::vector<std::wstring> tags = EndpointTags(units, present);
     if (tags.empty())
         return;
     IMMDeviceEnumerator *en = Enumerator();
     if (en == nullptr)
         return;
-    for (int flow = 0; flow < 2; flow++) {
-        IMMDeviceCollection *col = nullptr;
-        UINT n = 0;
-        if (FAILED(en->EnumAudioEndpoints(flow == 0 ? eRender : eCapture, DEVICE_STATE_ACTIVE, &col)) || col == nullptr)
-            continue;
-        if (SUCCEEDED(col->GetCount(&n))) {
-            for (UINT i = 0; i < n; i++) {
-                IMMDevice *d = nullptr;
-                if (FAILED(col->Item(i, &d)) || d == nullptr)
-                    continue;
-                std::wstring name = DeviceName(d);
-                bool ours = false;
-                for (auto &t : tags)
-                    ours = ours || ContainsI(name, t);
-                IAudioSessionManager2 *mgr = nullptr;
-                IAudioSessionEnumerator *se = nullptr;
-                if (ours &&
-                    SUCCEEDED(d->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void **)&mgr)) &&
-                    mgr != nullptr && SUCCEEDED(mgr->GetSessionEnumerator(&se)) && se != nullptr) {
-                    int count = 0;
-                    se->GetCount(&count);
-                    for (int k = 0; k < count; k++) {
-                        IAudioSessionControl *c = nullptr;
-                        IAudioSessionControl2 *c2 = nullptr;
-                        AudioSessionState st = AudioSessionStateInactive;
-                        if (SUCCEEDED(se->GetSession(k, &c)) && c != nullptr && SUCCEEDED(c->GetState(&st)) &&
-                            st == AudioSessionStateActive &&
-                            SUCCEEDED(c->QueryInterface(__uuidof(IAudioSessionControl2), (void **)&c2)) && c2 != nullptr) {
-                            DWORD pid = 0;
-                            c2->GetProcessId(&pid);
-                            std::wstring who = c2->IsSystemSoundsSession() == S_OK ? std::wstring(L"Windows system sounds")
-                                                                                   : ProcessName(pid);
-                            why.push_back(Fmt(L"%s (PID %lu) is using %s for %s", who.c_str(), pid, name.c_str(),
-                                              kFlowNames[flow]));
-                        }
-                        Release(c2);
-                        Release(c);
-                    }
+    ForEachActiveEndpoint(en, [&](int flow, IMMDevice *d) {
+        std::wstring name = DeviceName(d);
+        bool ours = false;
+        for (auto &t : tags)
+            ours = ours || ContainsI(name, t);
+        IAudioSessionManager2 *mgr = nullptr;
+        IAudioSessionEnumerator *se = nullptr;
+        if (ours && SUCCEEDED(d->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void **)&mgr)) &&
+            mgr != nullptr && SUCCEEDED(mgr->GetSessionEnumerator(&se)) && se != nullptr) {
+            int count = 0;
+            se->GetCount(&count);
+            for (int k = 0; k < count; k++) {
+                IAudioSessionControl *c = nullptr;
+                IAudioSessionControl2 *c2 = nullptr;
+                AudioSessionState st = AudioSessionStateInactive;
+                if (SUCCEEDED(se->GetSession(k, &c)) && c != nullptr && SUCCEEDED(c->GetState(&st)) &&
+                    st == AudioSessionStateActive &&
+                    SUCCEEDED(c->QueryInterface(__uuidof(IAudioSessionControl2), (void **)&c2)) && c2 != nullptr) {
+                    DWORD pid = 0;
+                    c2->GetProcessId(&pid);
+                    std::wstring who = c2->IsSystemSoundsSession() == S_OK ? std::wstring(L"Windows system sounds")
+                                                                           : ProcessName(pid);
+                    why.push_back(Fmt(L"%s (PID %lu) is using %s for %s", who.c_str(), pid, name.c_str(),
+                                      kFlowNames[flow]));
                 }
-                Release(se);
-                Release(mgr);
-                d->Release();
+                Release(c2);
+                Release(c);
             }
         }
-        col->Release();
-    }
+        Release(se);
+        Release(mgr);
+    });
     en->Release();
 }
 
-std::vector<std::wstring> ApolloBusyReasons(const std::vector<UnitKind> &units)
+/* Everything that holds one of these units now, one line each (none = free). One device snapshot
+   serves both the driver and the endpoint checks. */
+static std::vector<std::wstring> ApolloBusyReasons(const std::vector<UnitKind> &units)
 {
     std::vector<std::wstring> why;
     if (units.empty())
         return why;
     ToolReasons(why);
-    DriverReasons(units, why);
-    SessionReasons(units, why);
+    std::vector<Device> present = FindUaDevices(false);
+    DriverReasons(units, present, why);
+    SessionReasons(units, present, why);
     return why;
 }
 
@@ -593,22 +548,6 @@ static bool RestartAudioService()
     }
     CloseServiceHandle(scm);
     return ok;
-}
-
-static wchar_t AskKey()
-{
-    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-    wchar_t buf[32] = {};
-    DWORD n = 0;
-    if (in == nullptr || in == INVALID_HANDLE_VALUE || !ReadConsoleW(in, buf, 31, &n, nullptr))
-        return L'q';
-    for (DWORD i = 0; i < n; i++) {
-        if (buf[i] == L'\r' || buf[i] == L'\n')
-            return L'\n';
-        if (buf[i] != L' ')
-            return (wchar_t)towlower(buf[i]);
-    }
-    return L'\n';
 }
 
 /* Exit 0 when nothing uses the units (or the user chose to go ahead), 3 when one is still in use. */

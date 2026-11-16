@@ -325,7 +325,7 @@ typedef struct _APOLLO_PLAYBACK_RESULT {
 #define APOLLO_PARAM_48V        0x03
 #define APOLLO_PARAM_LOWCUT     0x04
 #define APOLLO_PARAM_PHASE      0x05    /* 1 = polarity inverted */
-#define APOLLO_PARAM_HIZ_IMP    0x11    /* [G5] Twin X preamp 0 (the Hi-Z jack): 0-7 = 2.2M 1M 453k
+#define APOLLO_PARAM_HIZ_IMP    0x11    /* Twin X preamp 0 (the Hi-Z jack): 0-7 = 2.2M 1M 453k
                                            232k 100k 70k 47k 21k; S13 [3:0]; no readback field */
 #define APOLLO_PARAM_GAIN_DB    0x100   /* driver-side: writes GainA, GainB, GainC */
 
@@ -502,9 +502,9 @@ typedef struct _APOLLO_ENGINE_STATS {
 /*
  * GET_ENDPOINTS: the Windows audio endpoints (ACX circuits, docs/PHASE2.md section 3) and the
  * stream on each. Counters accumulate since the driver loaded. Which rows exist is set by the
- * unit's registry value Endpoints (bit i = row i; [Endpoints] Nov 15, before: EnabledEndpoints),
+ * unit's registry value Endpoints (bit i = row i; older builds read EnabledEndpoints),
  * or Parameters\Aggregate\Endpoints for the combined set.
- * Rows ([Endpoints] Nov 15, driver\endpoint_plan.h / apollo_agg.h): every output jack pair, the
+ * Rows (driver\endpoint_plan.h / apollo_agg.h): every output jack pair, the
  * monitor-mix loopback, every mic/line input (mono), VIRTUAL and S/PDIF inputs (opt-in).
  *
  * Version 2 ([Endpoints]): a table may have up to APOLLO_ENDPOINTS_ROWS_MAX rows, more than the

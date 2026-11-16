@@ -9,12 +9,11 @@
  * connection (app.js applySavedMix -> applyOut). Each aux's return and mute always go out then: until a return level
  * is sent the unit keeps its own default, which leaves the aux returns silent.
  * Loaded before app.js; uses its globals (mixOf, saveMix, hwSend, throttled, mixWritable, Knob, Fader, seg, mixSwitch,
- * capsOf, unitType, unitShort, mixBuses, SEND_OFF, SEND_MAX, ...) only inside functions.
+ * capsOf, unitType, unitShort, mixBuses, isInt, SEND_OFF, SEND_MAX, ...) only inside functions.
  */
 const Aux = (() => {
   const AUXES = 2;
   const W = 66;                                           /* an aux strip's width, for the segment's minimum */
-  const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 
   /* ---------------------------------------------------------- the stored values */
 

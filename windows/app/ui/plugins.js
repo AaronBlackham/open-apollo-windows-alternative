@@ -241,7 +241,7 @@ const Plug = (() => {
     const s = st(idx), h = s.hosting || {}, short = unitShort(idx) || 'unit';
     const r = typeof rateFor === 'function' ? rateFor(idx) : null;
     if (r && r.plugins48k) {
-      return { code: 'rate', short: '48 KHZ ONLY', text: `Plug-ins run at 48 kHz only: the ${short} runs at ${(r.rate / 1000).toFixed(1).replace(/\.0$/, '')} kHz. Its inserts wait and come back at 48 kHz.` };
+      return { code: 'rate', short: '48 KHZ ONLY', text: `Plug-ins run at 48 kHz only: the ${short} runs at ${kHz(r.rate)}. Its inserts wait and come back at 48 kHz.` };
     }
     if (S.demo && idx === 0) return null;
     if ((idx !== 0 && !hosts(idx)) || (P.sts[idx] && P.sts[idx].supported === false)) {
@@ -526,7 +526,7 @@ const Plug = (() => {
     if (!bar) return;
     const p = P.armed || P.drag;
     document.body.classList.toggle('pl-placing', !!p);
-    if (!p && !P.target) { bar.hidden = true; bar.replaceChildren(); return; }
+    if (!p && !P.target) { setHidden(bar, true); bar.replaceChildren(); return; }
     const what = p ? (p.kind === 'add' ? p.item.label : p.label) : '';
     const text = p
       ? (p.kind === 'add' ? `PLACING ${what}: Enter on a lit slot loads it.` : `MOVING ${what}: Enter on a lit slot moves it, or drop it on the browser to unload.`)
@@ -676,7 +676,7 @@ const Plug = (() => {
     for (const rm of document.querySelectorAll('#inputs .ins-recmon')) {
       const idx = Number(rm.dataset.unit), ch = Number(rm.dataset.ch), c = chainFor(idx, ch);
       const show = !!st(idx).recmon && !(unitBlock(idx) || {}).code;
-      rm.hidden = !show && !(S.demo && idx === 0);
+      setHidden(rm, !show && !(S.demo && idx === 0));
       const input = pairLinked(idx, ch) ? ch & ~1 : ch;
       const mon = c && noAux(c) ? !!c.mon : !!P.recmon.get(`${idx}:${input}`);
       if (rm._set) rm._set(mon ? 1 : 0);
@@ -692,7 +692,7 @@ const Plug = (() => {
     const off = aux && !na && !auxInsertsOn(idx);
     const auxHidden = aux && !multi(idx) && !(S.demo && idx === 0);    /* a 1.5 host: no aux slots at all */
     const rows = auxHidden ? 0 : na ? 1 : slotCount(idx), c = na ? null : chainFor(idx, ch);
-    box.hidden = auxHidden;
+    setHidden(box, auxHidden);
     box.dataset.slots = String(rows);
     const have = [...box.querySelectorAll(':scope > .ins-row:not(.ins-uni-row)')];
     if (have.length !== rows) {
@@ -706,7 +706,7 @@ const Plug = (() => {
       const n = row.dataset.n;
       if (n === 'u') { renderUnison(row, idx, ch, na); continue; }
       const k = Number(n);
-      row.hidden = k >= rows;
+      setHidden(row, k >= rows);
       row.classList.toggle('ins-extra', k > used + 1);
       if (row.hidden) continue;
       renderSlot(row, idx, ch, k, p, { na, off, blk, rows });
@@ -715,7 +715,7 @@ const Plug = (() => {
     const line = box.querySelector('.ins-chain'), ref = box.querySelector('.ins-refusal');
     const busy = c && (c.state === 'loading' || c.busy);
     const show = !!c && !na && multi(idx) && c.state && c.state !== 'idle' && (c.state !== 'running' || busy || c.overloaded);
-    line.hidden = !show;
+    setHidden(line, !show);
     if (show) {
       const t = `${(STATE_TEXT[c.state] || c.state).toUpperCase()}${c.busy ? `: ${c.busy}` : ''}${c.state === 'running' ? ` · LAT ${c.latency | 0}${c.overloaded ? ' OVER' : ''}` : ''}${c.load && c.load.after ? ` · LD ${(c.load.after / 100).toFixed(1)}%` : ''}`;
       if (line.textContent !== t) line.textContent = t;
@@ -726,8 +726,8 @@ const Plug = (() => {
     const first = aux ? ch : pairLinked(idx, ch) ? ch & ~1 : ch;
     const note = na ? null : P.notes.find(n => n.unit === idx && n.input === first && ['room', 'cycles', 'layout', 'unison', 'aux'].includes(n.code));
     const why = note ? `${CODES[note.code] || 'Refused'}: ${note.detail || note.text}` : (c && c.state === 'failed' && ['room', 'cycles', 'layout'].includes(c.code) && c.why ? `${CODES[c.code]}: ${c.why}` : '');
-    ref.hidden = !why;
-    if (ref.textContent !== why) ref.textContent = why;
+    setHidden(ref, !why);
+    put(ref, why);
     ref.dataset.code = note ? note.code : c ? c.code || '' : '';
   }
 
@@ -748,7 +748,8 @@ const Plug = (() => {
     b.dataset.state = state;
     row.dataset.state = state;
     b.dataset.refused = note ? '1' : '0';
-    b.draggable = !!ins && ins.state !== 'loading';
+    const drag = !!ins && ins.state !== 'loading' ? 'true' : 'false';
+    if (b.getAttribute('draggable') !== drag) b.setAttribute('draggable', drag);   /* written again unchanged, it restyles */
     b.classList.toggle('target', !!P.target && P.target.idx === idx && P.target.ch === ch && (P.target.k ?? 0) === k);
     b.classList.toggle('open', !!ins && isOpen(idx, ins.input, k));
     if (name.textContent !== text) name.textContent = text;
@@ -768,13 +769,13 @@ const Plug = (() => {
       b.setAttribute('aria-label', off && !ins ? `${label}. ${off}` : label);
     }
     b.setAttribute('aria-disabled', o.off && !ins ? 'true' : 'false');
-    x.hidden = !ins;
+    setHidden(x, !ins);
     x.setAttribute('aria-label', ins ? `Remove ${ins.label} from ${inputName(idx, ins.input)}` : 'Remove');
   }
 
   function renderUnison(row, idx, ch, na) {
     const b = row.querySelector('.ins-uni'), x = row.querySelector('.ins-x'), name = b.querySelector('.ins-name');
-    row.hidden = na || !multi(idx) || (ch & 1 && pairLinked(idx, ch));
+    setHidden(row, na || !multi(idx) || (ch & 1 && pairLinked(idx, ch)));
     if (row.hidden) return;
     const ins = slotIns(idx, ch, 'u'), why = ins ? '' : unisonWhy(idx, ch);
     const state = ins ? ins.state : why ? 'off' : 'empty';
@@ -788,7 +789,7 @@ const Plug = (() => {
     b.setAttribute('aria-label', ins ? `${who}: ${ins.label}, ${STATE_TEXT[ins.state] || ins.state}` : `${who}: ${why ? `not available. ${why}` : 'empty'}`);
     if (P.armed || P.drag) b.dataset.drop = !why && (P.armed || P.drag).kind === 'add' && (P.armed || P.drag).item.unison === true ? 'ok' : 'no';
     else delete b.dataset.drop;
-    x.hidden = !ins;
+    setHidden(x, !ins);
   }
 
   /* ---------------------------------------------------------------- DSP room (the browser head, every segment head) */
@@ -927,14 +928,14 @@ const Plug = (() => {
     else if (!h.driver) chip = 'NO HOST';
     else if (h.on && h.caller) { chip = 'HOSTING ON'; kind = 'on'; }
     else if (h.on) { chip = 'OTHER PROGRAM'; kind = 'bad'; }
-    u.chip.textContent = chip;
+    put(u.chip, chip);
     u.chip.dataset.kind = kind;
     u.chip.title = h.admin || (blk ? blk.text : 'Plug-in hosting is on for this Apollo Control');
     const many = Object.keys(P.sts).filter(k => hosts(Number(k))).length > 1 || bu !== 0;
-    u.unit.textContent = many ? `· ${(unitShort(bu) || 'x8p').toUpperCase()}` : '';
+    put(u.unit, many ? `· ${(unitShort(bu) || 'x8p').toUpperCase()}` : '');
     u.unit.title = many ? `Licences, room and fit for the ${unitShort(bu)}` : '';
     setPressed(u.fits, P.fits);
-    u.fitsLab.textContent = `FITS ${dspName(bu).replace(' ', '')}`;
+    put(u.fitsLab, `FITS ${dspName(bu).replace(' ', '')}`);
     renderDspNode(bu, u.room);
     renderNotes();
     renderBrowserHint();
@@ -945,7 +946,7 @@ const Plug = (() => {
     const shown = all.filter(it => (!q || `${it.label} ${it.name}`.toLowerCase().includes(q) || GROUP[categorize(it).id].name.toLowerCase().includes(q)) &&
       (!P.fits || (licOf(it) === true && fits(bu, it))));
     const lic = all.filter(it => licOf(it) === true).length;
-    u.count.textContent = l && l.state === 'ok' ? `${lic}/${all.length}` : '';
+    put(u.count, l && l.state === 'ok' ? `${lic}/${all.length}` : '');
     u.count.title = `${lic} of ${all.length} mapped plug-ins are licensed on ${unitWord(bu)}`;
     const br = Skin.r('browser') || {};
     u.root.dataset.layout = br.layout || 'list';
@@ -971,7 +972,7 @@ const Plug = (() => {
       foot = `${l.authorized} of ${l.mapped} mapped plug-ins are licensed on ${unitWord(bu)}.`;
       if (l.licence !== 'ok') foot = `${l.mapped} mapped plug-ins; ${unitWord(bu)}'s licence answer: ${l.licenceWhy || 'not read yet'}.`;
     }
-    u.foot.textContent = foot;
+    put(u.foot, foot);
   }
 
   /* the flat table of a pack with columns (Lab, Mono): sorted by the column the user picked */
@@ -1094,8 +1095,8 @@ const Plug = (() => {
     const t = P.target, p = P.drag;
     const text = p && p.kind === 'move' ? `Drop ${p.label} here to unload it.` :
       t ? `Picking for ${inputName(t.idx, t.ch)}: Enter or double-click a plug-in.` : '';
-    P.ui.hint.textContent = text;
-    P.ui.hint.hidden = !text;
+    put(P.ui.hint, text);
+    setHidden(P.ui.hint, !text);
     P.ui.root.classList.toggle('picking', !!t);
   }
 
@@ -1137,7 +1138,7 @@ const Plug = (() => {
         row('DSP code', need ? `${fmtWords(need)} w` : `0 w (shared: ${it.label} runs)`),
         row(`${dspName(bu)} room`, `${fmtWords(room)} of ${fmtWords(total)} w free → ${room >= need ? `${fmtWords(room - need)} after` : 'NO ROOM'}`, room >= need ? '' : 'bad'),
         it.dataWords ? row('DSP data', `${fmtWords(it.dataWords)} w${pools[1] ? ` (pool 1: ${fmtWords(pools[1].free)} free)` : ''}`) : null,
-        row('Latency', `${it.latency || 0} smp · ${((it.latency || 0) / rate * 1000).toFixed(3)} ms @ ${(rate / 1000).toFixed(1).replace(/\.0$/, '')} kHz`),
+        row('Latency', `${it.latency || 0} smp · ${((it.latency || 0) / rate * 1000).toFixed(3)} ms @ ${kHz(rate)}`),
         row('Parameters', String(it.params ?? '-')),
         row('I/O', [it.mono ? 'mono' : null, it.stereo ? 'stereo' : null].filter(Boolean).join(' · ') || '-'),
         row('Startup', (it.pages || 1) > 1 ? `${it.pages} pages, staged` : '1 page'),
@@ -1222,19 +1223,19 @@ const Plug = (() => {
     c.bypass.disabled = loading;
     c.replace.disabled = loading;
     c.remove.disabled = loading;
-    c.retry.hidden = !((ins.state === 'failed' || ins.state === 'waiting') && !ins.bypass);
-    c.where.textContent = `${idx ? `${(unitShort(idx) || '').toUpperCase()} · ` : ''}${isAux(ch) ? `AUX ${ch - AUX_T + 1}` : `IN ${ins.stereo ? `${ch + 1}-${ch + 2}` : ch + 1}`} · INS ${ins.slot + 1} · ${dspName(idx).replace(' ', '')}`;
+    setHidden(c.retry, !((ins.state === 'failed' || ins.state === 'waiting') && !ins.bypass));
+    put(c.where, `${idx ? `${(unitShort(idx) || '').toUpperCase()} · ` : ''}${isAux(ch) ? `AUX ${ch - AUX_T + 1}` : `IN ${ins.stereo ? `${ch + 1}-${ch + 2}` : ch + 1}`} · INS ${ins.slot + 1} · ${dspName(idx).replace(' ', '')}`);
     c.lamp.dataset.state = ins.state;
-    c.facts.textContent = [ins.latency ? `LAT ${ins.latency} smp` : 'LAT 0 smp', ins.codeWords ? `CODE ${fmtWords(ins.codeWords)} w` : null,
-      `${ins.params.length} PARAM`, ins.pages > 1 ? `${ins.pages} PAGES STAGED` : '1 PAGE', ins.stereo ? 'STEREO' : 'MONO'].filter(Boolean).join('  ·  ');
+    put(c.facts, [ins.latency ? `LAT ${ins.latency} smp` : 'LAT 0 smp', ins.codeWords ? `CODE ${fmtWords(ins.codeWords)} w` : null,
+      `${ins.params.length} PARAM`, ins.pages > 1 ? `${ins.pages} PAGES STAGED` : '1 PAGE', ins.stereo ? 'STEREO' : 'MONO'].filter(Boolean).join('  ·  '));
     c.state.dataset.state = ins.state;
-    c.state.textContent = ins.busy || STATE_TEXT[ins.state] || ins.state;
-    c.why.hidden = !(ins.state !== 'running' && ins.why);
+    put(c.state, ins.busy || STATE_TEXT[ins.state] || ins.state);
+    setHidden(c.why, !(ins.state !== 'running' && ins.why));
     c.why.dataset.kind = ['warm', 'absent', 'rate', 'unit'].includes(ins.code) ? 'info' : 'bad';
-    c.why.firstChild.textContent = `${CODES[ins.code] || 'Not running'}: ${ins.why}`;
-    c.fine.textContent = ins.state === 'running'
+    put(c.why.firstChild, `${CODES[ins.code] || 'Not running'}: ${ins.why}`);
+    put(c.fine, ins.state === 'running'
       ? 'Each change runs the plug-in\'s own code in the parameter engine and is read back from the DSP before it counts (RB). The first change after a start takes a few seconds.'
-      : 'Changes here are kept and go to the DSP with the insert.';
+      : 'Changes here are kept and go to the DSP with the insert.');
     ins.params.forEach((p, i) => c.params[i] && c.params[i].update(p, loading));
     /* the caret points at the strip the insert is on */
     const strip = document.querySelector(isAux(ch) ? `#inputs .useg[data-unit="${idx}"] .aux-strip[data-aux="${ch - AUX_T}"]` : `#inputs .useg[data-unit="${idx}"] .strip[data-ch="${ch}"]`), d = document.getElementById('plDrawer');
@@ -1312,14 +1313,14 @@ const Plug = (() => {
         set(pend ? P.pending.get(key) : p.value, locked);
         node.classList.toggle('unconfirmed', pend);
         node.dataset.rb = pend ? 'sent' : bad ? 'refused' : 'ok';
-        rb.textContent = pend ? 'SENT' : bad ? 'NOT CONFIRMED' : 'RB OK';
-        raw.textContent = String(pend ? P.pending.get(key) : p.value);
+        put(rb, pend ? 'SENT' : bad ? 'NOT CONFIRMED' : 'RB OK');
+        put(raw, String(pend ? P.pending.get(key) : p.value));
         rb.title = pend ? 'Sent: waiting for the DSP readback' : bad ? 'The DSP did not confirm the last change: the value shown is what it holds' :
           `Read back from the DSP: ${p.value} of ${p.max}`;
         /* a stepped control's buttons already say what the plug-in says, unless it holds another value */
         const n = p.steps ? p.steps.length : 0;
         const label = n ? p.steps[clamp(p.max === n - 1 ? p.value : Math.round(p.value / Math.max(1, p.max) * (n - 1)), 0, n - 1)] : null;
-        text.textContent = pend ? '...' : (p.text && p.text !== label ? p.text : '');
+        put(text, pend ? '...' : (p.text && p.text !== label ? p.text : ''));
       },
     };
     return cell;
@@ -1457,7 +1458,7 @@ const Plug = (() => {
     if (!P.built || !P.ui.setup) return;
     const u = P.ui, m = P.setup;
     const show = setupShown();
-    u.setup.hidden = !show;
+    setHidden(u.setup, !show);
     if (!show) { u.setup.replaceChildren(); u.setupKey = ''; return; }
     const ph = setupPhase(m), st = m.status || {};
     const key = JSON.stringify([ph, st.percent, st.text, st.phase, st.done, st.total, st.eta, st.error, m.uad, m.available, m.why]);

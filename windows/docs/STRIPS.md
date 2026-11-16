@@ -1526,6 +1526,15 @@ refused to build them (D9, 5.5): the mics stayed dead until the Apollo was power
 `driver/strip_adopt.h` (the rules, plain C), `driver/strip_record.h` (the record), `driver/strips.c`
 (`[Warm]` sections), `device.c` (D0 exit), `plugin.c` (restore at exit, record hooks, ownership).
 
+**Nov 16 2026: a rebuild now wins over adoption.** Both units restarted warm at once (no install, no
+power cycle). The x8p adopted its strips as designed (anchored, same plan, nothing sent), and from then
+on every x8p input and VIRTUAL 1 recorded exact zero while host playback still reached the monitor mix
+and its record slots (a -40 dBFS tone read -40.0). No adopted strip had ever been measured passing audio;
+a warm REBUILD had (VIRTUAL 1 at -30 dBFS right after one, the same day). `StripAdoptDecide` now stops
+and rebuilds a kept, same-plan set whenever `StripWarmRebuild` is 1 (the default); adoption remains
+only with `StripWarmRebuild=0`. `StripAdopt=0` with rebuilds on also rebuilds (it used to leave the
+strips off and ask for a power cycle).
+
 ### 12.1 What proves "ours"
 
 Nothing is written to the DSP for it, so nothing can collide with what UA's software or the firmware

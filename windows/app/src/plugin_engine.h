@@ -1,6 +1,7 @@
 /*
  * plugin_engine.h - UAD plug-in inserts in Apollo Control (docs/PLUGINS.md 5), included by main.cpp
- * after the device worker (it uses g_slots, SlotIoctl, SlotInfo, PostJson). Per unit (P7): the x8p
+ * after the device worker (it uses g_slots, SlotIoctl, SlotInfo, PostJson and the file helpers ReadAll,
+ * WriteAtomic, AppDataDir, KnownFolder, ExeDir). Per unit (P7): the x8p
  * (slot 0) and a Twin X Gen 1 (its slot), as the driver hosts them (each unit's strip DSP, DSP 1).
  *
  * One thread owns every plug-in operation, so the device worker's polls and meters never wait on
@@ -199,39 +200,7 @@ static const DWORD HELPER_REPLY_MS = 90000;         /* the emulator starts a hea
 
 static std::string U8(const std::wstring &w) { return Narrow(w); }
 static std::wstring W(const std::string &s) { return Widen(s.data(), s.size()); }
-static std::string Q(const std::string &s) { return plughost::JsonEsc(s); }
-
-static bool ReadAll(const std::wstring &path, std::string &out, ULONGLONG maxBytes = 64ull << 20)
-{
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    out.clear();
-    if (f == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER sz{};
-    bool ok = GetFileSizeEx(f, &sz) && sz.QuadPart >= 0 && (ULONGLONG)sz.QuadPart <= maxBytes;
-    if (ok) {
-        out.resize((size_t)sz.QuadPart);
-        DWORD got = 0;
-        ok = sz.QuadPart == 0 || (ReadFile(f, out.data(), (DWORD)out.size(), &got, nullptr) && got == out.size());
-    }
-    CloseHandle(f);
-    if (!ok) out.clear();
-    return ok;
-}
-
-static bool WriteAtomic(const std::wstring &path, const std::string &data)
-{
-    std::wstring tmp = path + L".tmp";
-    HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    DWORD put = 0;
-    BOOL ok = WriteFile(f, data.data(), (DWORD)data.size(), &put, nullptr) && put == data.size() && FlushFileBuffers(f);
-    CloseHandle(f);
-    if (!ok || !MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        DeleteFileW(tmp.c_str());
-        return false;
-    }
-    return true;
-}
+static std::string Q(const std::string &s) { return aggjson::Quote(s); }
 
 static bool FileStamp(const std::wstring &path, ULONGLONG &size, ULONGLONG &mtime)
 {
@@ -244,15 +213,25 @@ static bool FileStamp(const std::wstring &path, ULONGLONG &size, ULONGLONG &mtim
 
 static bool Exists(const std::wstring &p) { return GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES; }
 
-static std::wstring AppDataDir(REFKNOWNFOLDERID id)
+/* Rel (a "\\..." path) in the exe's folder or one of the Levels - 1 above it, first match; '' = none. */
+template <typename F>
+static std::wstring UpFind(const std::wstring &rel, int levels, F ok)
 {
-    std::wstring dir = KnownFolder(id) + L"\\Avium\\ApolloControl";
-    SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
-    return dir;
+    std::wstring up = ExeDir();
+    for (int i = 0; i < levels && !up.empty(); i++) {
+        if (ok(up + rel)) return up + rel;
+        size_t s = up.find_last_of(L'\\');
+        if (s == std::wstring::npos) break;
+        up = up.substr(0, s);
+    }
+    return {};
 }
 
 static std::wstring SavePath() { return AppDataDir(FOLDERID_RoamingAppData) + L"\\plugins.json"; }
 static std::wstring CachePath() { return AppDataDir(FOLDERID_LocalAppData) + L"\\plugin-catalog.json"; }
+
+/* [PlugSetup] Where Set up plug-ins builds the maps (FindPlugins' second place, the mapper's Windows default). */
+static std::wstring UserPluginsDir() { return KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloPlugins"; }
 
 /* The plug-in maps: the configured folder, %LOCALAPPDATA%\Avium\ApolloPlugins, or apollo-win\plugins above the exe. */
 static std::wstring FindPlugins(std::string &why)
@@ -264,22 +243,14 @@ static std::wstring FindPlugins(std::string &why)
         why = "the plug-in maps folder set in Settings has no bundles\\index.json and store\\modules";
         return {};
     }
-    std::wstring d = KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloPlugins";
+    std::wstring d = UserPluginsDir();
     if (ok(d)) return d;
-    std::wstring up = ExeDir();
-    for (int i = 0; i < 7 && !up.empty(); i++) {
-        if (ok(up + L"\\plugins")) return up + L"\\plugins";
-        size_t s = up.find_last_of(L'\\');
-        if (s == std::wstring::npos) break;
-        up = up.substr(0, s);
-    }
+    d = UpFind(L"\\plugins", 7, ok);
+    if (!d.empty()) return d;
     /* [PlugSetup] the words a release install shows next to its Set up plug-ins button */
     why = "UAD plug-ins are not set up on this PC yet: Set up plug-ins maps them from your own UAD install";
     return {};
 }
-
-/* [PlugSetup] Where Set up plug-ins builds the maps (FindPlugins' second place, the mapper's Windows default). */
-static std::wstring UserPluginsDir() { return KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloPlugins"; }
 
 /* [PlugSetup] The maps' Python: the developer layout's venv (as before), else the setup's private runtime; '' = none. */
 static std::wstring PluginsPython(const std::wstring &dir)
@@ -480,11 +451,6 @@ static int HeadState(ULONG handle, ULONG epoch, const plughost::ChainRecipe &r)
         if (have[p] && v[p] != want[p]) return 1;
     }
     return 0;
-}
-
-static bool HeadCheck(ULONG handle, ULONG epoch, const plughost::ChainRecipe &r)
-{
-    return HeadState(handle, epoch, r) == 0;
 }
 
 /* ------------------------------------------------------------------ what the driver says */
@@ -1156,20 +1122,18 @@ static bool HelperStart(std::string &why)
     if (g_helperProc && WaitForSingleObject(g_helperProc, 0) == WAIT_TIMEOUT) return true;
     HelperStop();
     if (g_plugins.empty() && !LoadIndex()) { why = g_mapsWhy; return false; }
-    std::wstring py = PluginsPython(g_plugins), script;     /* [PlugSetup] the venv, or the setup's runtime */
-    std::wstring up = ExeDir();
-    if (Exists(up + L"\\plughelper.py")) script = up + L"\\plughelper.py";
-    for (int i = 0; i < 5 && script.empty() && !up.empty(); i++) {
-        if (Exists(up + L"\\tools\\plugin-host\\plughelper.py")) script = up + L"\\tools\\plugin-host\\plughelper.py";
-        size_t s = up.find_last_of(L'\\');
-        if (s == std::wstring::npos) break;
-        up = up.substr(0, s);
-    }
+    std::wstring py = PluginsPython(g_plugins), script = UpFind(L"\\plughelper.py", 1, Exists);  /* [PlugSetup] the venv, or the setup's runtime */
+    if (script.empty()) script = UpFind(L"\\tools\\plugin-host\\plughelper.py", 5, Exists);
     if (py.empty()) { why = "the plug-in maps' Python is missing (plugins\\.venv, or Set up plug-ins in Settings): parameters need it"; return false; }
     if (script.empty()) { why = "plughelper.py is not next to Apollo Control"; return false; }
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE inR = nullptr, inW = nullptr, outR = nullptr, outW = nullptr;
-    if (!CreatePipe(&inR, &inW, &sa, 0) || !CreatePipe(&outR, &outW, &sa, 1 << 16)) { why = "no pipe for the planner"; return false; }
+    if (!CreatePipe(&inR, &inW, &sa, 0) || !CreatePipe(&outR, &outW, &sa, 1 << 16)) {
+        if (inR) CloseHandle(inR);              /* the first pipe, when only the second failed */
+        if (inW) CloseHandle(inW);
+        why = "no pipe for the planner";
+        return false;
+    }
     SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
     SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
     std::wstring logPath = AppDataDir(FOLDERID_LocalAppData) + L"\\plughelper.log";
@@ -1574,7 +1538,7 @@ static ULONG CreateChain(Chain &ch, const plughost::ChainRecipe &r, bool stage, 
             Destroy(handle);
             return 0;
         }
-        if (!HeadCheck(handle, epoch, r)) {
+        if (HeadState(handle, epoch, r) != 0) {
             code = "readback";
             why = "the chain head did not read back as written: nothing was routed";
             Destroy(handle);
@@ -2399,15 +2363,8 @@ static LONG         g_setupMappable = -2;       /* -2 not counted yet, -1 unknow
 
 static std::wstring SetupScript()
 {
-    std::wstring up = ExeDir();
-    if (Exists(up + L"\\plugin-setup\\tools\\setup-plugins.ps1")) return up + L"\\plugin-setup\\tools\\setup-plugins.ps1";
-    for (int i = 0; i < 6 && !up.empty(); i++) {
-        if (Exists(up + L"\\plugins\\tools\\setup-plugins.ps1")) return up + L"\\plugins\\tools\\setup-plugins.ps1";
-        size_t s = up.find_last_of(L'\\');
-        if (s == std::wstring::npos) break;
-        up = up.substr(0, s);
-    }
-    return {};
+    std::wstring s = UpFind(L"\\plugin-setup\\tools\\setup-plugins.ps1", 1, Exists);
+    return s.empty() ? UpFind(L"\\plugins\\tools\\setup-plugins.ps1", 6, Exists) : s;
 }
 
 static bool SameDir(std::wstring a, std::wstring b)
@@ -2558,14 +2515,15 @@ static void SetupPoll(bool force)
         g_setupProc = nullptr;
         ended = true;
     }
+    const std::wstring user = UserPluginsDir();
     std::string t;
     aggjson::Value st;
-    bool have = ReadSetupFile(UserPluginsDir() + L"\\setup\\status.json", t) && aggjson::Parser(t).Parse(st) &&
+    bool have = ReadSetupFile(user + L"\\setup\\status.json", t) && aggjson::Parser(t).Parse(st) &&
                 st.kind == aggjson::Value::Object && st.Str("schema") == "apollo-plugin-setup/1";
     std::string state = have ? st.Str("state") : std::string();
     /* "running" with nobody running it (it ended without its last word, or this app restarted and the beat stopped) */
     if (state == "running" && !SetupRunning() && (ended || (double)UnixNow() - st.Num("beat") > 90)) state = "stopped";
-    if (ended && !have && g_setupWhy.empty()) g_setupWhy = "the setup stopped before it wrote anything (see " + U8(UserPluginsDir()) + "\\setup\\console.log)";
+    if (ended && !have && g_setupWhy.empty()) g_setupWhy = "the setup stopped before it wrote anything (see " + U8(user) + "\\setup\\console.log)";
     bool running = SetupRunning() || state == "running";
     ULONG units = 0, count = 0;
     (void)SetupIds(units, count);
@@ -2573,7 +2531,7 @@ static void SetupPoll(bool force)
     for (const UnitState &u : g_unitState) hosting |= u.present && u.capsOk && (u.caps.Enabled & APOLLO_PLUGIN_ENABLED_HOST);
     std::string j = std::string("{\"type\":\"plugin-setup\",\"offered\":") + (SetupOffered() ? "true" : "false") +
                     ",\"available\":" + (SetupScript().empty() ? "false" : "true") + ",\"uad\":" + (UadPresent() ? "true" : "false") +
-                    ",\"dir\":" + Q(U8(UserPluginsDir())) + ",\"inUse\":" + Q(U8(g_plugins)) + ",\"configured\":" + Q(g_mapsDir) +
+                    ",\"dir\":" + Q(U8(user)) + ",\"inUse\":" + Q(U8(g_plugins)) + ",\"configured\":" + Q(g_mapsDir) +
                     ",\"dev\":" + (!g_plugins.empty() && Exists(g_plugins + L"\\.venv\\Scripts\\python.exe") ? "true" : "false") +
                     ",\"ready\":" + (!g_plugins.empty() && !PluginsPython(g_plugins).empty() ? "true" : "false") +
                     ",\"running\":" + (running ? "true" : "false") + ",\"licensed\":" + (units ? std::to_string(count) : std::string("-1")) +
@@ -3259,11 +3217,10 @@ static int AdminMain(const std::wstring &reqPath)
             if (e == ERROR_SUCCESS && hosting == "on") {
                 /*
                  * PluginHostImage: this exe's DOS path ("C:\...", never a \Device\HarddiskVolumeN one: the
-                 * driver resolves the drive letter at every call, review finding 2), from this process
-                 * itself, never from the request. PluginHostUser: the requesting user's SID (the
-                 * unelevated app's, in the request: an over-the-shoulder prompt runs this step as another
-                 * administrator), else this process's own; the driver also matches the caller's token
-                 * user (review finding 1).
+                 * driver resolves the drive letter at every call), from this process itself, never from
+                 * the request. PluginHostUser: the requesting user's SID (the unelevated app's, in the
+                 * request: an over-the-shoulder prompt runs this step as another administrator), else
+                 * this process's own; the driver also matches the caller's token user.
                  */
                 wchar_t img[1024];
                 DWORD n = _countof(img);

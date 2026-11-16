@@ -19,7 +19,7 @@
  *                                                        every 250 ms (0 s = until Ctrl+C)
  *   wasapi-loop --list                                   active endpoints and the defaults
  *
- * TEXT picks the endpoint whose name contains it (default "(Apollo x8p", preferring MON L/R).
+ * TEXT picks the endpoint whose name contains it (defaults "x8p MON L/R" to play, "Monitor mix" to record).
  * --meter needs a TEXT that matches exactly one recording endpoint, e.g. "MIC/LINE 3"; it exits
  * 0 when any non-zero sample arrived, 3 when everything was digital zero, 2 on a setup error.
  * No administrator rights needed. Every 10 s it also prints the driver's own counters
@@ -194,7 +194,7 @@ static IMMDevice *FindEndpoint(IMMDeviceEnumerator *en, EDataFlow flow, const WC
         if (FAILED(col->Item(i, &d)))
             continue;
         GetName(d, nm, ARRAYSIZE(nm));
-        /* [Endpoints] the loopback recording endpoint is "Monitor mix" since Nov 15 (playback still "MON L/R") */
+        /* [Endpoints] the loopback recording endpoint is "Monitor mix" (older builds: "MON L/R"); playback is "MON L/R" */
         const WCHAR *prefer = (flow == eRender) ? L"MON L/R" : L"Monitor mix";
         if (ContainsI(nm, match) && (best == NULL || ContainsI(nm, prefer) || ContainsI(nm, L"MON L/R"))) {
             BOOL better = (best == NULL) || (!ContainsI(name, prefer) && !ContainsI(name, L"MON L/R"));
@@ -612,12 +612,14 @@ static double g_fillPartMs[3], g_fillPartMax[3];   /* GetBuffer, writing the sam
 
 static HRESULT Fill(Stream *s, Generator *g, UINT32 frames)
 {
+    static LARGE_INTEGER qf;            /* fixed at boot: read once */
     BYTE *data = NULL;
     UINT32 f, c;
-    LARGE_INTEGER t[4], qf;
+    LARGE_INTEGER t[4];
     HRESULT hr;
 
-    QueryPerformanceFrequency(&qf);
+    if (qf.QuadPart == 0)
+        QueryPerformanceFrequency(&qf);
     QueryPerformanceCounter(&t[0]);
     hr = s->render->GetBuffer(frames, &data);
     QueryPerformanceCounter(&t[1]);
@@ -972,8 +974,8 @@ static void Usage(void)
            "       wasapi-loop --tone [seconds=10] [--render TEXT]\n"
            "       wasapi-loop --meter TEXT [seconds=0] [--exclusive] [--raw]\n"
            "       wasapi-loop --list\n"
-           "Plays a 997 Hz sine at -12 dBFS into MON L/R (Apollo x8p) and checks every sample that\n"
-           "comes back on the MON L/R (Apollo x8p) recording endpoint (the monitor-mix loopback).\n"
+           "Plays a 997 Hz sine at -12 dBFS into x8p MON L/R (Apollo) and checks every sample that\n"
+           "comes back on the Monitor mix (Apollo) recording endpoint (the monitor-mix loopback).\n"
            "--meter prints the peak level of the one recording endpoint whose name contains TEXT\n"
            "(e.g. \"MIC/LINE 3\") every 250 ms; 0 seconds = until Ctrl+C.\n");
 }
@@ -982,8 +984,8 @@ int wmain(int argc, wchar_t **argv)
 {
     double seconds = -1.0, threshold = 1e-4;
     BOOL tone = FALSE, list = FALSE, exclusive = FALSE, raw = FALSE;
-    /* No closing parenthesis: the test build is "(Apollo x8p (open driver, test build))". */
-    const WCHAR *renderMatch = L"(Apollo x8p", *captureMatch = L"(Apollo x8p", *meterMatch = NULL;
+    /* The endpoints are "x8p MON L/R (Apollo)" (playback) and "Monitor mix (Apollo)" (its loopback recording). */
+    const WCHAR *renderMatch = L"x8p MON L/R", *captureMatch = L"Monitor mix", *meterMatch = NULL;
     IMMDeviceEnumerator *en = NULL;
     IMMDevice *rdev = NULL, *cdev = NULL;
     WCHAR rname[256], cname[256];

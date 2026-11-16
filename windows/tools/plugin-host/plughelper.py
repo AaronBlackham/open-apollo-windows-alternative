@@ -32,7 +32,6 @@ prints is kept anywhere but Apollo Control's own settings on this PC.
 import argparse
 import json
 import sys
-import threading
 import traceback
 from pathlib import Path
 
@@ -127,7 +126,6 @@ def main(argv=None):
     import oa_offline as oa                         # noqa: E402  (vendored upstream carrier, offline)
     _nc, prov, _index = oa.load(plugins / 'store', plugins / 'bundles')
     sessions = {}
-    lock = threading.Lock()
     out = sys.stdout
     print(json.dumps(dict(ok=True, ready=True)), file=out, flush=True)
     for line in sys.stdin:
@@ -143,20 +141,19 @@ def main(argv=None):
                 print(json.dumps(dict(id=rid, ok=True)), file=out, flush=True)
                 break
             key = str(req.get('key', ''))
-            with lock:
-                if op == 'open':
-                    s = Session(oa, prov, plugins, req['bundle'], req.get('values'), req.get('diff'))
-                    sessions[key] = s
-                    reply = s.snapshot()
-                elif op == 'plan':
-                    reply = sessions[key].plan(int(req['index']), int(req['value']))
-                elif op == 'accept':
-                    reply = sessions[key].accept(req.get('which', 'proposal'))
-                elif op == 'close':
-                    sessions.pop(key, None)
-                    reply = {}
-                else:
-                    raise ValueError(f'unknown op {op!r}')
+            if op == 'open':
+                s = Session(oa, prov, plugins, req['bundle'], req.get('values'), req.get('diff'))
+                sessions[key] = s
+                reply = s.snapshot()
+            elif op == 'plan':
+                reply = sessions[key].plan(int(req['index']), int(req['value']))
+            elif op == 'accept':
+                reply = sessions[key].accept(req.get('which', 'proposal'))
+            elif op == 'close':
+                sessions.pop(key, None)
+                reply = {}
+            else:
+                raise ValueError(f'unknown op {op!r}')
             reply.update(id=rid, ok=True)
         except KeyError as e:
             reply = dict(id=rid, ok=False, error=f'not open or missing field: {e}')

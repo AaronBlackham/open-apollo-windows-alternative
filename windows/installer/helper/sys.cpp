@@ -9,6 +9,7 @@
 #include <wincrypt.h>
 #include <ncrypt.h>
 #include <oleauto.h>
+#include <algorithm>
 
 /* ------------------------------------------------------------------ */
 /* Secure Boot                                                         */
@@ -32,8 +33,6 @@ std::wstring SecureBootState()
 /* ------------------------------------------------------------------ */
 /* test signing                                                        */
 /* ------------------------------------------------------------------ */
-
-typedef LONG (WINAPI *NtQuerySystemInformationFn)(ULONG, PVOID, ULONG, PULONG);
 
 struct CodeIntegrityInfo {
     ULONG Length;
@@ -61,9 +60,7 @@ bool TestSigningActive(std::wstring &startOptions, int &ciTestSign)
     }
 
     ciTestSign = -1;
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    NtQuerySystemInformationFn q = ntdll ? (NtQuerySystemInformationFn)(void *)GetProcAddress(ntdll,
-                                           "NtQuerySystemInformation") : nullptr;
+    NtQuerySystemInformationFn q = (NtQuerySystemInformationFn)NtdllProc("NtQuerySystemInformation");
     if (q != nullptr) {
         CodeIntegrityInfo ci = { sizeof(CodeIntegrityInfo), 0 };
         ULONG ret = 0;
@@ -76,14 +73,6 @@ bool TestSigningActive(std::wstring &startOptions, int &ciTestSign)
 /* ------------------------------------------------------------------ */
 /* WMI helpers                                                         */
 /* ------------------------------------------------------------------ */
-
-template <class T> static void Rel(T *&p)
-{
-    if (p != nullptr) {
-        p->Release();
-        p = nullptr;
-    }
-}
 
 static void EnablePrivilege(const wchar_t *name)
 {
@@ -135,9 +124,9 @@ static IWbemClassObject *WmiCall(IWbemServices *svc, const wchar_t *cls, const w
     SysFreeString(bc);
     SysFreeString(bp);
     SysFreeString(bm);
-    Rel(in);
-    Rel(inDef);
-    Rel(klass);
+    Release(in);
+    Release(inDef);
+    Release(klass);
     return out;
 }
 
@@ -194,9 +183,9 @@ int TestSigningNextBoot()
     IWbemClassObject *out = WmiCall(svc, L"BcdStore", L"BcdStore", L"OpenStore", L"File", &v);
     VariantClear(&v);
     IWbemClassObject *store = OutTrue(out) ? OutObject(out, L"Store") : nullptr;
-    Rel(out);
+    Release(out);
     std::wstring storePath = RelPath(store);
-    Rel(store);
+    Release(store);
     if (!storePath.empty()) {
         VariantInit(&v);
         v.vt = VT_BSTR;
@@ -204,9 +193,9 @@ int TestSigningNextBoot()
         out = WmiCall(svc, L"BcdStore", storePath.c_str(), L"OpenObject", L"Id", &v);
         VariantClear(&v);
         IWbemClassObject *obj = OutTrue(out) ? OutObject(out, L"Object") : nullptr;
-        Rel(out);
+        Release(out);
         std::wstring objPath = RelPath(obj);
-        Rel(obj);
+        Release(obj);
         if (!objPath.empty()) {
             VariantInit(&v);
             v.vt = VT_I4;
@@ -222,9 +211,9 @@ int TestSigningNextBoot()
                     if (el != nullptr && SUCCEEDED(el->Get(L"Boolean", 0, &b, nullptr, nullptr)) && b.vt == VT_BOOL)
                         result = b.boolVal != VARIANT_FALSE ? 1 : 0;
                     VariantClear(&b);
-                    Rel(el);
+                    Release(el);
                 }
-                Rel(out);
+                Release(out);
             }
         }
     }
@@ -322,12 +311,7 @@ static std::vector<std::wstring> ReadRecord(const std::wstring &file, bool &exis
     exists = ReadFileBytes(file, data);
     if (!exists)
         return stores;
-    std::wstring t = FromUtf8(std::string(data.begin(), data.end()));
-    size_t pos = 0;
-    while (pos < t.size()) {
-        size_t eol = t.find(L'\n', pos);
-        std::wstring line = t.substr(pos, eol == std::wstring::npos ? std::wstring::npos : eol - pos);
-        pos = eol == std::wstring::npos ? t.size() : eol + 1;
+    for (auto &line : TextLines(data)) {
         while (!line.empty() && (line.back() == L'\r' || line.back() == L' '))
             line.pop_back();
         for (const wchar_t *s : kCertStores)
@@ -342,14 +326,34 @@ static bool WriteRecord(const std::wstring &file, const std::vector<std::wstring
     std::wstring t = L"# certificate stores Apollo setup added " + thumb + L" to (uninstall removes it only from these)\n";
     for (auto &s : stores)
         t += s + L"\n";
-    std::string u = ToUtf8(t);
-    HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE)
-        return false;
-    DWORD done = 0;
-    BOOL ok = WriteFile(h, u.data(), (DWORD)u.size(), &done, nullptr);
-    CloseHandle(h);
-    return ok && done == u.size();
+    return WriteFileUtf8(file, t);
+}
+
+static HCERTSTORE OpenMachineStore(const wchar_t *name, bool existingOnly)
+{
+    return CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
+                         CERT_SYSTEM_STORE_LOCAL_MACHINE | (existingOnly ? CERT_STORE_OPEN_EXISTING_FLAG : 0), name);
+}
+
+static PCCERT_CONTEXT FindByHash(HCERTSTORE st, CRYPT_HASH_BLOB &blob)
+{
+    return CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_SHA1_HASH, &blob, nullptr);
+}
+
+/* Deletes every certificate with this SHA-1 from an open store, counting them in removed; false
+   (with an error line) if one could not be deleted. */
+static bool DeleteMatching(HCERTSTORE st, const wchar_t *name, CRYPT_HASH_BLOB &blob, int &removed)
+{
+    for (;;) {
+        PCCERT_CONTEXT found = FindByHash(st, blob);
+        if (found == nullptr)
+            return true;
+        if (!CertDeleteCertificateFromStore(found)) {   /* frees found either way */
+            Err(L"  LocalMachine\\%s: could not remove: %s", name, ErrText(GetLastError()).c_str());
+            return false;
+        }
+        removed++;
+    }
 }
 
 int CmdCert(bool add, const std::wstring &cer, const std::wstring &expectArg, const std::wstring &record)
@@ -395,55 +399,35 @@ int CmdCert(bool add, const std::wstring &cer, const std::wstring &expectArg, co
     std::vector<std::wstring> recorded = record.empty() ? std::vector<std::wstring>() : ReadRecord(record, recExists);
 
     for (const wchar_t *name : kCertStores) {
-        HCERTSTORE st = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
-                                      CERT_SYSTEM_STORE_LOCAL_MACHINE | (add ? 0 : CERT_STORE_OPEN_EXISTING_FLAG), name);
+        HCERTSTORE st = OpenMachineStore(name, !add);
         if (st == nullptr) {
             Err(L"  LocalMachine\\%s: cannot open: %s", name, ErrText(GetLastError()).c_str());
             rc = EXIT_ERROR;
             continue;
         }
         if (add) {
-            PCCERT_CONTEXT found = CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-                                                              CERT_FIND_SHA1_HASH, &blob, nullptr);
+            PCCERT_CONTEXT found = FindByHash(st, blob);
             if (found != nullptr) {
                 CertFreeCertificateContext(found);
                 Out(L"  LocalMachine\\%s: already there", name);
             } else if (CertAddCertificateContextToStore(st, ctx, CERT_STORE_ADD_NEW, nullptr)) {
                 Out(L"  LocalMachine\\%s: added", name);
-                bool dup = false;
-                for (auto &r : recorded)
-                    dup = dup || EqualsI(r, name);
-                if (!dup)
+                if (!InListI(recorded, name))
                     recorded.push_back(name);
             } else {
                 Err(L"  LocalMachine\\%s: could not add: %s", name, ErrText(GetLastError()).c_str());
                 rc = EXIT_ERROR;
             }
-        } else {
+        } else if (!record.empty() && !InListI(recorded, name)) {
             /* With --record, only the stores the record names (a missing record = none of them:
                never guess that Setup added a certificate). Without --record: both stores. */
-            bool listed = record.empty();
-            for (auto &r : recorded)
-                listed = listed || EqualsI(r, name);
-            if (!listed) {
-                Out(L"  LocalMachine\\%s: left in place (%s)", name,
-                    recExists ? L"it was there before Apollo setup ran" : L"no record that Apollo setup added it");
-            } else {
-                int removed = 0;
-                for (;;) {
-                    PCCERT_CONTEXT found = CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-                                                                      CERT_FIND_SHA1_HASH, &blob, nullptr);
-                    if (found == nullptr)
-                        break;
-                    if (!CertDeleteCertificateFromStore(found)) {   /* frees found either way */
-                        Err(L"  LocalMachine\\%s: could not remove: %s", name, ErrText(GetLastError()).c_str());
-                        rc = EXIT_ERROR;
-                        break;
-                    }
-                    removed++;
-                }
-                Out(L"  LocalMachine\\%s: %s", name, removed ? L"removed" : L"was not there");
-            }
+            Out(L"  LocalMachine\\%s: left in place (%s)", name,
+                recExists ? L"it was there before Apollo setup ran" : L"no record that Apollo setup added it");
+        } else {
+            int removed = 0;
+            if (!DeleteMatching(st, name, blob, removed))
+                rc = EXIT_ERROR;
+            Out(L"  LocalMachine\\%s: %s", name, removed ? L"removed" : L"was not there");
         }
         CertCloseStore(st, 0);
     }
@@ -497,8 +481,7 @@ static bool HexToBytes(const std::wstring &hex, BYTE *out, size_t n)
    delete, else how many were removed. */
 static int RemoveFromStore(const wchar_t *name, CRYPT_HASH_BLOB &blob)
 {
-    HCERTSTORE st = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
-                                  CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG, name);
+    HCERTSTORE st = OpenMachineStore(name, true);
     if (st == nullptr) {
         DWORD e = GetLastError();
         if (e == ERROR_FILE_NOT_FOUND)
@@ -507,20 +490,9 @@ static int RemoveFromStore(const wchar_t *name, CRYPT_HASH_BLOB &blob)
         return -1;
     }
     int removed = 0;
-    for (;;) {
-        PCCERT_CONTEXT found = CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-                                                          CERT_FIND_SHA1_HASH, &blob, nullptr);
-        if (found == nullptr)
-            break;
-        if (!CertDeleteCertificateFromStore(found)) {   /* frees found either way */
-            Err(L"  LocalMachine\\%s: could not remove: %s", name, ErrText(GetLastError()).c_str());
-            removed = -1;
-            break;
-        }
-        removed++;
-    }
+    bool ok = DeleteMatching(st, name, blob, removed);
     CertCloseStore(st, 0);
-    return removed;
+    return ok ? removed : -1;
 }
 
 /* A certificate in LocalMachine\My (where sign-local.ps1 makes it) whose private key survived:
@@ -528,14 +500,12 @@ static int RemoveFromStore(const wchar_t *name, CRYPT_HASH_BLOB &blob)
    it could not (it says so, and Setup then runs this). */
 static int RemoveFromMyWithKey(CRYPT_HASH_BLOB &blob)
 {
-    HCERTSTORE st = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
-                                  CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG, L"My");
+    HCERTSTORE st = OpenMachineStore(L"My", true);
     if (st == nullptr)
         return 0;
     int removed = 0;
     for (;;) {
-        PCCERT_CONTEXT found = CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-                                                          CERT_FIND_SHA1_HASH, &blob, nullptr);
+        PCCERT_CONTEXT found = FindByHash(st, blob);
         if (found == nullptr)
             break;
         HCRYPTPROV_OR_NCRYPT_KEY_HANDLE key = 0;
@@ -582,18 +552,10 @@ int CmdCertRemoveLocal(const std::wstring &file)
         Err(L"Cannot read %s: %s", file.c_str(), ErrText(e).c_str());
         return EXIT_ERROR;
     }
-    std::wstring t = FromUtf8(std::string(data.begin(), data.end()));
     std::vector<std::wstring> thumbs;
-    size_t pos = 0;
-    while (pos < t.size()) {
-        size_t eol = t.find(L'\n', pos);
-        std::wstring line = t.substr(pos, eol == std::wstring::npos ? std::wstring::npos : eol - pos);
-        pos = eol == std::wstring::npos ? t.size() : eol + 1;
+    for (auto &line : TextLines(data)) {
         std::wstring th = ThumbLine(line);
-        bool dup = false;
-        for (auto &x : thumbs)
-            dup = dup || x == th;
-        if (!th.empty() && !dup)
+        if (!th.empty() && std::find(thumbs.begin(), thumbs.end(), th) == thumbs.end())
             thumbs.push_back(th);
     }
     if (thumbs.empty())
@@ -627,13 +589,7 @@ int CmdCertRemoveLocal(const std::wstring &file)
         std::wstring keep;
         for (auto &th : left)
             keep += th + L"\r\n";
-        std::string u = ToUtf8(keep);
-        HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (h != INVALID_HANDLE_VALUE) {
-            DWORD done = 0;
-            WriteFile(h, u.data(), (DWORD)u.size(), &done, nullptr);
-            CloseHandle(h);
-        }
+        WriteFileUtf8(file, keep);
     }
     return rc;
 }
@@ -708,13 +664,9 @@ int CmdRegDefaults(const std::wstring &file)
         return EXIT_ERROR;
     }
     std::vector<std::wstring> subs;
-    for (auto &it : items) {
-        bool seen = false;
-        for (auto &s : subs)
-            seen = seen || s == it.SubKey;
-        if (!seen)
+    for (auto &it : items)
+        if (std::find(subs.begin(), subs.end(), it.SubKey) == subs.end())
             subs.push_back(it.SubKey);
-    }
     int rc = EXIT_OK;
     for (auto &s : subs)
         if (WriteValues(s, items) != EXIT_OK)

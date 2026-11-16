@@ -148,11 +148,11 @@ function defaultConfig() {
        while Windows is light; accent: 'look' (the look's own) or an ACCENTS key; scanlines: Arcade's overlay. theme: kept
        for configs from before the looks (migrateLooks). */
     appearance: { theme: 'dark', look: 'classic', followSystem: false, accent: 'look', scale: 100, scanlines: false },
-    plb: { closed: false },
+    plb: { closed: false },            /* [Plug-ins] the Control view's plug-in browser collapsed */
     /* [Classic] the Classic look's strip view (overview, inputs, inserts, sends) and its control room column (themes/classic) */
     classic: { view: 'overview', ctrlRoom: true },
-    bridge: { std: 'vu' },
-    auxStrips: { open: false },        /* [Ins] the console layouts show the AUX 1 / AUX 2 strips (the master's AUX button) */             /* [Themes] Studio's meter bridge: vu, ppm or k14 */            /* [Plug-ins] the Control view's plug-in browser collapsed */
+    bridge: { std: 'vu' },             /* [Themes] Studio's meter bridge: vu, ppm or k14 */
+    auxStrips: { open: false },        /* [Ins] the console layouts show the AUX 1 / AUX 2 strips (the master's AUX button) */
     /* closeToTray counts once the user set it (closeToTraySet); until then the window closes to the tray while Apollo Control
        starts with Windows (sessions.js closeToTray). startWithWindows: unused, the HKCU Run value is the truth ([Sess]). */
     windowPrefs: { closeToTray: true, closeToTraySet: false, startWithWindows: false },
@@ -180,7 +180,6 @@ function newMix() { return { alt: [{}, {}], cues: [{}, {}, {}, {}], main: {}, au
 /* A saved mix as loaded: only well-formed values survive. */
 function cleanMix(m) {
   const out = newMix();
-  const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   (Array.isArray(m.alt) ? m.alt : []).slice(0, 2).forEach((a, n) => {
     if (!a || typeof a !== 'object') return;
     if (typeof a.on === 'boolean') out.alt[n].on = a.on;
@@ -271,7 +270,7 @@ function merge(base, loaded) {
   return base;
 }
 
-/* A config from before the looks (Nov 15 2026): its theme picks the look, and the old default accent (amber) gives
+/* A config from before the looks: its theme picks the look, and the old default accent (amber) gives
    way to the look's own. A look or accent id this build does not know falls back. */
 function migrateLooks(loaded) {
   const a = loaded && loaded.appearance, ap = cfg.appearance;
@@ -441,6 +440,10 @@ function el(tag, props = {}, ...kids) {
   return n;
 }
 
+/* a table head from [text, class, title] per column (the Status view, Units & routing) */
+const thead = labels => el('thead', {}, el('tr', {},
+  labels.map(([t, cls, title]) => el('th', { class: cls || null, title: title || null, text: t }))));
+
 function svg(tag, attrs = {}) {
   const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
@@ -448,6 +451,8 @@ function svg(tag, attrs = {}) {
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;   /* a loaded value's check (configs, sessions) */
+const clone = x => JSON.parse(JSON.stringify(x));
 const bit = (x, n) => ((x >>> n) & 1) === 1;
 const rawToDb = raw => (raw - LEVEL_MAX) / 2;
 const fmtLevel = raw => `${rawToDb(raw).toFixed(1)} dB`;
@@ -455,6 +460,9 @@ const hex = (v, w = 8) => '0x' + (v >>> 0).toString(16).toUpperCase().padStart(w
 const now = () => performance.now();
 
 function setPressed(node, on) { node.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+/* Shows or hides node, writing only a change: renders that run on every status and readback (and every frame) call
+   it, and setting hidden to the value it has still restyles the element. Text the same way: put(node, text). */
+function setHidden(node, hide) { if (node.hidden !== !!hide) node.hidden = !!hide; }
 
 /* A latching switch (aria-pressed). Its look is the theme's (skin.js button.decorate adds aria-hidden parts only). */
 function sw(label, opts = {}) {
@@ -1682,17 +1690,6 @@ const DEMO_LOG = [
 /* Knob                                                                */
 /* ------------------------------------------------------------------ */
 
-const KNOB_START = -135, KNOB_END = 135;
-function polar(r, deg) {
-  const a = (deg * Math.PI) / 180;
-  return [50 + r * Math.sin(a), 50 - r * Math.cos(a)];
-}
-function arcPath(r, from, to) {
-  const [x0, y0] = polar(r, from), [x1, y1] = polar(r, to);
-  const large = to - from > 180 ? 1 : 0;
-  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
-}
-
 /*
  * Knob: the model of a rotary control (value, range, step, taper, format, parse, reset, locked / unconfirmed / refused,
  * the accessible name and the keyboard map, the same in every theme). Its view and pointer interaction come from the
@@ -1730,6 +1727,7 @@ class Knob {
     this.skinId = Skin.id();
     this.node.dataset.skin = this.skinId;
     this.view = Skin.r('knob').build(this, Skin.R);
+    this.shown = '';
     this.draw();
   }
 
@@ -1738,11 +1736,15 @@ class Knob {
   setLocked(on) { this.locked = on; this.node.classList.toggle('locked', on); }
   setUnconfirmed(on) { this.node.classList.toggle('unconfirmed', on); }
 
+  /* Every status and readback sets every control again: only a change reaches the view (an SVG path written again,
+     even unchanged, restyles and re-lays out the strips). */
   draw() {
     if (this.skinId !== Skin.id() && this.node.isConnected) { this.skinRebuild(); return; }
-    const p = clamp(this.o.toPos(this.value), 0, 1);
-    const text = this.o.format(this.value);
-    this.view.draw({ p, p0: this.o.origin || 0, text, value: this.value });
+    const p = clamp(this.o.toPos(this.value), 0, 1), p0 = this.o.origin || 0;
+    const text = this.o.format(this.value), key = `${p}|${p0}|${text}|${this.value}`;
+    if (key === this.shown) return;
+    this.shown = key;
+    this.view.draw({ p, p0, text, value: this.value });
     if (this.readout.textContent !== text) this.readout.textContent = text;
     this.node.setAttribute('aria-valuenow', String(this.value));
     this.node.setAttribute('aria-valuetext', text);
@@ -1979,6 +1981,7 @@ class Fader {
     this.skinId = Skin.id();
     this.node.dataset.skin = this.skinId;
     this.view = Skin.r('fader').build(this, Skin.R);
+    this.shown = '';
     this.draw();
   }
   blocked() { return false; }
@@ -2018,10 +2021,12 @@ class Fader {
   }
   set(v) { if (this.dragging) return; this.value = v; this.draw(); }
   setUnconfirmed(on) { this.node.classList.toggle('unconfirmed', on); }
-  draw() {
+  draw() {                             /* only a change reaches the view, as Knob.draw */
     if (this.skinId !== Skin.id() && this.node.isConnected) { this.skinRebuild(); return; }
     const p = clamp(this.o.toPos(this.value), 0, 1);
-    const text = this.o.format(this.value);
+    const text = this.o.format(this.value), key = `${p}|${text}|${this.value}`;
+    if (key === this.shown) return;
+    this.shown = key;
     this.view.draw({ p, text, value: this.value });
     if (this.readout.textContent !== text) this.readout.textContent = text;
     this.node.setAttribute('aria-valuenow', String(this.value));
@@ -2207,7 +2212,7 @@ function renderOneBar(bar) {
   }
   const list = controlUnits();
   if (!bar.all) unitButtons(bar, list);
-  bar.row.hidden = bar.all || list.length < 2;     /* one unit: the top bar already names it */
+  setHidden(bar.row, bar.all || list.length < 2);     /* one unit: the top bar already names it */
 }
 
 /* The monitor column's unit buttons (two or more units). */
@@ -2215,7 +2220,7 @@ function renderMonUnits() {
   if (!mon.units) return;
   const list = controlUnits();
   unitButtons(mon.unitsHolder, list);
-  mon.units.hidden = list.length < 2;
+  setHidden(mon.units, list.length < 2);
   put(mon.which, list.length > 1 ? `${unitShort(S.sel)} · ${unitModel(S.sel)}` : unitModel(S.sel));
 }
 
@@ -2258,8 +2263,8 @@ function renderBarNotes(bar) {
       el('span', { text: l.text }),
       l.keys ? el('button', { class: 'btn btn-quiet ctl-dismiss', onclick: () => dismissRefusals(l.idx, l.keys) }, 'Dismiss') : null)));
   }
-  bar.notes.hidden = !lines.length;
-  bar.root.hidden = bar.row.hidden && bar.notes.hidden;
+  setHidden(bar.notes, !lines.length);
+  setHidden(bar.root, bar.row.hidden && bar.notes.hidden);
 }
 
 function dismissRefusals(idx, keys) {
@@ -2273,7 +2278,6 @@ function dismissRefusals(idx, keys) {
 
 /* ---------- segments ---------- */
 
-const pendingOn = (idx, key) => !!S.ctl[idx] && S.ctl[idx].pending.has(key);
 const refusedOn = (idx, key) => !!S.ctl[idx] && S.ctl[idx].refused.has(key);
 /* "Input 3" on the x8p, "Twin X input 1" on another unit: the start of every control's accessible name */
 const stripWho = (idx, ch) => (idx ? `${unitShort(idx)} input ${ch + 1}` : `Input ${ch + 1}`);
@@ -2303,7 +2307,7 @@ function syncSegments() {
   root.dataset.units = String(nodes.length);
   for (const sg of segs.values()) {
     sg.node.classList.toggle('gone', sg.gone);
-    sg.body.inert = sg.gone;
+    if (sg.body.inert !== sg.gone) sg.body.inert = sg.gone;      /* runs on every status: a change only */
   }
   renderAllInputs();
   renderSegHeads();
@@ -2412,7 +2416,7 @@ function renderSegHead(idx) {
   sg.clock.dataset.state = !up ? 'off' : run ? 'ok' : 'warn';
   put(sg.clockTxt, !up ? 'OFFLINE' : `${kHz(i.sampleRate || 48000)} · CLK ${run ? 'RUN' : 'STOP'}`);
   if (!sg.gone) renderRateIn(sg.rate, idx, 'seg');
-  sg.gonebar.hidden = !sg.gone;
+  setHidden(sg.gonebar, !sg.gone);
   if (sg.gone) put(sg.goneTxt, `DISCONNECTED${sg.goneAt ? ` ${sg.goneAt.toTimeString().slice(0, 5)}` : ''}`);
   sg.node.dataset.live = !sg.gone && !unitReadOnly(idx) && (S.demo || connected(idx)) ? '1' : '0';
   Clock.head(idx, sg);                 /* [Clock] the clock badge, the talkback strip's no-signal note (clockui.js) */
@@ -2597,7 +2601,7 @@ function renderInput(ch, idx = S.sel) {
   if (!s) return;
   const c = ctl(idx), inp = c.inputs[ch], cc = chanCfg(idx, ch);
   const pend = key => c.pending.has(key), bad = key => c.refused.has(key);
-  s.name.textContent = cc.name || 'Name';
+  put(s.name, cc.name || 'Name');
   s.name.classList.toggle('empty', !cc.name);
   if (cc.color && STRIP_COLORS[cc.color]) {
     s.node.dataset.color = cc.color;
@@ -2605,7 +2609,7 @@ function renderInput(ch, idx = S.sel) {
   } else {
     delete s.node.dataset.color;
   }
-  s.node.hidden = !!cc.hidden;
+  setHidden(s.node, cc.hidden);
   if (s.hiz) s.hiz.classList.toggle('on', inp.hiz);
   s.gain.set(inp.gain);
   s.node.querySelector('.strip-top').dataset.lv = String(Math.round((inp.gain - 10) / 55 * 99)).padStart(2, '0');
@@ -2638,7 +2642,7 @@ function renderPair(p, idx = S.sel) {
   }
   pr.node.classList.toggle('linked', !!c.links[p]);
   const a = chanCfg(idx, p * 2).hidden, b = chanCfg(idx, p * 2 + 1).hidden;
-  pr.node.hidden = a && b;
+  setHidden(pr.node, a && b);
   pr.node.classList.toggle('single', a !== b);
 }
 
@@ -2693,14 +2697,12 @@ function renderMixFor(idx) {
     r.solo.classList.toggle('refused', refusedOn(idx, `mix:mixsolo:${r.bus}`));
     r.box.classList.toggle('silent', v.mute || (anySolo && !v.solo));
     r.box.classList.toggle('follower', follower);
-    r.fader.node.hidden = follower;
-    r.fader.readout.hidden = follower;
-    r.mute.hidden = r.solo.hidden = follower;
-    r.linked.hidden = !follower;
+    for (const n of [r.fader.node, r.fader.readout, r.mute, r.solo]) setHidden(n, follower);
+    setHidden(r.linked, !follower);
   }
   if (sg.master) {
     setChecked(sg.master.all, buses.length > 0 && buses.every(b => vals.get(b).mute));
-    if (sg.master.clrSolo) sg.master.clrSolo.hidden = !anySolo;      /* [Mix] SoloClear */
+    if (sg.master.clrSolo) setHidden(sg.master.clrSolo, !anySolo);      /* [Mix] SoloClear */
     sg.master.all.classList.toggle('refused', refusedOn(idx, 'mix:mixmuteall'));
   }
 }
@@ -2741,7 +2743,7 @@ function renderMasters() { for (const idx of segs.keys()) renderMaster(idx); }
  * gain-staging view (Studio's signature): per input its preamp gain, insert, level, monitor fader and its share of the
  * main out at a glance. Shown in the console composition only.
  */
-const MB = { root: null, canvas: null, ctx: null, cells: [], std: 'vu', stages: false, w: 0, h: 0, dpr: 1, key: '' };
+const MB = { root: null, canvas: null, ctx: null, cells: [], std: 'vu', stages: false, w: 0, h: 0, dpr: 1, key: '', drawn: '', look: '', label: '' };
 const MB_STD = {
   vu: { name: 'VU', lo: -20, hi: 3, ref: -18, marks: [-20, -10, -7, -5, -3, -1, 0, 1, 2, 3], red: 0, tau: 0.12, avg: false },
   ppm: { name: 'PPM', lo: -24, hi: 0, ref: 0, marks: [-24, -20, -16, -12, -8, -4, 0], red: -8, rise: 0.01, fall: 8.6, avg: false },
@@ -2761,6 +2763,7 @@ function buildMeterBridge() {
     el('div', { class: 'mb-tools' }, el('span', { class: 'lbl', text: 'Meter bridge' }), std.node, MB.stagesBtn), MB.canvas);
   desk.insertBefore(MB.root, document.getElementById('inputs'));
   new ResizeObserver(() => { MB.key = ''; }).observe(MB.canvas);
+  MB.canvas.addEventListener('contextrestored', () => { MB.drawn = ''; });   /* a GPU reset blanks it: draw again */
 }
 
 /* the cells: each live unit's inputs, then its main out L and R */
@@ -2778,7 +2781,7 @@ function mbCells() {
 function drawMeterBridge(dt) {
   if (!MB.root) return;
   const show = document.getElementById('view-control').dataset.comp === 'console' && S.view === 'control';
-  MB.root.hidden = !show;
+  setHidden(MB.root, !show);
   if (!show) return;
   const list = mbCells(), key = list.map(c => `${c.idx}:${c.slot}`).join(',');
   const cw = MB.canvas.clientWidth, chh = MB.canvas.clientHeight, dpr = window.devicePixelRatio || 1;
@@ -2789,16 +2792,13 @@ function drawMeterBridge(dt) {
     MB.ctx = MB.canvas.getContext('2d');
     const old = new Map(MB.cells.map(c => [`${c.idx}:${c.slot}`, c.v]));
     MB.cells = list.map(c => ({ ...c, v: old.get(`${c.idx}:${c.slot}`) ?? -Infinity }));
+    MB.drawn = '';
   }
   const g = MB.ctx, n = MB.cells.length;
   if (!g || !n) return;
-  const cs = getComputedStyle(document.documentElement);
-  const col = { face: '#e9e2cf', ink: '#2a2620', red: '#c0392b', needle: '#1b1a17', label: cs.getPropertyValue('--text-dim').trim() || '#aaa' };
-  g.setTransform(MB.dpr, 0, 0, MB.dpr, 0, 0);
-  g.clearRect(0, 0, MB.w, MB.h);
-  const gap = 4, w = (MB.w - gap * (n - 1)) / n, h = MB.h, st = MB_STD[MB.std];
-  MB.cells.forEach((c, i) => {
-    const x = i * (w + gap), u = S.ctl[c.idx];
+  const st = MB_STD[MB.std], frac0 = v => clamp((v - st.lo) / (st.hi - st.lo), 0, 1);
+  for (const c of MB.cells) {
+    const u = S.ctl[c.idx];
     /* ballistics on the peak feed: VU and K-14 integrate, PPM rises fast and falls slowly */
     const peak = u && u.levelsValid ? u.peaks[c.slot] : -Infinity;
     const lin = peak > -200 ? Math.pow(10, peak / 20) : 0, cur = c.v > -200 ? Math.pow(10, c.v / 20) : 0;
@@ -2808,8 +2808,24 @@ function drawMeterBridge(dt) {
       const a = 1 - Math.exp(-dt / st.tau), nl = cur + (lin * (st.avg ? 0.707 : 1) - cur) * a;
       c.v = nl > 0 ? 20 * Math.log10(nl) : -Infinity;
     }
+    const rel = c.v - st.ref;
+    c.f = frac0(Number.isFinite(rel) ? rel : st.lo - 5);
+    c.hot = rel >= st.red;
+  }
+  /* the label colour is the look's (read once per look, not every frame) */
+  const look = document.documentElement.dataset.look;
+  if (MB.look !== look) { MB.look = look; MB.label = getComputedStyle(document.documentElement).getPropertyValue('--text-dim').trim() || '#aaa'; }
+  /* needles that did not move (silence, a steady level) are not drawn again; STAGES is always drawn */
+  const drawn = MB.stages ? '' : `${MB.std}|${MB.label}|${MB.cells.map(c => `${c.f}${c.hot ? 'r' : ''}`).join(',')}`;
+  if (drawn && drawn === MB.drawn) return;
+  MB.drawn = drawn;
+  const col = { face: '#e9e2cf', ink: '#2a2620', red: '#c0392b', needle: '#1b1a17', label: MB.label };
+  g.setTransform(MB.dpr, 0, 0, MB.dpr, 0, 0);
+  g.clearRect(0, 0, MB.w, MB.h);
+  const gap = 4, w = (MB.w - gap * (n - 1)) / n, h = MB.h;
+  MB.cells.forEach((c, i) => {
+    const x = i * (w + gap);
     if (MB.stages) { drawStage(g, c, x, w, h, col); return; }
-    const rel = c.v - st.ref, frac0 = v => clamp((v - st.lo) / (st.hi - st.lo), 0, 1);
     /* the face */
     g.fillStyle = c.main ? '#ddd3bb' : col.face;
     g.fillRect(x, 0, w, h - 12);
@@ -2826,8 +2842,8 @@ function drawMeterBridge(dt) {
       g.beginPath(); g.moveTo(cx + r0 * Math.cos(t), cy + r0 * Math.sin(t)); g.lineTo(cx + r1 * Math.cos(t), cy + r1 * Math.sin(t)); g.stroke();
     }
     /* the needle */
-    const t = ang(frac0(Number.isFinite(rel) ? rel : st.lo - 5));
-    g.strokeStyle = rel >= st.red ? col.red : col.needle; g.lineWidth = 1.4;
+    const t = ang(c.f);
+    g.strokeStyle = c.hot ? col.red : col.needle; g.lineWidth = 1.4;
     g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + r * 0.95 * Math.cos(t), cy + r * 0.95 * Math.sin(t)); g.stroke();
     g.fillStyle = col.ink; g.font = '8px Segoe UI'; g.textAlign = 'center';
     g.fillText(st.name, cx, (h - 12) * 0.82);
@@ -3001,11 +3017,11 @@ function renderSpeakers() {
     mon.speakers.opts = opts;
     mon.spkWrap.replaceChildren(mon.speakers.node);
   }
-  mon.spkField.hidden = !on.some(Boolean);
+  setHidden(mon.spkField, !on.some(Boolean));
   mon.speakers.set(mon.speakers.opts.indexOf(m.alt));
   mon.speakers.node.classList.toggle('refused', isRefused('mon:alt'));
   for (const b of mon.speakers.node.querySelectorAll('button')) b.classList.toggle('unconfirmed', isPending('mon:alt'));
-  mon.altCard.hidden = !k.alts.length;
+  setHidden(mon.altCard, !k.alts.length);
   const mix = mixOf(idx);
   (mon.alts || []).forEach((a, n) => {
     setPressed(a.on, on[n]);
@@ -3028,15 +3044,16 @@ function renderMonitor() {
   mon.hp1.node.classList.toggle('refused', isRefused('mon:hp1'));
   /* The focused unit's model (MODEL_CAPS) decides which controls exist. */
   const c = caps();
-  mon.hp1.node.hidden = !c.hpLevel;
-  mon.hpSide.hidden = !c.hpSource;
-  mon.hp2Lbl.hidden = mon.hp2Wrap.hidden = c.hps < 2;
+  setHidden(mon.hp1.node, !c.hpLevel);
+  setHidden(mon.hpSide, !c.hpSource);
+  setHidden(mon.hp2Lbl, c.hps < 2);
+  setHidden(mon.hp2Wrap, c.hps < 2);
   put(mon.hpNote, [c.hpLevel ? null : 'Headphone levels: the knobs on the unit.',
     c.hpSource ? null : 'Headphone source: not available yet.'].filter(Boolean).join(' '));
-  mon.hpNote.hidden = c.hpLevel && c.hpSource;
-  mon.dimField.hidden = !c.dimLevel;
-  mon.srcField.hidden = !c.monSource;
-  mon.talkCard.hidden = !c.talkback;
+  setHidden(mon.hpNote, c.hpLevel && c.hpSource);
+  setHidden(mon.dimField, !c.dimLevel);
+  setHidden(mon.srcField, !c.monSource);
+  setHidden(mon.talkCard, !c.talkback);
   mon.tbDim.checked = !!cfg.talkbackDim;
   for (const k of ['mono', 'talkback']) {
     const node = k === 'talkback' ? mon.talk : mon[k];
@@ -3159,8 +3176,9 @@ function renderCues() {
   if (!cues.root) return;
   if (unitType(S.sel) !== cues.built) buildCues();
   const idx = S.sel, k = caps(), c = cues.sel;
-  cues.empty.hidden = k.cues.length > 0;
-  cues.root.querySelector('.cue-head').hidden = cues.root.querySelector('.cue-body').hidden = !k.cues.length;
+  setHidden(cues.empty, k.cues.length > 0);
+  setHidden(cues.root.querySelector('.cue-head'), !k.cues.length);
+  setHidden(cues.root.querySelector('.cue-body'), !k.cues.length);
   if (!k.cues.length) return;
   const q = mixOf(idx).cues[c];
   cues.pick.set(c);
@@ -3170,12 +3188,11 @@ function renderCues() {
     s.pan.set(v.pan);
     s.level.node.classList.toggle('refused', isRefused(`cue:send:${c + 1}:${s.bus}`));
     s.pan.node.classList.toggle('refused', isRefused(`cue:pan:${c + 1}:${s.bus}`));
-    const n = cueSrcLabel(idx, s.bus);
-    if (s.name.textContent !== n) s.name.textContent = n;
-    s.node.hidden = s.bus !== TALKBACK_BUS && !!chanCfg(idx, s.bus).hidden;
+    put(s.name, cueSrcLabel(idx, s.bus));
+    setHidden(s.node, s.bus !== TALKBACK_BUS && !!chanCfg(idx, s.bus).hidden);
   }
   cues.row.classList.toggle('muted', !!q.mute);
-  cues.title.textContent = `${k.cues[c]}${idx ? ` · ${unitShort(idx)}` : ''}`;
+  put(cues.title, `${k.cues[c]}${idx ? ` · ${unitShort(idx)}` : ''}`);
   cues.src.set(q.mix === 1 ? 1 : 0);
   cues.src.node.classList.toggle('refused', isRefused(`cue:cue${c + 1}mix`));
   setPressed(cues.mono, !!q.mono);
@@ -3317,7 +3334,7 @@ function patchRows(tbody, rows) {
       const spec = (c !== null && typeof c === 'object') ? c : { t: String(c) };
       const td = tr.cells[i];
       const [dot, txt] = td.children;
-      dot.hidden = !spec.dot;
+      setHidden(dot, !spec.dot);
       if (spec.dot) put(dot, '', `dot ${spec.dot}`);
       put(txt, spec.t === undefined ? '' : String(spec.t));
       put(td, null, spec.cls || '', spec.title || '');
@@ -3330,7 +3347,6 @@ const NA = { t: '-', cls: 'faint' };
 const NA_N = { t: '-', cls: 'n faint' };       /* in a number column */
 
 function buildUnitView(idx) {
-  const head = (labels) => el('thead', {}, el('tr', {}, labels.map(([t, cls, title]) => el('th', { class: cls || null, title: title || null, text: t }))));
   const v = {
     name: el('span', { class: 'unit-name' }),
     meta: el('span', { class: 'unit-meta num' }),
@@ -3349,7 +3365,7 @@ function buildUnitView(idx) {
   };
   v.engTable = el('table', { class: 'st-table st-kv' }, v.engBody);
   v.epTable = el('table', { class: 'st-table' },
-    head([['Dir'], ['Name'], ['Slots', 'n'], ['State'], ['Streams', 'n'],
+    thead([['Dir'], ['Name'], ['Slots', 'n'], ['State'], ['Streams', 'n'],
       ['Underruns', 'n', 'Playback packets played as silence: the app was late'],
       ['Overruns', 'n', 'Record packets overwritten before the app read them']]),
     v.epBody);
@@ -3359,7 +3375,7 @@ function buildUnitView(idx) {
     v.why,
     v.inNote,
     el('table', { class: 'st-table' },
-      head([['In', 'n'], ['Name'], ['Strip', null, 'Input strip on the DSP: taken = the DSP took the whole transaction'],
+      thead([['In', 'n'], ['Name'], ['Strip', null, 'Input strip on the DSP: taken = the DSP took the whole transaction'],
         ['Started', null, 'SYNCH sent: the strip runs'], ['48V'], ['Input'], ['Gain', 'n'], ['Pad'], ['Low cut'], ['Ø', null, 'Polarity invert']]),
       v.inBody));
   const engine = el('div', { class: 'panel st-engine' },
@@ -3403,7 +3419,7 @@ function renderStatusDot() {
   for (const u of S.units) { if (!u) continue; const h = unitHealth(u); if (rank[h] > rank[worst]) worst = h; }
   const dot = document.getElementById('statusDot');
   if (!dot) return;
-  dot.hidden = !worst;
+  setHidden(dot, !worst);
   if (worst && dot.dataset.state !== worst) dot.dataset.state = worst;
   const tab = document.getElementById('tab-status');
   const label = worst === 'bad' ? 'Status: a fault needs attention' : worst === 'warn' ? 'Status: dropouts in the last 10 seconds' : null;
@@ -3437,7 +3453,7 @@ function renderUnit(v, u, idx) {
   let meta = 'not connected';
   if (i || (!own && entry)) {
     meta = [(i ? i.serial : entry.serial) || '-', i ? `fw ${fwText(i)}` : entry.fw ? `fw ${entry.fw}` : null,
-      i && i.sampleRate ? `${(i.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')} kHz` : null,
+      i && i.sampleRate ? kHz(i.sampleRate) : null,
       ro ? `${ro} mode, read-only` : null,
       !i || i.stage === STAGE.CONNECTED ? null : (STAGE_NAMES[i.stage] || `stage ${i.stage}`)].filter(Boolean).join(' · ');
   }
@@ -3449,22 +3465,22 @@ function renderUnit(v, u, idx) {
   put(v.inNote, nIn ? '' : observe
     ? 'Observe mode: identified only. Nothing runs on this unit and no setting is sent to it.'
     : 'Inputs of this model are not shown yet.');
-  v.inNote.hidden = nIn > 0;
+  setHidden(v.inNote, nIn > 0);
 
   // Strips summary
   const s = L && L.strips;
   if (!s) {
-    v.stripDot.hidden = true;
+    setHidden(v.stripDot, true);
     put(v.stripText, 'unavailable', 'st-na', naReason(L ? L.stripsErr : 0));
-    v.why.hidden = true;
+    setHidden(v.why, true);
   } else {
     const [txt, dot] = STRIPS_STATES[s.state] || [`state ${s.state}`, 'off'];
-    v.stripDot.hidden = false;
+    setHidden(v.stripDot, false);
     put(v.stripDot, '', `dot ${dot}`);
     const stage = s.version >= 2 && s.stepsLimit ? ` · stage ${s.stepsDone} of ${s.stepsLimit}` : '';
     put(v.stripText, txt + stage, s.state === 5 ? 'bad-text' : '', '');
     put(v.why, s.why ? `Why: ${s.why}` : '');
-    v.why.hidden = !s.why;
+    setHidden(v.why, !s.why);
   }
   const tags = [];
   if (s && (s.flags & STRIPS_FLAG.QUARANTINED)) tags.push(['QUARANTINED', 'An outcome could not be proven. Power-cycle the Apollo.']);
@@ -3503,8 +3519,8 @@ function renderUnit(v, u, idx) {
 
   // Audio engine
   const e = L && L.engine;
-  v.engNa.hidden = !!e;
-  v.engTable.hidden = !e;
+  setHidden(v.engNa, e);
+  setHidden(v.engTable, !e);
   if (!e) {
     v.engNa.title = naReason(L ? L.engineErr : 0);
   } else {
@@ -3529,8 +3545,8 @@ function renderUnit(v, u, idx) {
   // Windows endpoints: as many rows as the driver reports
   const ep = L && L.endpoints;
   const epOk = !!ep && ep.layoutOk !== false && Array.isArray(ep.rows);
-  v.epNa.hidden = epOk;
-  v.epTable.hidden = !epOk;
+  setHidden(v.epNa, epOk);
+  setHidden(v.epTable, !epOk);
   put(v.epSum, epOk ? `${ep.rows.length} endpoint${ep.rows.length === 1 ? '' : 's'} · ${ep.prepared} stream${ep.prepared === 1 ? '' : 's'} prepared` : '');
   if (!epOk) {
     v.epNa.title = ep ? 'This app was built for a different endpoint table: rebuild it against the current driver header' : naReason(L ? L.endpointsErr : 0);
@@ -4266,13 +4282,13 @@ function renderStatus() {
   else if (i.stage < STAGE.CONNECTED) { state = 'busy'; text = `Starting up: ${STAGE_NAMES[i.stage] || i.stage}`; }
   else {
     state = 'ok';
-    text = `${i.serial || name} · ${(i.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')} kHz · clock ${(i.flags & FLAG.TRANSPORT) ? 'running' : 'stopped'}`;
+    text = `${i.serial || name} · ${kHz(i.sampleRate)} · clock ${(i.flags & FLAG.TRANSPORT) ? 'running' : 'stopped'}`;
   }
   conn.dataset.state = state;
-  document.getElementById('connText').textContent = text;
+  put(document.getElementById('connText'), text);
   document.body.dataset.live = !ro && (S.demo || connected(idx)) ? '1' : '0';
   renderSegHeads();                    /* each segment's clock, rate and live state */
-  document.getElementById('brandModel').textContent = DEVICE_NAMES[(i && i.deviceType) || unitType(idx)] || 'Apollo x8p';
+  put(document.getElementById('brandModel'), DEVICE_NAMES[(i && i.deviceType) || unitType(idx)] || 'Apollo x8p');
 
   renderBanner();
   if (S.view === 'device') renderDevice();
@@ -4288,9 +4304,9 @@ function renderClockState() {
     const c = m.group === 'control' ? S.ctl[m.unit] : x8p;    /* Control: each segment's unit; Channels: the x8p */
     m.setNoClock(!(c && c.levelsValid));
   }
-  document.getElementById('bridgeNote').textContent = !x8p.levelsValid
+  put(document.getElementById('bridgeNote'), !x8p.levelsValid
     ? 'The audio clock is stopped, so there is nothing to meter. Phase 2 starts it with the driver; until then run apollo-diag start in an admin prompt.'
-    : `${i ? i.recChannels : 32} slots at ${i ? i.sampleRate : 48000} Hz, peak over the last 21 ms`;
+    : `${i ? i.recChannels : 32} slots at ${i ? i.sampleRate : 48000} Hz, peak over the last 21 ms`);
 }
 
 function renderBanner() {
@@ -4372,7 +4388,6 @@ function showView(v) {
   }
   document.getElementById('view-styleguide').hidden = v !== 'styleguide';
   if (v === 'styleguide') StyleGuide.show();      /* the style guide: every control in every state (styleguide.js) */
-  if (was !== v) Skin.on('view', document.querySelector('main'));
   if (v === 'status') renderUnits();
   if (v === 'cues') renderCues();      /* [Monitor] */
   if (v === 'control') Plug.onShow();  /* [Plug-ins] the browser and slots: the host refreshes while shown */
@@ -4481,9 +4496,9 @@ function frame(t) {
     lastText = t;
     if (S.view === 'control') {
       const held = mt => peakText(mt.hold > -Infinity ? mt.hold : mt.cur);
+      const panels = document.getElementById('view-control').dataset.comp === 'panels';
       for (const sg of segs.values()) {
         if (sg.gone) continue;
-        const panels = document.getElementById('view-control').dataset.comp === 'panels';
         for (const s of sg.strips) {
           const txt = held(s.meter);
           if (txt !== s.lastPeak) { s.peak.textContent = txt; s.lastPeak = txt; }

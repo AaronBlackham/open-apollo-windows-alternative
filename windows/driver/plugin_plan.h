@@ -1,11 +1,10 @@
 /*
- * plugin_plan.h - the pure parts of UAD plug-in hosting, phase P0 (docs/PLUGINS.md 2.1): the
+ * plugin_plan.h - the pure parts of UAD plug-in hosting (docs/PLUGINS.md 2.1): the
  * transaction layout with 4 KiB pages and long replies, the DSP pool ledger, module record
  * checks, the request validation (rows, WRITEs, chain directory, CREATE flags, mono or stereo
- * inputs), the licence decode
- * and date, staged startup paging (a startup over one 1016-word page), and the words of every
- * plug-in transaction (upload, privates, start, stage, teardown, read), and what hosting is per
- * model (PLUG_MODEL: the x8p and, since P7, the Twin X Gen 1 Duo). No OS
+ * inputs), the licence decode and date, staged startup paging (a startup over one 1016-word
+ * page), the words of every plug-in transaction (upload, privates, start, stage, teardown,
+ * read), and what hosting is per model (PLUG_MODEL: the x8p and the Twin X Gen 1 Duo). No OS
  * calls and no allocation: apollo.sys (plugin.c), tools\plugin-plan-test and tools\plugin-host
  * (apollo-plug check) build the same code. The includer defines ULONG, UCHAR and ULONGLONG.
  *
@@ -80,7 +79,7 @@
 #define PLUG_RX_PAGES_MAX       8u
 #define PLUG_RES_MAX            64u
 /* 127, not upstream's 128: the privates transaction is one zero-fill per row plus the memspec, and
-   PLUG_XACT_ENTS_MAX is 128 entries (a 128-row CREATE could never be sent: review P0 finding 5). */
+   PLUG_XACT_ENTS_MAX is 128 entries (a 128-row CREATE could never be sent). */
 #define PLUG_PRIV_MAX           127u
 #define PLUG_CMD_WORDS_MAX      1016u
 #define PLUG_READ_WORDS_MAX     64u
@@ -406,11 +405,24 @@ static __inline ULONG PlugChainIds(const PLUG_ROW *Rows, ULONG NR, const ULONG *
     return PlugChainIdsEx(Rows, NR, Cmd, NW, Chain, 0, Primary, Ids, NIds, Carrier);
 }
 
+/* The rows (past the head) that link into word W of the head: a member's pointer word takes exactly one. */
+static __inline ULONG PlugHeadLinks(const PLUG_ROW *Rows, ULONG NR, ULONG W)
+{
+    ULONG j, n = 0;
+
+    for (j = 1; j < NR; j++) {
+        if (Rows[j].Link == W) {
+            n++;
+        }
+    }
+    return n;
+}
+
 static __inline ULONG PlugChainIdsEx(const PLUG_ROW *Rows, ULONG NR, const ULONG *Cmd, ULONG NW, ULONG Chain,
                                      ULONG Unison, ULONG Primary, ULONG Ids[5], ULONG *NIds, ULONG *Carrier)
 {
     ULONG head[16], seen[16];
-    ULONG i, k, pos, len, n, j, links, w0;
+    ULONG i, k, pos, len, n, w0;
 
     *NIds = 0;
     *Carrier = PLUG_MIC_CARRIER;
@@ -452,16 +464,7 @@ static __inline ULONG PlugChainIdsEx(const PLUG_ROW *Rows, ULONG NR, const ULONG
             return PLUG_EINVAL;             /* the header is a licensed plug-in, never the implicit strip carriers */
         }
         for (i = 0; i < n; i++) {
-            if (!seen[7 + 2 * i]) {
-                return PLUG_EINVAL;
-            }
-            links = 0;
-            for (j = 1; j < NR; j++) {
-                if (Rows[j].Link == 6 + 2 * i) {
-                    links++;
-                }
-            }
-            if (links != 1) {
+            if (!seen[7 + 2 * i] || PlugHeadLinks(Rows, NR, 6 + 2 * i) != 1) {
                 return PLUG_EINVAL;
             }
             if (head[7 + 2 * i] < PLUG_BQ_BASE || head[7 + 2 * i] >= PLUG_BQ_BASE + PLUG_BQ_WORDS) {
@@ -482,16 +485,7 @@ static __inline ULONG PlugChainIdsEx(const PLUG_ROW *Rows, ULONG NR, const ULONG
     }
     *Carrier = head[7];
     for (i = 0; i < n; i++) {
-        if (!seen[7 + 2 * i]) {
-            return PLUG_EINVAL;
-        }
-        links = 0;
-        for (j = 1; j < NR; j++) {
-            if (Rows[j].Link == 6 + 2 * i) {
-                links++;
-            }
-        }
-        if (links != 1) {
+        if (!seen[7 + 2 * i] || PlugHeadLinks(Rows, NR, 6 + 2 * i) != 1) {
             return PLUG_EINVAL;
         }
         if (i >= 1) {
@@ -594,7 +588,7 @@ static __inline ULONG PlugAuxOf(ULONG Synch)
 }
 
 /* ------------------------------------------------------------------ */
-/* The caller rule's pure parts (plugin.c PlugCallerAllowed, Nov 15)   */
+/* The caller rule's pure parts (plugin.c PlugCallerAllowed)           */
 /* ------------------------------------------------------------------ */
 
 #define PLUG_SID_CCH_MAX        184u            /* the longest SID string: 15 sub-authorities */
@@ -738,7 +732,7 @@ static __inline ULONG PlugSidTextEqual(const WCHAR *A, ULONG NA, const WCHAR *B,
  * STAGE | CHAIN, a chain whose startup is over one command page: its first page goes with the
  * CREATE (no strip stopped, nothing routed), the rest as SERVICE writes, then op START routes it.
  * START and STAGE exclude each other and CHECK; CHAIN needs one of them, and either needs CHAIN
- * (chains only, review P0 finding 2). [Ins] UNISON only as STAGE | CHAIN | UNISON: a Unison chain
+ * (chains only). [Ins] UNISON only as STAGE | CHAIN | UNISON: a Unison chain
  * is always staged, begun (analog lease) and activated (upstream: "UNISON with START returns
  * EOPNOTSUPP", ua_ioctl.h:1196-1197). PLUG_OK or PLUG_EINVAL.
  */
@@ -1194,7 +1188,7 @@ static __inline ULONG PlugLedgerIdle(const PLUG_LEDGER *L, ULONG Keep)
  * keep at least 0x1C0 / 0x80 / 0 words at their bottom while strips run there, as upstream raises
  * them before the strips are placed (oa:driver/ua_strips.c:1447-1455). The x8p's DSP 1 register
  * says 0x80 for pool 1, so without this the words 0x80..0x1C0 the live strips use would count as
- * free (review P0 finding 1). The floor becomes the ledger's minimum: no later scratch restore
+ * free. The floor becomes the ledger's minimum: no later scratch restore
  * (a chain going away) ever drops below it.
  */
 #define PLUG_STRIP_SCRATCH1     0x1C0u
@@ -1237,7 +1231,7 @@ static __inline ULONG PlugLedgerBookStripRoom(PLUG_LEDGER *L, ULONG CodeWords, c
     return err;
 }
 
-/* The same for Strips strips of PerStrip[p] words each (the Mic strips only: every build before [Virtual]). */
+/* The same for Strips strips of PerStrip[p] words each (the Mic strips only, no Virtual Input Strips). */
 static __inline ULONG PlugLedgerBookStrips(PLUG_LEDGER *L, ULONG CodeWords, const ULONG PerStrip[4], ULONG Strips,
                                            PLUG_LEASE Out[4])
 {
@@ -1538,6 +1532,14 @@ static __inline ULONG PlugRelocate(ULONG *Out, const ULONG *Cmd, ULONG NW, const
     return PLUG_OK;
 }
 
+/* Span none twice, then route 0x1FFFF, on DSP input In (after a SYNCH put a chain or a plain strip there). */
+static __inline void PlugXlSpanRoute(PLUG_XL *X, ULONG In)
+{
+    PlugXlInline(X, PLUG_CMD_INPUT, In, PLUG_INPUT_SPAN, PLUG_SPAN_NONE);
+    PlugXlInline(X, PLUG_CMD_INPUT, In, PLUG_INPUT_SPAN, PLUG_SPAN_NONE);
+    PlugXlInline(X, PLUG_CMD_INPUT, In, PLUG_INPUT_ROUTE, PLUG_ROUTE_NONE);
+}
+
 /*
  * ua_inst_start (ua_plugin_instance.c:689-739). Route (F_START, op START): stop what runs on each
  * input, the relocated WRITEs (one DMA command, none when NW is 0: op START of a staged chain),
@@ -1572,17 +1574,14 @@ static __inline ULONG PlugBuildStartEx(PLUG_XL *X, const PLUG_PAY *P, const ULON
     }
     PlugXlInline(X, PLUG_CMD_SYNCH, Synch, RowAddr[0], 0);
     for (k = 0; k < 2; k++) {
-        if (in[k] == PLUG_SYNCH_MONO) {
-            continue;
+        if (in[k] != PLUG_SYNCH_MONO) {
+            PlugXlSpanRoute(X, in[k]);
         }
-        PlugXlInline(X, PLUG_CMD_INPUT, in[k], PLUG_INPUT_SPAN, PLUG_SPAN_NONE);
-        PlugXlInline(X, PLUG_CMD_INPUT, in[k], PLUG_INPUT_SPAN, PLUG_SPAN_NONE);
-        PlugXlInline(X, PLUG_CMD_INPUT, in[k], PLUG_INPUT_ROUTE, PLUG_ROUTE_NONE);
     }
     return X->Err;
 }
 
-/* F_START: stop the input's plain strip, the WRITEs, SYNCH the head, span/route (P0's start). */
+/* F_START: stop the input's plain strip, the WRITEs, SYNCH the head, span/route. */
 static __inline ULONG PlugBuildStart(PLUG_XL *X, const PLUG_PAY *P, const ULONG *Cmd, ULONG NW,
                                      const ULONG *RowAddr, ULONG NRows, ULONG Synch, ULONG *Reloc)
 {
@@ -1609,9 +1608,7 @@ static __inline ULONG PlugBuildStop(PLUG_XL *X, ULONG Synch, ULONG Stop, ULONG R
             continue;
         }
         PlugXlInline(X, PLUG_CMD_SYNCH, (PLUG_SYNCH_MONO << 16) | in[k], Header[k], 0);
-        PlugXlInline(X, PLUG_CMD_INPUT, in[k], PLUG_INPUT_SPAN, PLUG_SPAN_NONE);
-        PlugXlInline(X, PLUG_CMD_INPUT, in[k], PLUG_INPUT_SPAN, PLUG_SPAN_NONE);
-        PlugXlInline(X, PLUG_CMD_INPUT, in[k], PLUG_INPUT_ROUTE, PLUG_ROUTE_NONE);
+        PlugXlSpanRoute(X, in[k]);
     }
     return X->Err;
 }
@@ -1643,7 +1640,7 @@ static __inline ULONG PlugBuildBoardQuery(PLUG_XL *X, ULONG Date, ULONG Cookie)
 }
 
 /* ------------------------------------------------------------------ */
-/* Hosting per model (P7, Nov 15 2026: the Twin X Gen 1 Duo)            */
+/* Hosting per model (the x8p, the Twin X Gen 1 Duo)                   */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -1695,7 +1692,7 @@ static __inline const PLUG_MODEL *PlugModelFor(ULONG Model)
             { 0x4000, 0xa9b9, 0x1fff, 0x00ff516a, 0xe0000, 0x92800, 0xc5000, 0x08008e96, 0x80, 0x80, 0x8000 },
         },
         {
-            /* docs/spec-twinx.md 5.2 and 6.9.5: strips on DSP 1 (G5, Nov 15), TALKBACK = synch 10
+            /* docs/spec-twinx.md 5.2 and 6.9.5: strips on DSP 1, TALKBACK = synch 10
                (oa:devices/apollo-twin-x.json:115-137); pools as step-g5.log read them (same tops as the x8p,
                pool 3 base 0x08008e52) */
             PLUG_MODEL_TWINX, "Twin X", 2, 1, 0, 2, 2, 0, 0x03, 0x01, 0x01, 10,

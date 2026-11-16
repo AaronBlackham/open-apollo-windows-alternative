@@ -11,9 +11,9 @@
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #include "apollo.h"
-#include "preamp_plan.h"        /* [Twin X G5] the preamp controls per model */
+#include "preamp_plan.h"        /* the preamp controls per model */
 
-/* [Twin X G5] preamp_plan.h keeps its own copies of the SET_INPUT_PARAM codes (plain C) */
+/* preamp_plan.h keeps its own copies of the SET_INPUT_PARAM codes (plain C) */
 C_ASSERT(APOLLO_PRE_MIC_LINE == APOLLO_PARAM_MIC_LINE && APOLLO_PRE_PAD == APOLLO_PARAM_PAD &&
          APOLLO_PRE_LINK == APOLLO_PARAM_LINK && APOLLO_PRE_48V == APOLLO_PARAM_48V &&
          APOLLO_PRE_LOWCUT == APOLLO_PARAM_LOWCUT && APOLLO_PRE_PHASE == APOLLO_PARAM_PHASE &&
@@ -124,11 +124,10 @@ VOID ApolloMixerFlush(_In_ PDEVICE_CONTEXT Ctx)
 /* ------------------------------------------------------------------ */
 
 /*
- * [Twin X G5] Per model, from preamp_plan.h: the x8p exactly as before (8 preamps, the same
- * writes and errors, preamp-plan-test compares every input with the pre-G5 code); the Twin X Gen 1
- * its 2 preamps (S0 flags, link from input 1, GainA/B/C lanes 0-1) and the Hi-Z impedance of
- * input 1 (S13 nibble 0). A preamp the model does not have: STATUS_INVALID_PARAMETER, as before;
- * a control it does not have (Hi-Z on input 2, any other code): STATUS_NOT_SUPPORTED.
+ * Per model, from preamp_plan.h: the x8p's 8 preamps (preamp-plan-test checks every input's writes and
+ * errors against the x8p's original encoder); the Twin X Gen 1 its 2 preamps (S0 flags, link from input 1,
+ * GainA/B/C lanes 0-1) and the Hi-Z impedance of input 1 (S13 nibble 0). A preamp the model does not have:
+ * STATUS_INVALID_PARAMETER; a control it does not have (Hi-Z on input 2, any other code): STATUS_NOT_SUPPORTED.
  */
 NTSTATUS ApolloSetInputParam(_In_ PDEVICE_CONTEXT Ctx, _In_ PAPOLLO_INPUT_PARAM P)
 {
@@ -155,8 +154,8 @@ NTSTATUS ApolloSetInputParam(_In_ PDEVICE_CONTEXT Ctx, _In_ PAPOLLO_INPUT_PARAM 
 /* ------------------------------------------------------------------ */
 
 /*
- * [Monitor] Per model, from monitor_plan.h (mon-plan-test proves the x8p's writes and errors are what this
- * function produced before, for every code it had; the x8p's source also takes CUE 3 and 4). ALT speakers,
+ * [Monitor] Per model, from monitor_plan.h (mon-plan-test checks the x8p's writes and errors against the original
+ * encoder for every code it had; the x8p's source also takes CUE 3 and 4). ALT speakers,
  * cue MIX/mono and the sources are mailbox writes; the cue sends and [Mix] the monitor mix go to cues.c (DSP bus
  * coefficients, param 1/2/5/6 and 0).
  * The plan filter (ioctl.c, bringup_plan.h) has already refused codes the unit's plan does not take.
@@ -261,7 +260,7 @@ static VOID ApolloServiceThread(_In_ PVOID Context)
         WdfWaitLockAcquire(ctx->DevLock, NULL);
         ApolloServicePass(ctx);
         WdfWaitLockRelease(ctx->DevLock);
-        /* [G7] a start ratio the combined device kept: written here (PASSIVE, DevLock released, try-lock only) */
+        /* a start ratio the combined device kept: written here (PASSIVE, DevLock released, try-lock only) */
         ApolloAggServicePoll();
         /* [Clock] no lock held: an external clock that fell back or comes back on (its own DevLock), and what the
            monitor link brings to the monitor unit (that unit's DevLock, never waited for) */

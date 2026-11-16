@@ -23,9 +23,9 @@
 #include "..\include\apollo_ioctl.h"
 #include "..\include\apollo_asio.h"
 #include "apollo_sat.h"         /* ApolloSatAdd32: ring clients ADD with saturation */
-#include "apollo_model.h"       /* [Twin X G0] model identification (spec-twinx 1) */
-#include "apollo_unit.h"        /* [Twin X G0] per-unit Parameters (spec-twinx 6.9) */
-#include "ring_map.h"           /* [G4b] audio ring pages: SG entry i <-> linear view page i */
+#include "apollo_model.h"       /* model identification (spec-twinx 1) */
+#include "apollo_unit.h"        /* per-unit Parameters (spec-twinx 6.9) */
+#include "ring_map.h"           /* audio ring pages: SG entry i <-> linear view page i */
 #include "monitor_plan.h"       /* [Monitor] ALT, sources, cue mixes per model; the cue send cache */
 #include "rate_plan.h"          /* [Rate] the six rates: FRAME_CFG band, lead/guard scaling, clock-change constants */
 #include "..\include\apollo_rate.h"   /* [Rate] GET_RATE / SET_RATE */
@@ -222,7 +222,7 @@ typedef struct _APOLLO_STRIPS {
 } APOLLO_STRIPS;
 
 /*
- * [G4b] One audio ring (audio.c ApolloAudioRingAlloc, ring_map.h): AUDIO_RING_BYTES the FPGA reads
+ * One audio ring (audio.c ApolloAudioRingAlloc, ring_map.h): AUDIO_RING_BYTES the FPGA reads
  * through its SG table. The memory is common buffers of the DMA enabler's adapter: one contiguous
  * 4 MiB, or one per SG page when no contiguous 4 MiB below 4 GiB is left. Every consumer sees the
  * same two things either way: Va, one linear kernel view of all 4 MiB, and PageLa[i], the device
@@ -297,7 +297,7 @@ WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(APOLLO_FILE, ApolloGetFile)
 typedef struct _DEVICE_CONTEXT {
     WDFDEVICE       Device;
     /*
-     * [Twin X G2] Set once at device add from the PCI hardware ID (driver.c), before any log line
+     * Set once at device add from the PCI hardware ID (driver.c), before any log line
      * of this unit: ApolloLogU reads LogTag without a lock. Every other field below is this
      * device's own: no device ever reaches another device's context (two units = two contexts,
      * two engines, two ASIO clients; only log.c's ring is shared, under its spin lock).
@@ -335,13 +335,13 @@ typedef struct _DEVICE_CONTEXT {
 
     CHAR            Serial[17];     /* printable part only (apollo_model.h ApolloSerialClean) */
 
-    /* [Twin X G0] model and unit (hw.c ApolloIdentify, unit.c ApolloUnitResolve; PrepareHardware) */
+    /* model and unit (hw.c ApolloIdentify, unit.c ApolloUnitResolve; PrepareHardware) */
     ULONG           HwUidLo;        /* BAR0 0x30 */
     ULONG           HwUidHi;        /* BAR0 0x34 */
     APOLLO_IDENT    Ident;          /* verdict, model, unit key */
     APOLLO_UNIT     Unit;           /* this start's Parameters: read them with ApolloUnitParam */
 
-    /* [Twin X G2] What the previous owner left (hw.c ApolloReadOwnerState; observe/refused only) */
+    /* What the previous owner left (hw.c ApolloReadOwnerState; observe/refused only) */
     BOOLEAN         OwnerRead;
     ULONG           OwnerRateInfo;
     ULONG           OwnerClockSrcs;
@@ -421,13 +421,13 @@ typedef struct _DEVICE_CONTEXT {
     ULONG           NotifStatusSeen;
 
     /*
-     * [Twin X G3] The AudioExtension bring-up (bringup_plan.h, docs/spec-twinx.md 6.9.3), DevLock.
+     * The AudioExtension bring-up (bringup_plan.h, docs/spec-twinx.md 6.9.3), DevLock.
      * Zero on the x8p path, which does not record steps. GET_INFO version 7.
      */
     ULONG           NotifClockSrcsLive; /* 0xC08C with our transport running */
     ULONG           BringupSteps;       /* bit APOLLO_BSTEP_* = passed at the last bring-up */
     ULONG           BringupFailStep;    /* APOLLO_BSTEP_* that failed, 0 = none */
-    ULONG           BringupApplies;     /* [G4] steps this start's path runs (bringup_plan.h ApolloPlanBstepApplies) */
+    ULONG           BringupApplies;     /* steps this start's path runs (bringup_plan.h ApolloPlanBstepApplies) */
     APOLLO_STAGE    FailAt;             /* stage a failure is reported at, None = Stage + 1 (x8p) */
     ULONG           DspReadyTimeouts;   /* E3: DSPs that never reported ready at the last bring-up */
 
@@ -458,7 +458,7 @@ typedef struct _DEVICE_CONTEXT {
 
     /* Input strips (strips.c): DevLock unless noted there */
     APOLLO_STRIPS   Strips;
-    /* [P0] UAD plug-in hosting (plugin.c, docs/PLUGINS.md): StripLock, then DevLock. NULL = none */
+    /* UAD plug-in hosting (plugin.c, docs/PLUGINS.md): StripLock, then DevLock. NULL = none */
     struct _APOLLO_PLUGIN_HOST *Plugin;
     /* [Monitor] the cue sends the host set (cues.c), DevLock; zero = none. [Mix] Cues.Mix: the monitor mix, same rules */
     APOLLO_CUE_STATE Cues;
@@ -531,7 +531,7 @@ typedef struct _DEVICE_CONTEXT {
 
     /* ACX endpoints (circuit.c, stream.c; WDF context on the device, see apollo_stream.h) */
     struct _APOLLO_ACX *Acx;
-    BOOLEAN         AcxRemovedAfterFail;    /* [G4 review] a failed Twin X bring-up removed its circuits */
+    BOOLEAN         AcxRemovedAfterFail;    /* a failed Twin X bring-up removed its circuits */
 
     /* [Events] events.c: the unit's last events and the parked WAIT_EVENTS (EventLock is the innermost lock) */
     WDFSPINLOCK     EventLock;
@@ -542,13 +542,13 @@ typedef struct _DEVICE_CONTEXT {
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVICE_CONTEXT, ApolloGetContext)
 
-/* [Twin X G3] The unit's bring-up plan (bringup_plan.h), NULL for a model this driver does not run. */
+/* The unit's bring-up plan (bringup_plan.h), NULL for a model this driver does not run. */
 FORCEINLINE const APOLLO_BRINGUP_PLAN *ApolloPlanOf(_In_ PDEVICE_CONTEXT Ctx)
 {
     return ApolloBringupPlanFor(Ctx->Ident.Model);
 }
 
-/* [Twin X G3] The AudioExtension path (Twin X Gen 1): the plan decides; FALSE for the x8p. */
+/* The AudioExtension path (Twin X Gen 1): the plan decides; FALSE for the x8p. */
 FORCEINLINE BOOLEAN ApolloIsAudioExt(_In_ PDEVICE_CONTEXT Ctx)
 {
     const APOLLO_BRINGUP_PLAN *p = ApolloPlanOf(Ctx);
@@ -592,9 +592,8 @@ FORCEINLINE VOID ApolloCloseGate(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 VOID     ApolloSleepMs(_In_ ULONG Ms);
-VOID     ApolloDelayUs(_In_ ULONG Us);
 NTSTATUS ApolloIdentify(_In_ PDEVICE_CONTEXT Ctx);
-VOID     ApolloReadOwnerState(_In_ PDEVICE_CONTEXT Ctx);  /* [Twin X G2] reads only, observe units */
+VOID     ApolloReadOwnerState(_In_ PDEVICE_CONTEXT Ctx);  /* reads only, observe units */
 VOID     ApolloStopTransportAndIrqs(_In_ PDEVICE_CONTEXT Ctx);
 VOID     ApolloVectorEnable(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG ImrHiBit, _In_ BOOLEAN ClearPending);
 VOID     ApolloVectorDisable(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG ImrHiBit);
@@ -607,7 +606,7 @@ ULONG    ApolloDmaCtrlClean(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Value);
 VOID     ApolloResetDmaAllEngines(_In_ PDEVICE_CONTEXT Ctx);
 BOOLEAN  ApolloMixerDspAlive(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloWaitDspsReady(_In_ PDEVICE_CONTEXT Ctx);
-VOID     ApolloObserveDmaOff(_In_ PDEVICE_CONTEXT Ctx);     /* [Twin X G3] observe units, plan ObserveDmaOff */
+VOID     ApolloObserveDmaOff(_In_ PDEVICE_CONTEXT Ctx);     /* observe units, plan ObserveDmaOff */
 EVT_WDF_INTERRUPT_ISR ApolloEvtInterruptIsr;
 EVT_WDF_INTERRUPT_DPC ApolloEvtInterruptDpc;
 
@@ -619,7 +618,7 @@ NTSTATUS ApolloRingsNeutralizeAll(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloRingsInit(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloRingsQuiesce(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloDspConnectAll(_In_ PDEVICE_CONTEXT Ctx);
-/* [Twin X G3] AudioExtension path: page addresses again (E7), and the ring connect that must be consumed (G5) */
+/* AudioExtension path: page addresses again (E7), and the ring connect that must be consumed (G5) */
 NTSTATUS ApolloRingsReprogram(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloDspConnectChecked(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG ConsumeMs);
 NTSTATUS ApolloDspRateAck(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG RateHz);
@@ -710,7 +709,7 @@ NTSTATUS ApolloAudioAllocate(_In_ PDEVICE_CONTEXT Ctx);
 VOID     ApolloAudioFree(_In_ PDEVICE_CONTEXT Ctx);
 VOID     ApolloAudioProgramSg(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx);
-/* [Twin X G3] AudioExtension path (docs/spec-twinx.md 2): E7-E13, and the way every failure ends */
+/* AudioExtension path (docs/spec-twinx.md 2): E7-E13, and the way every failure ends */
 NTSTATUS ApolloBootTransport(_In_ PDEVICE_CONTEXT Ctx);
 NTSTATUS ApolloAudioExtAbort(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Step, _In_ APOLLO_STAGE At,
                              _In_ NTSTATUS Status, _In_z_ PCSTR Hint);
@@ -878,7 +877,6 @@ VOID     ApolloPanelNoteWrite(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Param, _In_ L
 VOID     ApolloPanelServicePass(_In_ PDEVICE_CONTEXT Ctx);       /* DevLock: after the readback read */
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID     ApolloPanelServiceAfter(_In_ PDEVICE_CONTEXT Ctx);      /* service thread, no lock held */
-BOOLEAN  ApolloPanelIsIoctl(_In_ ULONG Code);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS ApolloPanelIoctl(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Code, _In_opt_ PVOID In, _In_ size_t InLen,
                           _Out_writes_bytes_opt_(OutLen) PVOID Out, _In_ size_t OutLen, _Out_ ULONG_PTR *Info);  /* DevLock */
@@ -903,9 +901,10 @@ VOID     ApolloUnitResolve(_In_ PDEVICE_CONTEXT Ctx);     /* PrepareHardware, af
 /* The value for this unit (APOLLO_PARAM_*); before ApolloUnitResolve: the safe default. */
 ULONG    ApolloUnitParam(_In_ PDEVICE_CONTEXT Ctx, _In_ int Id);
 /*
- * Device add only (no BAR0 yet), after driver.c read the hardware ID: on the x8p's subsystem
- * (or an unread hardware ID) the legacy global or the x8p default, as before; on any other
- * subsystem the safe default of a model that is not the x8p (apollo_unit.h ApolloAddTime*).
+ * Device add only (no BAR0 yet), after driver.c read the hardware ID. Endpoints: every row of the
+ * slot's table (apollo_unit.h ApolloAddTimeEndpoints; the unit's value narrows it at PrepareHardware).
+ * Other values: on the x8p's subsystem (or an unread hardware ID) the legacy global or the x8p
+ * default; on any other subsystem the safe default of a model that is not the x8p.
  */
 _IRQL_requires_(PASSIVE_LEVEL)
 ULONG    ApolloUnitParamBeforeIdentify(_In_ PDEVICE_CONTEXT Ctx, _In_ int Id);
@@ -943,7 +942,7 @@ VOID     ApolloAggAsioDispatch(_In_ WDFREQUEST Request, _In_ ULONG Code, _In_ WD
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID     ApolloAggAsioFileGone(_In_ WDFFILEOBJECT File);
 /*
- * [G7] The combined Windows endpoints (spec 6.7): the endpoint set read at device add (circuit.c),
+ * The combined Windows endpoints (spec 6.7): the endpoint set read at device add (circuit.c),
  * the host announcing its combined circuits, and the service-thread hook that writes kept start
  * ratios (mixer.c, after DevLock is released). The stream calls are in apollo_stream.h.
  */

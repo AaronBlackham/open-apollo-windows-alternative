@@ -11,7 +11,7 @@
  * Each value: Units\<key> -> Models\<TT> -> legacy global (x8p only) -> built-in default of the
  * model. A unit that is not an x8p therefore never inherits the x8p's values, and with no key of
  * its own it starts in Mode 0 (observe: identify and quiesce only).
- * [Twin X G2] Device add, before identification, goes by the PCI hardware ID instead (below).
+ * Device add, before identification, goes by the PCI hardware ID instead (below).
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -20,22 +20,22 @@
 #include <stddef.h>             /* wchar_t (the kernel build has it from ntddk.h) */
 #endif
 #include "apollo_model.h"
-#include "bringup_plan.h"       /* [Twin X G3] which models have a bring-up path, and up to which Mode */
+#include "bringup_plan.h"       /* which models have a bring-up path, and up to which Mode */
 
 /* Mode: what the driver does with the unit */
 #define APOLLO_MODE_OBSERVE         0   /* identify + quiesce, nothing else */
 #define APOLLO_MODE_TRANSPORT       1   /* bring-up + transport; no strips, no Windows endpoints */
-#define APOLLO_MODE_FULL            2   /* everything the values and the model's plan allow (Twin X, G4:
-                                           endpoints + monitor settings; no ASIO, strips, preamps;
-                                           G5: + strips (StripsEnable), preamps, MIC/LINE 1-2 rows) */
+#define APOLLO_MODE_FULL            2   /* everything the values and the model's plan allow (Twin X:
+                                           endpoints, monitor settings, strips (StripsEnable), preamps;
+                                           no ASIO) */
 
 /* The x8p's built-in defaults, as the driver had them before per-unit keys */
 #define APOLLO_DEF_RENDER_LEAD      144u
 #define APOLLO_DEF_CAPTURE_GUARD    16u
-#define APOLLO_DEF_ENDPOINTS_X8P    0x1FFFFu    /* [Endpoints] = APOLLO_X8P_EP_DEFAULT (circuit.c asserts): every
-                                                   output, the loopback, MIC/LINE 1-8; VIRTUAL/S/PDIF in opt-in */
-#define APOLLO_DEF_ENDPOINTS_TWINX  0x3Fu       /* [Endpoints] = APOLLO_TWX_EP_DEFAULT: MON L/R, LINE 3-4, HP out,
-                                                   the loopback, MIC/LINE 1-2 */
+#define APOLLO_DEF_ENDPOINTS_X8P    0x1FFFFu    /* = APOLLO_X8P_EP_DEFAULT (circuit.c asserts): every output,
+                                                   the loopback, MIC/LINE 1-8; VIRTUAL/S/PDIF in opt-in */
+#define APOLLO_DEF_ENDPOINTS_TWINX  0x3Fu       /* = APOLLO_TWX_EP_DEFAULT: MON L/R, LINE 3-4, HP out, the
+                                                   loopback, MIC/LINE 1-2 */
 #define APOLLO_DEF_BATCH_X8P        1u      /* = APOLLO_MIXER_BATCH_X8P_SAFE (unit.c asserts) */
 
 /* Parameter ids */
@@ -50,16 +50,17 @@
 #define APOLLO_PARAM_START_AT_CONNECT       8
 #define APOLLO_PARAM_ENABLED_ENDPOINTS      9
 #define APOLLO_PARAM_STRIP_PROBE            10  /* live strips.c (StripProbe, STRIPS.md 10.9) reads it */
-#define APOLLO_PARAM_WARM_BOOT_TRANSPORT    11  /* [Twin X G3] device.c: boot transport on a warm start too */
-#define APOLLO_PARAM_AUDIO_RING_PAGES       12  /* [G4b] audio.c: 1 = audio rings always one common buffer per page */
-#define APOLLO_PARAM_CAPTURE_TRIM           13  /* [G7] agg.c: combined capture alignment trim, signed frames */
-#define APOLLO_PARAM_RENDER_TRIM            14  /* [G7] agg.c: combined playback alignment trim, signed frames */
-#define APOLLO_PARAM_SAMPLE_RATE            15  /* [Rate] rate.c: the rate this unit comes up at (Hz) */
-#define APOLLO_PARAM_STRIP_ADOPT            16  /* [Warm] strips.c: keep Live strips at the D0 exit, adopt them warm */
-#define APOLLO_PARAM_STRIP_WARM_REBUILD     17  /* [Warm] strips.c: build again at a warm start proven ours */
-#define APOLLO_PARAM_STRIP_WARM_PLUGINS     18  /* [Warm] strips.c/plugin.c: plug-ins on adopted or rebuilt warm strips */
-#define APOLLO_PARAM_STRIP_VIRTUAL_MASK     19  /* [Virtual] strips.c: Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13) */
-#define APOLLO_PARAM_COUNT                  20
+#define APOLLO_PARAM_WARM_BOOT_TRANSPORT    11  /* device.c: boot transport on a warm start too */
+#define APOLLO_PARAM_AUDIO_RING_PAGES       12  /* audio.c: 1 = audio rings always one common buffer per page */
+#define APOLLO_PARAM_CAPTURE_TRIM           13  /* agg.c: combined capture alignment trim, signed frames */
+#define APOLLO_PARAM_RENDER_TRIM            14  /* agg.c: combined playback alignment trim, signed frames */
+#define APOLLO_PARAM_SAMPLE_RATE            15  /* rate.c: the rate this unit comes up at (Hz) */
+#define APOLLO_PARAM_STRIP_ADOPT            16  /* strips.c: keep Live strips at the D0 exit, adopt them warm */
+#define APOLLO_PARAM_STRIP_WARM_REBUILD     17  /* strips.c: build again at a warm start proven ours */
+#define APOLLO_PARAM_STRIP_WARM_PLUGINS     18  /* strips.c/plugin.c: plug-ins on adopted or rebuilt warm strips */
+#define APOLLO_PARAM_STRIP_VIRTUAL_MASK     19  /* strips.c: Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13) */
+#define APOLLO_PARAM_BUS_ENABLE             20  /* cues.c: DSP output buses switched on at every connect */
+#define APOLLO_PARAM_COUNT                  21
 
 /* Where a value came from (APOLLO_UNIT.Source, the driver log letter) */
 #define APOLLO_SRC_DEFAULT          0   /* D: built-in default of the model */
@@ -74,15 +75,15 @@ typedef struct _APOLLO_PARAM_DEF {
     unsigned long   DefaultX8p;
     unsigned long   DefaultOther;   /* any other model: safe values (also before identification) */
     int             Hex;            /* log in hex */
-    unsigned long   DefaultTwinX;   /* [Twin X G3] the Twin X Gen 1's built-in default */
+    unsigned long   DefaultTwinX;   /* the Twin X Gen 1's built-in default */
 } APOLLO_PARAM_DEF;
 
 static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
 {
     static const APOLLO_PARAM_DEF t[APOLLO_PARAM_COUNT] = {
         { "Mode",                    L"Mode",                    APOLLO_MODE_FULL, APOLLO_MODE_OBSERVE, 0, APOLLO_MODE_OBSERVE },
-        /* [G5] The Twin X: strips off by default (the G5 test turns them on); when on, the whole
-           chain (StripSteps 0) on both inputs (StripMask 0x3) on DSP 1 (strip_plan.h) */
+        /* The Twin X: strips off by default; when on, the whole chain (StripSteps 0) on both
+           inputs (StripMask 0x3) on DSP 1 (strip_plan.h) */
         { "StripsEnable",            L"StripsEnable",            0, 0, 0, 0 },
         { "StripSteps",              L"StripSteps",              1, 1, 0, 0 },
         { "StripMask",               L"StripMask",               0x01, 0x01, 1, 0x03 },
@@ -92,52 +93,55 @@ static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
         { "RenderLeadFrames",        L"RenderLeadFrames",        APOLLO_DEF_RENDER_LEAD, APOLLO_DEF_RENDER_LEAD, 0, APOLLO_DEF_RENDER_LEAD },
         { "CaptureGuardFrames",      L"CaptureGuardFrames",      APOLLO_DEF_CAPTURE_GUARD, APOLLO_DEF_CAPTURE_GUARD, 0, APOLLO_DEF_CAPTURE_GUARD },
         { "StartTransportAtConnect", L"StartTransportAtConnect", 1, 1, 0, 1 },
-        /* Other models: no Windows endpoints. [G4] The Twin X: its own table, MON L/R out + in (0x3),
-           used in Mode 2 only (forced 0 below).
-           [Endpoints] Nov 15: value name "Endpoints" (bit i = row i of endpoint_plan.h's table), no longer
-           "EnabledEndpoints": the rows were renumbered, and a mask stored for the old 10-row x8p / 4-row Twin X
-           tables (0x3FF, 0xF) would hide every new output. The old value stays where it is (an older build
-           still reads it) and this one ignores it; absent = the model's default set. */
+        /* Bit i = row i of the model's endpoint_plan.h table, used in Mode 2 only (forced 0 below);
+           other models: no Windows endpoints. Named "Endpoints", not the older "EnabledEndpoints": the
+           rows were renumbered, and a mask stored for the old 10-row x8p / 4-row Twin X tables (0x3FF,
+           0xF) would hide every new output, so an old value is left where it is and ignored; absent =
+           the model's default set. */
         { "Endpoints",               L"Endpoints",               APOLLO_DEF_ENDPOINTS_X8P, 0, 1, APOLLO_DEF_ENDPOINTS_TWINX },
         /* Strip diagnostics (strip_plan.h STRIP_PROBE_OFF = 0) */
         { "StripProbe",              L"StripProbe",              0, 0, 0, 0 },
-        /* [Twin X G3] 1 = run the boot transport + early ACEFACE on a warm start too (spec-twinx 2
-           notes: the fallback if a warm ACEFACE with the transport stopped times out). The x8p
-           has no boot transport and ignores it. */
+        /* 1 = run the boot transport + early ACEFACE on a warm start too (spec-twinx 2 notes: the
+           fallback if a warm ACEFACE with the transport stopped times out). The x8p has no boot
+           transport and ignores it. */
         { "WarmBootTransport",       L"WarmBootTransport",       0, 0, 0, 0 },
-        /* [G4b] 0 = each audio ring one contiguous 4 MiB when there is one below 4 GiB, else one
-           common buffer per SG page (ring_map.h); 1 = always per page (to run that path at will). */
+        /* 0 = each audio ring one contiguous 4 MiB when there is one below 4 GiB, else one common
+           buffer per SG page (ring_map.h); 1 = always per page (to run that path at will). */
         { "AudioRingPages",          L"AudioRingPages",          0, 0, 0, 0 },
-        /* [G7] the combined device's per-unit alignment (spec 6.3.5): a REG_DWORD read as a signed number of
+        /* The combined device's per-unit alignment (spec 6.3.5): a REG_DWORD read as a signed number of
            frames, -64..64 (agg.c ApolloAggTrimOf), e.g. 0xFFFFFFFB = -5. Positive delays that unit's capture /
-           playback in the combined device. 0 = G6 behaviour. Read when the unit joins (its next start). */
+           playback in the combined device. 0 = no trim. Read when the unit joins (its next start). */
         { "CaptureTrimFrames",       L"CaptureTrimFrames",       0, 0, 1, 0 },
         { "RenderTrimFrames",        L"RenderTrimFrames",        0, 0, 1, 0 },
-        /* [Rate] the sample rate the unit comes up at, Hz (rate_plan.h; anything but the six rates = 48000).
+        /* The sample rate the unit comes up at, Hz (rate_plan.h; anything but the six rates = 48000).
            SET_RATE writes it under Units\<key> (apollo_rate.h); read at every start. */
         { "SampleRate",              L"SampleRate",              48000, 48000, 0, 48000 },
-        /* [Warm] docs/STRIPS.md 12. StripAdopt 1: a D0 exit leaves Live strips running (plug-in chains put back
+        /* docs/STRIPS.md 12. StripAdopt 1: a D0 exit leaves Live strips running (plug-in chains put back
            on the plain strips first) and the next warm start adopts them when the record proves them this
            driver's; 0 = the old rule (torn down at every D0 exit, a power cycle for strips). The Twin X's warm
            start ring-connects, which drops them, so it keeps the teardown whatever this says.
            StripWarmRebuild 1: a warm start that proves only this driver used the DSPs since the last power-up
            builds the strips again instead of asking for a power cycle. The Twin X needs it after every warm
-           start (on). The x8p adopts when it can, and rebuilds when it cannot (a rate change tears its strips
-           down): on since Nov 15 2026, when the first x8p warm rebuild (96 kHz, no ring connect) had all five
-           module uploads accepted by DSP 1 (docs/STRIPS.md 12.4). Before, a rate change left its mics off. */
+           start (on). The x8p: on since Nov 15 2026, when the first x8p warm rebuild (96 kHz, no ring connect)
+           had all five module uploads accepted by DSP 1 (docs/STRIPS.md 12.4). Since Nov 16 2026 a rebuild also
+           wins over adoption (strip_adopt.h StripAdoptDecide): adopted x8p strips recorded exact zero on every
+           input after a warm restart, a rebuilt VIRTUAL 1 recorded. StripWarmRebuild 0 brings adoption back. */
         { "StripAdopt",              L"StripAdopt",              1, 0, 0, 1 },
         { "StripWarmRebuild",        L"StripWarmRebuild",        1, 0, 0, 1 },
-        /* [Warm] docs/STRIPS.md 12.5 (Nov 15 2026). StripWarmPlugins 1: after a warm start whose strips were adopted
+        /* docs/STRIPS.md 12.5. StripWarmPlugins 1: after a warm start whose strips were adopted
            (the x8p: no ring connect, the DSPs' session byte 0x07) or rebuilt (the Twin X) from an anchored record
            that saw no plug-in left on the strip DSP, that DSP takes plug-ins as after a cold start; its first
            acknowledged upload proves the warm session takes uploads, an unanswered one quarantines it (power cycle).
            0 = plug-ins wait for a power cycle after every warm start (the rule before this value). */
         { "StripWarmPlugins",        L"StripWarmPlugins",        1, 0, 0, 1 },
-        /* [Virtual] docs/STRIPS.md 13 (Nov 16 2026). Bit n-1: the plain Input Strip (0x83E) on VIRTUAL n, built with the Mic
+        /* docs/STRIPS.md 13. Bit n-1: the plain Input Strip (0x83E) on VIRTUAL n, built with the Mic
            strips in the same pass (StripsEnable 1, its StripSteps), so the Console mixes and records what plays into that
            Virtual channel; its bus 0x18 + n - 1 then takes monitor-mix, cue and aux sends. The x8p has VIRTUAL 1-8, the
            Twin X 1-4. 0 on every model until it is proven on hardware (tools\phase1\step-virtual.ps1). */
         { "StripVirtualMask",        L"StripVirtualMask",        0, 0, 1, 0 },
+        /* cues.c ApolloCuesBusEnable: {0x001C0003, bus, 1, 0} at every connect for each bus of bits 0-6 (0 monitor,
+           1/2 CUE 1/2, 3/4 AUX 1/2, 5/6 CUE 3/4) on each DSP of bits 8-15 (none = every DSP). 0 = nothing sent. */
+        { "BusEnable",               L"BusEnable",               0, 0, 1, 0 },
     };
 
     return (Id >= 0 && Id < APOLLO_PARAM_COUNT) ? &t[Id] : &t[APOLLO_PARAM_MODE];
@@ -187,16 +191,16 @@ typedef struct _APOLLO_UNIT {
     int             ModelKeyPresent;    /* Models\<TT> exists */
     unsigned long   Value[APOLLO_PARAM_COUNT];
     unsigned char   Source[APOLLO_PARAM_COUNT];     /* APOLLO_SRC_* */
-    unsigned long   ModeAsked;      /* [Twin X G3] the Mode the registry asked for, before the rules */
+    unsigned long   ModeAsked;      /* the Mode the registry asked for, before the rules */
 } APOLLO_UNIT;
 
-/* Bring-up paths this build has (bringup_plan.h): the x8p, and since G3 the Twin X Gen 1. */
+/* Bring-up paths this build has (bringup_plan.h): the x8p and the Twin X Gen 1. */
 static __inline int ApolloModelHasBringup(int Model)
 {
     return ApolloBringupPlanFor(Model) != 0;
 }
 
-/* The highest Mode this build runs a model in: x8p 2, Twin X Gen 1 2 (G4; 1 at G3), anything else 0. */
+/* The highest Mode this build runs a model in: x8p 2, Twin X Gen 1 2, anything else 0. */
 static __inline unsigned long ApolloModelMaxMode(int Model)
 {
     const APOLLO_BRINGUP_PLAN *p = ApolloBringupPlanFor(Model);
@@ -206,7 +210,7 @@ static __inline unsigned long ApolloModelMaxMode(int Model)
 
 /*
  * After every Value[] is picked: an unknown Mode is observe; a Mode above what this build runs
- * for the model comes down to that (none since G4); below FULL, strips and endpoints are off
+ * for the model comes down to that; below FULL, strips and endpoints are off
  * whatever their values say; Active = an accepted model with a bring-up path and Mode >= 1.
  */
 static __inline void ApolloUnitFinish(int Model, APOLLO_UNIT *U)
@@ -236,23 +240,21 @@ static __inline void ApolloUnitFinish(int Model, APOLLO_UNIT *U)
 }
 
 /* ------------------------------------------------------------------ */
-/* [Twin X G2] Device add: the unit before identification             */
+/* Device add: the unit before identification                          */
 /* ------------------------------------------------------------------ */
 
 /*
  * At device add there is no BAR0 yet, only the PnP hardware ID. apollo.inf matches exactly two:
  *   PCI\VEN_1A00&DEV_0002&SUBSYS_00141A00   Apollo x8p
  *   PCI\VEN_1A00&DEV_0002&SUBSYS_00191A00   Apollo Twin X Gen 1 (Mode 0 observe by default; Mode 1 =
- *                                            the G3 bring-up + transport; Mode 2 (G4) = + its own
- *                                            Windows endpoints, MON L/R out and in)
+ *                                            bring-up + transport; Mode 2 = + its own Windows endpoints)
  * The subsystem does not prove the model (spec-twinx 1.1: identification does that later), but
  * it is enough to decide what device add may create: the ACX circuits (Windows endpoints) and
- * the unit's log tag. Rule: the x8p's subsystem, or a hardware ID that could not be read, keeps
- * the behaviour every release before this one had (the x8p's table, circuits from the legacy
- * EnabledEndpoints). [G4] The Twin X's subsystem: the circuit objects of the Twin X's own table
- * (both rows); they stay unregistered until PrepareHardware adds the ones its unit value allows,
- * which is none below Mode 2 and none unless the identified model is the Twin X. Any other
- * subsystem: no circuits at all.
+ * the unit's log tag. The x8p's subsystem, or a hardware ID that could not be read, gets the
+ * circuit objects of the x8p's table; the Twin X's subsystem those of the Twin X's table. They
+ * stay unregistered until PrepareHardware adds the ones its unit value allows, which is none
+ * below Mode 2 and none unless the identified model is that table's. Any other subsystem: no
+ * circuits at all.
  */
 #define APOLLO_SUBSYS_X8P           0x0014u
 #define APOLLO_SUBSYS_TWINX         0x0019u
@@ -308,13 +310,13 @@ static __inline int ApolloHwidSubsystem(const wchar_t *Hwid, unsigned long Chars
     return 0;
 }
 
-/* Device add: is this the x8p's slot (or unknown), so today's x8p behaviour applies? */
+/* Device add: is this the x8p's slot (or unknown), so the x8p's rules apply? */
 static __inline int ApolloAddTimeX8pRules(int SubsysKnown, unsigned long Subsys)
 {
     return !SubsysKnown || Subsys == APOLLO_SUBSYS_X8P;
 }
 
-/* [G4] Device add: whose endpoint table this device gets (APOLLO_MODEL_*, NONE = no table). */
+/* Device add: whose endpoint table this device gets (APOLLO_MODEL_*, NONE = no table). */
 static __inline int ApolloAddTimeModel(int SubsysKnown, unsigned long Subsys)
 {
     if (ApolloAddTimeX8pRules(SubsysKnown, Subsys)) {
@@ -324,10 +326,11 @@ static __inline int ApolloAddTimeModel(int SubsysKnown, unsigned long Subsys)
 }
 
 /*
- * Device add: which endpoint rows get an ACX circuit. HaveGlobal/Global: the legacy
- * Parameters\EnabledEndpoints value (the x8p's only). [G4] The Twin X's subsystem: every row of
- * its table (its unit value narrows that at PrepareHardware); another subsystem: none.
- * [Endpoints] The x8p too: every row (HaveGlobal/Global unused; kept for the callers and tests).
+ * Device add: which endpoint rows get an ACX circuit object (they cost nothing until added): every
+ * row of the slot's table; another subsystem none. The unit's Endpoints value (Units\<key> -> Models
+ * -> legacy global (x8p) -> default) picks the ones PrepareHardware adds, so a unit key can also
+ * widen the default set, not only narrow it. HaveGlobal/Global (the legacy global) are unused, kept
+ * for the callers and tests.
  */
 static __inline unsigned long ApolloAddTimeEndpoints(int SubsysKnown, unsigned long Subsys, int HaveGlobal,
                                                      unsigned long Global)
@@ -337,17 +340,11 @@ static __inline unsigned long ApolloAddTimeEndpoints(int SubsysKnown, unsigned l
     (void)HaveGlobal;
     (void)Global;
     if (model == APOLLO_MODEL_TWINX) {
-        /* [G5] every row (MON out/in + MIC/LINE 1-2): its unit value (default 0x3) picks the ones added */
         return APOLLO_TWX_EP_ALL;
     }
     if (model != APOLLO_MODEL_X8P) {
         return ApolloParamDef(APOLLO_PARAM_ENABLED_ENDPOINTS)->DefaultOther;
     }
-    /*
-     * [Endpoints] the x8p like the Twin X: every row's circuit object (they cost nothing until added); its
-     * unit's Endpoints value (Units\<key> -> legacy global -> default) picks the ones PrepareHardware adds,
-     * so a unit key can also widen the set, not only narrow it.
-     */
     return APOLLO_X8P_EP_ALL;
 }
 

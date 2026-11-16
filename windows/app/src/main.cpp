@@ -73,7 +73,6 @@
 #include "clock_host.h"                     /* [Clock] clock source, digital formats, front panel: clock-*, digital-*,
                                                panel-* commands and the panel/clock messages (docs 1.10) */
 #include "params_host.h"                    /* [Params] the units' driver Parameters: params-get (read-only) */
-#include "diag_host.h"                      /* [Diag] Save diagnostics: diag-save */
 #include "..\..\include\apollo_events.h"  /* [Events] WAIT_EVENTS: the event pump below */
 #include "..\res\resource.h"
 
@@ -116,7 +115,6 @@ using Microsoft::WRL::ComPtr;
 /* Globals                                                             */
 /* ------------------------------------------------------------------ */
 
-static HINSTANCE g_inst;
 static HWND      g_hwnd;
 static HICON     g_iconBig, g_iconSmall;
 static UINT      g_msgTaskbarCreated;
@@ -212,11 +210,76 @@ static std::wstring KnownFolder(REFKNOWNFOLDERID id)
     return s;
 }
 
+/* %APPDATA% or %LOCALAPPDATA% \Avium\ApolloControl, created if missing. */
+static std::wstring AppDataDir(REFKNOWNFOLDERID id)
+{
+    std::wstring dir = KnownFolder(id) + L"\\Avium\\ApolloControl";
+    SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
+    return dir;
+}
+
 static std::wstring ConfigPath()
 {
-    std::wstring dir = KnownFolder(FOLDERID_RoamingAppData) + L"\\Avium\\ApolloControl";
-    SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
-    return dir + L"\\config.json";
+    return AppDataDir(FOLDERID_RoamingAppData) + L"\\config.json";
+}
+
+/*
+ * Whole files, any thread (main.cpp, session_host.h, diag_host.h and plugin_engine.h use these). ReadAll: false and Out
+ * empty when the file is missing, unreadable or over MaxBytes. WriteAtomicErr: through Path.tmp, flushed, then renamed
+ * over Path (0 or the Win32 error; nothing is left half written). WriteWhole: written in place.
+ */
+static bool ReadAll(const std::wstring &path, std::string &out, ULONGLONG maxBytes = 64ull << 20)
+{
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    out.clear();
+    if (f == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER sz{};
+    bool ok = GetFileSizeEx(f, &sz) && sz.QuadPart >= 0 && (ULONGLONG)sz.QuadPart <= maxBytes;
+    if (ok) {
+        out.resize((size_t)sz.QuadPart);
+        DWORD got = 0;
+        ok = sz.QuadPart == 0 || (ReadFile(f, out.data(), (DWORD)out.size(), &got, nullptr) && got == out.size());
+    }
+    CloseHandle(f);
+    if (!ok) out.clear();
+    return ok;
+}
+
+static DWORD WriteAtomicErr(const std::wstring &path, const std::string &data)
+{
+    std::wstring tmp = path + L".tmp";
+    HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        return e ? e : ERROR_OPEN_FAILED;
+    }
+    DWORD put = 0, err = 0;
+    if (!WriteFile(f, data.data(), (DWORD)data.size(), &put, nullptr) || put != data.size() || !FlushFileBuffers(f)) {
+        err = GetLastError();
+        err = err ? err : ERROR_WRITE_FAULT;    /* a short write */
+    }
+    CloseHandle(f);
+    if (err == 0 && !MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        err = GetLastError();
+        err = err ? err : ERROR_WRITE_FAULT;
+    }
+    if (err != 0) DeleteFileW(tmp.c_str());
+    return err;
+}
+
+static bool WriteAtomic(const std::wstring &path, const std::string &data)
+{
+    return WriteAtomicErr(path, data) == 0;
+}
+
+static bool WriteWhole(const std::wstring &path, const std::string &data)
+{
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    DWORD put = 0;
+    BOOL ok = WriteFile(f, data.data(), (DWORD)data.size(), &put, nullptr);
+    CloseHandle(f);
+    return ok && put == data.size();
 }
 
 /*
@@ -247,9 +310,7 @@ static void AppLog(_Printf_format_string_ const wchar_t *fmt, ...)
     WideCharToMultiByte(CP_UTF8, 0, line, -1, u.data(), n, nullptr, nullptr);
     AcquireSRWLockExclusive(&g_logLock);
     if (g_logPath.empty()) {
-        std::wstring dir = KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloControl";
-        SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
-        g_logPath = dir + L"\\apollo-control.log";
+        g_logPath = AppDataDir(FOLDERID_LocalAppData) + L"\\apollo-control.log";
     }
     WIN32_FILE_ATTRIBUTE_DATA fa{};
     if (GetFileAttributesExW(g_logPath.c_str(), GetFileExInfoStandard, &fa) && (fa.nFileSizeHigh != 0 || fa.nFileSizeLow > (1u << 20))) {
@@ -364,44 +425,14 @@ static void PostJson(std::wstring json)
 
 static std::wstring ReadConfig()
 {
-    HANDLE f = CreateFileW(ConfigPath().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) {
-        return {};
-    }
-    LARGE_INTEGER size{};
     std::string data;
-    if (GetFileSizeEx(f, &size) && size.QuadPart > 0 && size.QuadPart < 4 * 1024 * 1024) {
-        data.resize((size_t)size.QuadPart);
-        DWORD got = 0;
-        if (!ReadFile(f, data.data(), (DWORD)data.size(), &got, nullptr)) {
-            got = 0;
-        }
-        data.resize(got);
-    }
-    CloseHandle(f);
+    ReadAll(ConfigPath(), data, (4ull << 20) - 1);     /* under 4 MiB */
     return Widen(data.data(), data.size());
 }
 
 static bool WriteConfig(const std::wstring &json)
 {
-    std::wstring path = ConfigPath();
-    std::wstring tmp = path + L".tmp";
-    std::string data = Narrow(json);
-    HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                           nullptr);
-    if (f == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-    DWORD put = 0;
-    BOOL ok = WriteFile(f, data.data(), (DWORD)data.size(), &put, nullptr) && put == data.size();
-    ok = ok && FlushFileBuffers(f);
-    CloseHandle(f);
-    if (!ok || !MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        DeleteFileW(tmp.c_str());
-        return false;
-    }
-    return true;
+    return WriteAtomic(ConfigPath(), Narrow(json));
 }
 
 /*
@@ -862,8 +893,7 @@ static std::wstring StatusJson(int unit, const APOLLO_INFO &i, DWORD bytes)
     long mode = UnitMode(i, bytes);
     Appendf(j, mode < 0 ? L"\"mode\":null," : L"\"mode\":%ld,", mode);
     Appendf(j, L"\"observe\":%s,\"serial\":", ApolloInfoActive(&i, bytes) ? L"false" : L"true");
-    std::string serial = SerialText(i);
-    JsonString(j, Widen(serial.data(), serial.size()));
+    JsonAscii(j, i.Serial, sizeof(i.Serial));
     if (ApolloInfoHasUnit(&i, bytes)) {
         Appendf(j, L",\"unitFlags\":%lu,\"hwUid\":\"%08lX%08lX\",\"hwidSubsystem\":%lu,\"aggRole\":%lu,\"unitKey\":",
                 i.UnitFlags, i.HwUidHi, i.HwUidLo, i.HwidSubsystem, i.AggRole);
@@ -920,8 +950,7 @@ static std::wstring UnitsJson()
         const char *model = ApolloInfoModelText(&i, s.infoBytes);
         JsonString(j, Widen(model, strlen(model)));
         Appendf(j, L",\"deviceType\":%lu,\"serial\":", i.DeviceType);
-        std::string serial = SerialText(i);
-        JsonString(j, Widen(serial.data(), serial.size()));
+        JsonAscii(j, i.Serial, sizeof(i.Serial));
         j += L",\"fw\":";
         JsonString(j, FwText(i.FwRelease));
         Appendf(j, mode < 0 ? L",\"mode\":null" : L",\"mode\":%ld", mode);
@@ -1299,11 +1328,19 @@ static bool PollSlot(int idx, ULONGLONG now)
     }
     s.info = info;
     s.infoBytes = bytes;
-    std::wstring status = StatusJson(idx, info, bytes);
-    if (status != s.lastStatus || now - s.lastStatusPost >= 1000) {
-        s.lastStatus = status;
+    /*
+     * ServicePasses and InterruptCount move on every 33 ms pass, so a plain compare posted the status (and
+     * the page re-rendered its status, monitor and mix) 30 times a second per unit, hidden or not. Compared
+     * without them it goes out when anything else changes, and at least once a second for those counters.
+     */
+    APOLLO_INFO calm = info;
+    calm.ServicePasses = 0;
+    calm.InterruptCount = 0;
+    std::wstring key = StatusJson(idx, calm, bytes);
+    if (key != s.lastStatus || now - s.lastStatusPost >= 1000) {
+        s.lastStatus = std::move(key);
         s.lastStatusPost = now;
-        PostJson(status);
+        PostJson(StatusJson(idx, info, bytes));
     }
     bool active = ApolloInfoActive(&info, bytes) != FALSE;
 
@@ -1920,16 +1957,8 @@ static std::wstring JsonText(const std::wstring &s)
 
 static void MeasureOpen(const std::wstring &json)
 {
-    std::wstring path = ConfigPath();
-    path = path.substr(0, path.find_last_of(L'\\')) + L"\\measure-handoff.json";
-    std::string data = Narrow(json);
-    bool ok = false;
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f != INVALID_HANDLE_VALUE) {
-        DWORD put = 0;
-        ok = WriteFile(f, data.data(), (DWORD)data.size(), &put, nullptr) && put == data.size();
-        CloseHandle(f);
-    }
+    std::wstring path = AppDataDir(FOLDERID_RoamingAppData) + L"\\measure-handoff.json";
+    bool ok = WriteWhole(path, Narrow(json));
     std::wstring why;
     bool launched = false;
     if (!ok) {
@@ -1954,8 +1983,9 @@ static void MeasureOpen(const std::wstring &json)
     PostJson(r);
 }
 
-/* [Sess] the session files (session_host.h) */
+/* [Sess] the session files (session_host.h); [Diag] Save diagnostics: diag-save (diag_host.h). Both use the helpers above. */
 #include "session_host.h"
+#include "diag_host.h"
 
 /* [Sess] {"type":"autostart","on":<the Run value exists>,"current":<it starts this exe>,"command":"...","error":<Win32>,"detail":"..."} */
 static void PostAutostart(DWORD err)
@@ -2029,12 +2059,7 @@ static void HandleUiJson(const std::wstring &json)
         /* [Switch] apollo-helper disconnect / connect in its own console window (it elevates and asks per unit): next to
            this exe in an install, installer\helper\bin in the source tree */
         bool toUa = json.find(L"\"to\":\"ua\"") != std::wstring::npos;
-        wchar_t exe[MAX_PATH];
-        std::wstring dir, helper;
-        if (GetModuleFileNameW(nullptr, exe, MAX_PATH)) {
-            dir = exe;
-            dir = dir.substr(0, dir.find_last_of(L'\\'));
-        }
+        std::wstring dir = ExeDir(), helper;
         for (const std::wstring &c : { dir + L"\\apollo-helper.exe", dir + L"\\..\\..\\installer\\helper\\bin\\apollo-helper.exe" }) {
             if (GetFileAttributesW(c.c_str()) != INVALID_FILE_ATTRIBUTES) { helper = c; break; }
         }
@@ -2541,7 +2566,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int)
 {
-    g_inst = inst;
     SetUnhandledExceptionFilter(CrashFilter);  /* [Crash] */
 
     int argc = 0;
@@ -2662,6 +2686,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ 
         g_worker.join();
     }
     CloseHandle(g_wake);
+    if (g_evWake != nullptr) {
+        CloseHandle(g_evWake);
+    }
     AppLog(L"Apollo Control quit");             /* [Log] */
     CoUninitialize();
     if (single) {

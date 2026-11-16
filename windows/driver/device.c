@@ -22,12 +22,12 @@ VOID ApolloFail(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_STAGE Attempted, _In_ NTST
         Ctx->Stage = (Status == STATUS_DEVICE_NOT_CONNECTED) ? ApolloStageGone : ApolloStageFailed;
     }
     ApolloLogU(Ctx, "bring-up failed at stage %d: 0x%08x", Attempted, Status);
-    ApolloEventPost(Ctx, APOLLO_EVENT_STAGE, (ULONG)Ctx->Stage, (ULONG)Status);    /* [Events] */
+    ApolloEventPost(Ctx, APOLLO_EVENT_STAGE, (ULONG)Ctx->Stage, (ULONG)Status);
 }
 
 /*
- * [Twin X G0] Bring-up allowed: an accepted model (apollo_model.h) whose bring-up this build
- * has, on a unit whose Mode is 1 or 2 (unit.c). False for refused models and observe units.
+ * Bring-up allowed: an accepted model (apollo_model.h) whose bring-up this build has, on a unit
+ * whose Mode is 1 or 2 (unit.c). False for refused models and observe units.
  */
 static BOOLEAN ApolloSupported(_In_ PDEVICE_CONTEXT Ctx)
 {
@@ -87,8 +87,8 @@ NTSTATUS ApolloEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw,
     /* Open the gate. From here, the first writes must be the quiesce. */
     InterlockedExchange(&ctx->Shutdown, 0);
     InterlockedExchange(&ctx->StopRequested, 0);
-    RtlZeroMemory(&ctx->Unit, sizeof(ctx->Unit));   /* [Twin X G0] not active until resolved */
-    ctx->OwnerRead = FALSE;                         /* [Twin X G2] read again below if observe */
+    RtlZeroMemory(&ctx->Unit, sizeof(ctx->Unit));   /* not active until resolved */
+    ctx->OwnerRead = FALSE;                         /* read again below if observe */
 
     /* Identification is reads only; it gives the DSP count the quiesce needs. */
     status = ApolloIdentify(ctx);
@@ -106,24 +106,23 @@ NTSTATUS ApolloEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw,
     }
 
     /*
-     * [Twin X G0] this unit's Parameters and Mode (unit.c); nothing for a refused model.
-     * [release7 review] Only after a clean quiesce: a failed ring neutralize leaves Unit zeroed
-     * (not Active), so D0Entry neither resets the Stage nor queues a bring-up with nothing
-     * allocated.
+     * This unit's Parameters and Mode (unit.c); nothing for a refused model. Only after a clean
+     * quiesce: a failed ring neutralize leaves Unit zeroed (not Active), so D0Entry neither resets
+     * the Stage nor queues a bring-up with nothing allocated.
      */
     if (NT_SUCCESS(status)) {
         ApolloUnitResolve(ctx);
     }
 
     /*
-     * [Twin X G2] A unit this driver does not bring up (observe, refused): what the previous
-     * owner left in the notification block, reads only, logged as stale (GET_INFO Owner*).
+     * A unit this driver does not bring up (observe, refused): what the previous owner left in
+     * the notification block, reads only, logged as stale (GET_INFO Owner*).
      */
     if (NT_SUCCESS(status) && !ApolloSupported(ctx)) {
         const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(ctx);
 
         ApolloReadOwnerState(ctx);
-        /* [Twin X G3] and switch off the ring DMA engines UA's driver left enabled (hw.c) */
+        /* and switch off the ring DMA engines UA's driver left enabled (hw.c) */
         if (plan != NULL && plan->ObserveDmaOff) {
             ApolloObserveDmaOff(ctx);
         }
@@ -155,12 +154,12 @@ NTSTATUS ApolloEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw,
     }
     /* Input strips: registry gates and transaction buffers (never fatal). */
     ApolloStripsPrepareHardware(ctx);
-    ApolloPluginPrepareHardware(ctx);       /* [P0] plug-in host (never fatal) */
-    ApolloCorrPrepareHardware(ctx);         /* [Corr] speaker correction: state + stored profile (never fatal) */
+    ApolloPluginPrepareHardware(ctx);       /* plug-in host (never fatal) */
+    ApolloCorrPrepareHardware(ctx);         /* speaker correction: state + stored profile (never fatal) */
     /* Copy engine tunables (RenderLeadFrames, CaptureGuardFrames, StartTransportAtConnect). */
     ApolloEngineReadConfig(ctx);
     ctx->Stage = ApolloStageMapped;
-    /* [ACX endpoints] only a supported, allocated unit gets Windows endpoints (circuit.c). */
+    /* Only a supported, allocated unit gets Windows endpoints (circuit.c). */
     ApolloAcxPrepareHardware(ctx);
     return STATUS_SUCCESS;
 }
@@ -171,14 +170,14 @@ NTSTATUS ApolloEvtReleaseHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Trans
 
     UNREFERENCED_PARAMETER(Translated);
 
-    /* [ACX endpoints] unregister the circuits first (ACX already stopped their streams). */
+    /* Unregister the circuits first (ACX already stopped their streams). */
     ApolloAcxReleaseHardware(ctx);
     /* D0Exit stopped it already; this is the guard before the rings go away. */
     ApolloEngineStop(ctx);
     ApolloCloseGate(ctx);
     /* D0Exit already stopped the transport and waited 100 ms. */
     ApolloAudioFree(ctx);
-    ApolloPluginReleaseHardware(ctx);       /* [P0] */
+    ApolloPluginReleaseHardware(ctx);
     ApolloStripsReleaseHardware(ctx);
     ApolloRingsFree(ctx);
     if (ctx->Bar0 != NULL) {
@@ -203,7 +202,7 @@ NTSTATUS ApolloEvtD0Entry(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Pre
 
     /* A failed bring-up is retried on every D0 entry; FailedStage/LastStatus stay for diagnosis. */
     if (!ApolloSupported(ctx) || ctx->Bar0 == NULL) {
-        return STATUS_SUCCESS;          /* [Twin X G2] observe/refused: not even the timer resolution */
+        return STATUS_SUCCESS;          /* observe/refused: not even the timer resolution */
     }
     /* 1 ms timer resolution while started: service thread and short sleeps. */
     if (!ctx->TimerResolutionSet) {
@@ -248,21 +247,21 @@ NTSTATUS ApolloEvtD0ExitPreInterruptsDisabled(_In_ WDFDEVICE Device,
     PDEVICE_CONTEXT ctx = ApolloGetContext(Device);
 
     InterlockedExchange(&ctx->StopRequested, 1);
-    ApolloEventPost(ctx, APOLLO_EVENT_LEAVING, 0, 0);     /* [Events] clients close their handles now */
+    ApolloEventPost(ctx, APOLLO_EVENT_LEAVING, 0, 0);     /* clients close their handles now */
     WdfWorkItemFlush(ctx->BringupWork);
-    /* [G6] out of the combined device before anything stops (after the flush: a bring-up may just have joined) */
+    /* Out of the combined device before anything stops (after the flush: a bring-up may just have joined) */
     ApolloAggLeave(ctx);
     ApolloServiceStop(ctx);
     /*
      * Release the strip modules we uploaded and wait for the DSP to take that, before the
      * hardware quiesce resyncs the rings (docs/STRIPS.md 5.4). Takes StripLock, then DevLock.
-     * [Warm] Or leave Live strips running for the next warm start to adopt (docs/STRIPS.md 12):
+     * Or leave Live strips running for the next warm start to adopt (docs/STRIPS.md 12):
      * the plug-in chains then come off with their plain strips SYNCHed again.
      */
     if (ApolloSupported(ctx)) {
         BOOLEAN keep = ApolloStripsExitKeep(ctx);
 
-        ApolloPluginQuiesce(ctx, "D0 exit", keep);  /* [P0] plug-in chains stopped, their modules released first */
+        ApolloPluginQuiesce(ctx, "D0 exit", keep);  /* plug-in chains stopped, their modules released first */
         ApolloStripsExit(ctx, keep);
     }
 
@@ -311,11 +310,11 @@ VOID ApolloEvtSurpriseRemoval(_In_ WDFDEVICE Device)
     ctx->TransportRunning = FALSE;
     KeSetEvent(&ctx->ServiceStop, IO_NO_INCREMENT, FALSE);
     ApolloLogU(ctx, "surprise removal");
-    ApolloEventPost(ctx, APOLLO_EVENT_LEAVING, 1, 0);     /* [Events] */
+    ApolloEventPost(ctx, APOLLO_EVENT_LEAVING, 1, 0);
 }
 
 /* ------------------------------------------------------------------ */
-/* [Twin X G3] Bring-up, AudioExtension path (docs/spec-twinx.md 2)    */
+/* Bring-up, AudioExtension path (docs/spec-twinx.md 2)                */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -336,7 +335,7 @@ static NTSTATUS ApolloBringupAudioExt(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLL
     Ctx->WarmStart = ApolloMixerDspAlive(Ctx);
     warmBoot = Plan->WarmBootTransport && ApolloUnitParam(Ctx, APOLLO_PARAM_WARM_BOOT_TRANSPORT) != 0;
     boot = Plan->BootTransport && (!Ctx->WarmStart || warmBoot);
-    /* [G4] the steps this start runs: the others are n/a (GET_INFO BringupApplies), not "not passed" */
+    /* The steps this start runs: the others are n/a (GET_INFO BringupApplies), not "not passed" */
     Ctx->BringupApplies = ApolloPlanBstepApplies(Plan, Ctx->WarmStart, boot, FALSE);
     ApolloLogU(Ctx, "%s start (%s, AudioExtension path, docs/spec-twinx.md 2): boot transport %s", Ctx->WarmStart ?
               "warm" : "cold", Plan->Name, boot ? (Ctx->WarmStart ? "yes (WarmBootTransport=1)" : "yes") :
@@ -410,7 +409,7 @@ static NTSTATUS ApolloBringupAudioExt(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLL
     if (boot) {
         /* E7, E8, DMA pulse + ring pages, E10, E12, E13 (audio.c) */
         status = ApolloBootTransport(Ctx);
-        /* [G4] E10 runs only when E8 did not answer */
+        /* E10 runs only when E8 did not answer */
         Ctx->BringupApplies = ApolloPlanBstepApplies(Plan, Ctx->WarmStart, boot,
                                                      (Ctx->BringupSteps & (1u << APOLLO_BSTEP_E8_ACEFACE)) != 0);
         if (!NT_SUCCESS(status)) {
@@ -445,14 +444,14 @@ static NTSTATUS ApolloBringup(_In_ PDEVICE_CONTEXT Ctx)
     BOOLEAN alive = FALSE;
     const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
 
-    /* [Twin X G3] Every bring-up starts with a clean step record (the x8p path records none). */
+    /* Every bring-up starts with a clean step record (the x8p path records none). */
     Ctx->BringupSteps = 0;
     Ctx->BringupApplies = 0;
     Ctx->BringupFailStep = APOLLO_BSTEP_NONE;
     Ctx->FailAt = ApolloStageNone;
     Ctx->NotifClockSrcsLive = 0;
     if (plan != NULL && plan->AudioExtension) {
-        return ApolloBringupAudioExt(Ctx, plan);    /* the Twin X Gen 1; below is the x8p, unchanged */
+        return ApolloBringupAudioExt(Ctx, plan);    /* the Twin X Gen 1; below is the x8p */
     }
 
     /* Phase D: did the previous owner leave a running mixer DSP? */
@@ -536,7 +535,7 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
 {
     PDEVICE_CONTEXT ctx = ApolloGetContext((WDFDEVICE)WdfWorkItemGetParentObject(WorkItem));
     const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(ctx);
-    BOOLEAN ext = (plan != NULL && plan->AudioExtension) ? TRUE : FALSE;  /* [Twin X G3] */
+    BOOLEAN ext = (plan != NULL && plan->AudioExtension) ? TRUE : FALSE;  /* the Twin X path */
     NTSTATUS status;
     APOLLO_STAGE reached;
 
@@ -544,7 +543,7 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
     status = ApolloBringup(ctx);
     reached = ctx->Stage;
     if (!NT_SUCCESS(status)) {
-        /* [Twin X G3] its failures name their stage (FailAt); the x8p's are Stage + 1, as before */
+        /* The Twin X path's failures name their stage (FailAt); the x8p's are Stage + 1 */
         ApolloFail(ctx, (ctx->FailAt != ApolloStageNone) ? ctx->FailAt : (APOLLO_STAGE)(reached + 1), status);
     } else {
         NTSTATUS ts;
@@ -554,18 +553,18 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
         /*
          * The transport starts once here and keeps running while the unit is
          * powered (PLAN.md streaming design): endpoints and ASIO open and close
-         * without touching it. Verified by hand on Nov 14: 47,999.7 frames/s.
+         * without touching it. Verified by hand: 47,999.7 frames/s.
          * The copy engine starts with it (ApolloTransportStart).
          * StartTransportAtConnect=0 leaves it to the TRANSPORT_START IOCTL.
-         * [Rate] The stored rate first (rate.c): at 48 kHz nothing (the path as before); at any other
-         * rate the clock is moved with the transport stopped, as a runtime change does.
+         * The stored rate first (rate.c): at 48 kHz nothing; at any other rate
+         * the clock is moved with the transport stopped, as a runtime change does.
          */
         ApolloRateBringup(ctx);
         if (ctx->EngStartAtConnect) {
             ts = ApolloTransportStart(ctx);
             ApolloLogU(ctx, "transport auto-start: 0x%08x", ts);
             if (ext && !NT_SUCCESS(ts)) {
-                /* [Twin X G3] Mode 1 is the transport: a start that fails stops the unit, named. */
+                /* The Twin X: Mode 1 is the transport, so a start that fails stops the unit, named. */
                 status = ApolloAudioExtAbort(ctx, (ctx->BringupSteps & (1u << APOLLO_BSTEP_XPORT_START)) ?
                                              APOLLO_BSTEP_SAMPLE_POS : APOLLO_BSTEP_XPORT_START,
                                              ApolloStageConnected, ts, "Power-cycle the Twin X.");
@@ -579,7 +578,7 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
         if (ext && NT_SUCCESS(status)) {
             ULONG k, missing = 0;
 
-            /* [G4] only the steps this path runs count (BringupApplies); the rest are n/a */
+            /* Only the steps this path runs count (BringupApplies); the rest are n/a */
             for (k = 1; k < APOLLO_BSTEP_COUNT; k++) {
                 if ((ctx->BringupApplies & (1u << k)) != 0 && (ctx->BringupSteps & (1u << k)) == 0) {
                     missing++;
@@ -596,17 +595,15 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
     WdfWaitLockRelease(ctx->DevLock);
 
     /*
-     * [G4 review] A failed Twin X bring-up stopped the unit on purpose (ApolloAudioExtAbort: no
-     * transport, no service thread), but its Windows endpoints were added at PrepareHardware: with
-     * MON L/R as the default device Windows would keep sending audio to a dead endpoint. Remove the
-     * circuits now (ACX dynamic removal, PASSIVE, DevLock released: the stream callbacks take
-     * EngineLock); the next start (PrepareHardware) adds them again. The x8p keeps its endpoints
-     * after a failure, as before (its service thread still runs and TRANSPORT_START retries).
-     */
-    /*
+     * A failed Twin X bring-up stopped the unit on purpose (ApolloAudioExtAbort: no transport, no
+     * service thread), but its Windows endpoints were added at PrepareHardware: with MON L/R as the
+     * default device Windows would keep sending audio to a dead endpoint. Remove the circuits now
+     * (ACX dynamic removal, PASSIVE, DevLock released: the stream callbacks take EngineLock); the
+     * next start (PrepareHardware) adds them again. The x8p keeps its endpoints after a failure
+     * (its service thread still runs and TRANSPORT_START retries).
      * Not while D0 exit waits on this work item (StopRequested): a cancelled bring-up must not call
      * into ACX while the WDF power state machine sits in our D0 exit callback; ReleaseHardware
-     * removes the circuits on the way down anyway (G5+G6 review item 2).
+     * removes the circuits on the way down anyway.
      */
     if (ext && ctx->Stage == ApolloStageFailed && InterlockedCompareExchange(&ctx->StopRequested, 0, 0) == 0) {
         ApolloLogU(ctx, "bring-up failed: removing this unit's Windows endpoints until it starts again");
@@ -618,11 +615,11 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
         ApolloLogU(ctx, "bring-up done after a failure: adding this unit's Windows endpoints again");
         ApolloAcxPrepareHardware(ctx);
     }
-    /* [Rate] the Windows endpoints advertise the rate the unit came up at (a no-op when it is theirs) */
+    /* The Windows endpoints advertise the rate the unit came up at (a no-op when it is theirs) */
     if (ctx->Stage == ApolloStageConnected && InterlockedCompareExchange(&ctx->StopRequested, 0, 0) == 0) {
         ApolloAcxSetRate(ctx);
     }
-    /* [G6] a running Mode 2 unit joins the combined device (agg.c checks Mode, transport, engine) */
+    /* A running Mode 2 unit joins the combined device (agg.c checks Mode, transport, engine) */
     if (ctx->Stage == ApolloStageConnected && ctx->TransportRunning) {
         ApolloAggJoin(ctx);
     }
@@ -631,7 +628,7 @@ VOID ApolloEvtBringupWork(_In_ WDFWORKITEM WorkItem)
      * The DSP halts without host servicing. Start the service thread once
      * the rings are up, even if ACEFACE failed (a later TRANSPORT_START
      * retries the connect, and the pass is a no-op until connected).
-     * [Twin X G3] Not after a failure of the Twin X path: it stopped the unit on purpose.
+     * Not after a failure of the Twin X path: it stopped the unit on purpose.
      */
     if (reached >= ApolloStageRingsReady && reached <= ApolloStageConnected &&
         ctx->Stage != ApolloStageGone &&

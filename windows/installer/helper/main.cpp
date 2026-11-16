@@ -21,6 +21,8 @@
  *   apollo-helper cert add|remove <cer> [--expect <sha1>] [--record <file>]   (older installs)
  *   apollo-helper connect                       Start-menu "Connect Apollo units": elevates, asks
  *                                               per unit, then the above
+ *   apollo-helper disconnect                    Start-menu way back to UA's driver: elevates, asks per
+ *                                               unit, then unbind --unit for each
  * U: x8p, twinx, x8p,twinx, all, none.
  */
 #include "common.h"
@@ -29,34 +31,11 @@
 #include <shellapi.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <io.h>
-#include <fcntl.h>
+#include <wctype.h>
 
 /* ------------------------------------------------------------------ */
 /* output                                                              */
 /* ------------------------------------------------------------------ */
-
-std::string ToUtf8(const std::wstring &s)
-{
-    if (s.empty())
-        return std::string();
-    int n = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0, nullptr, nullptr);
-    std::string r((size_t)(n > 0 ? n : 0), '\0');
-    if (n > 0)
-        WideCharToMultiByte(CP_UTF8, 0, s.c_str(), (int)s.size(), &r[0], n, nullptr, nullptr);
-    return r;
-}
-
-std::wstring FromUtf8(const std::string &s)
-{
-    if (s.empty())
-        return std::wstring();
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
-    std::wstring r((size_t)(n > 0 ? n : 0), L'\0');
-    if (n > 0)
-        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &r[0], n);
-    return r;
-}
 
 static void WriteTo(DWORD which, const std::wstring &s)
 {
@@ -116,7 +95,7 @@ void Err(const wchar_t *fmt, ...)
     WriteTo(STD_ERROR_HANDLE, s + L"\r\n");
 }
 
-void OutRaw(const std::wstring &s)
+static void OutRaw(const std::wstring &s)
 {
     WriteTo(STD_OUTPUT_HANDLE, s);
 }
@@ -156,7 +135,16 @@ bool EqualsI(const std::wstring &a, const std::wstring &b)
     return CompareStringOrdinal(a.c_str(), (int)a.size(), b.c_str(), (int)b.size(), TRUE) == CSTR_EQUAL;
 }
 
-std::wstring JsonStr(const std::wstring &s)
+bool InListI(const std::vector<std::wstring> &list, const std::wstring &s)
+{
+    for (auto &x : list)
+        if (EqualsI(x, s))
+            return true;
+    return false;
+}
+
+/* Quoted, escaped, ASCII-only. */
+static std::wstring JsonStr(const std::wstring &s)
 {
     std::wstring r = L"\"";
     for (wchar_t c : s) {
@@ -202,6 +190,74 @@ bool ReadFileBytes(const std::wstring &path, std::vector<BYTE> &data)
     return true;
 }
 
+std::vector<std::wstring> TextLines(const std::vector<BYTE> &utf8)
+{
+    std::wstring t = FromUtf8(std::string(utf8.begin(), utf8.end()));
+    std::vector<std::wstring> lines;
+    for (size_t pos = 0; pos < t.size();) {
+        size_t eol = t.find(L'\n', pos);
+        if (eol == std::wstring::npos)
+            eol = t.size();
+        lines.push_back(t.substr(pos, eol - pos));
+        if (!lines.back().empty() && lines.back().back() == L'\r')
+            lines.back().pop_back();
+        pos = eol + 1;
+    }
+    return lines;
+}
+
+bool WriteFileUtf8(const std::wstring &path, const std::wstring &text)
+{
+    std::string u = ToUtf8(text);
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    DWORD done = 0;
+    BOOL ok = WriteFile(h, u.data(), (DWORD)u.size(), &done, nullptr);
+    DWORD err = ok ? ERROR_WRITE_FAULT : GetLastError();
+    CloseHandle(h);
+    if (ok && done == u.size())
+        return true;
+    SetLastError(err);
+    return false;
+}
+
+std::wstring ProcessPath(DWORD pid)
+{
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (h == nullptr)
+        return std::wstring();
+    wchar_t buf[MAX_PATH * 2];
+    DWORD n = MAX_PATH * 2;
+    std::wstring r;
+    if (QueryFullProcessImageNameW(h, 0, buf, &n))
+        r.assign(buf, n);
+    CloseHandle(h);
+    return r;
+}
+
+wchar_t AskKey()
+{
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    wchar_t buf[32] = {};
+    DWORD n = 0;
+    if (in == nullptr || in == INVALID_HANDLE_VALUE || !ReadConsoleW(in, buf, 31, &n, nullptr))
+        return L'q';
+    for (DWORD i = 0; i < n; i++) {
+        if (buf[i] == L'\r' || buf[i] == L'\n')
+            return L'\n';
+        if (buf[i] != L' ')
+            return (wchar_t)towlower(buf[i]);
+    }
+    return L'\n';
+}
+
+void *NtdllProc(const char *name)
+{
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    return ntdll ? (void *)GetProcAddress(ntdll, name) : nullptr;
+}
+
 bool IsElevated()
 {
     HANDLE tok = nullptr;
@@ -225,7 +281,7 @@ bool RequireElevated(const wchar_t *what)
     return false;
 }
 
-std::wstring ExeDir()
+static std::wstring ExeDir()
 {
     std::vector<wchar_t> buf(MAX_PATH);
     for (;;) {
@@ -293,13 +349,8 @@ static std::vector<std::wstring> FindUad()
         if (base.empty())
             continue;
         std::wstring p = base + L"\\Universal Audio\\Powered Plugins";
-        if (DirExists(p)) {
-            bool dup = false;
-            for (auto &f : found)
-                dup = dup || EqualsI(f, p);
-            if (!dup)
-                found.push_back(p);
-        }
+        if (DirExists(p) && !InListI(found, p))
+            found.push_back(p);
     }
     wchar_t sys[MAX_PATH];
     UINT n = GetSystemDirectoryW(sys, MAX_PATH);
@@ -401,12 +452,20 @@ static std::wstring ModeKeysJson(const wchar_t *sub)
     return s + L"]";
 }
 
+/* "  \"key\": [ ... ],\r\n" with one item per line ("[]" when empty). */
+static std::wstring JsonArray(const wchar_t *key, const std::vector<std::wstring> &items)
+{
+    std::wstring s = Fmt(L"  \"%s\": [", key);
+    for (size_t i = 0; i < items.size(); i++)
+        s += (i ? L",\r\n    " : L"\r\n    ") + items[i];
+    return s + (items.empty() ? L"],\r\n" : L"\r\n  ],\r\n");
+}
+
 static int CmdCheck()
 {
     RTL_OSVERSIONINFOW vi = {};
     vi.dwOSVersionInfoSize = sizeof(vi);
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    RtlGetVersionFn rtlGetVersion = ntdll ? (RtlGetVersionFn)(void *)GetProcAddress(ntdll, "RtlGetVersion") : nullptr;
+    RtlGetVersionFn rtlGetVersion = (RtlGetVersionFn)NtdllProc("RtlGetVersion");
     if (rtlGetVersion != nullptr)
         rtlGetVersion(&vi);
     const wchar_t *cv = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
@@ -425,30 +484,30 @@ static int CmdCheck()
     std::wstring blDrive, blDetail;
     int bl = BitLockerProtection(blDrive, blDetail);
 
-    /* Every Universal Audio PCI device Windows knows: connected ones, and remembered ones (not
-       connected now) that are still set up with our driver, since uninstall moves those too. */
     std::vector<Device> known = FindUaDevices(true);
-    std::vector<Device> devs, remembered;
-    for (auto &d : known) {
-        if (d.Present)
-            devs.push_back(d);
-        else if (d.OnApollo())
-            remembered.push_back(d);
-    }
-    std::vector<Package> pkgs = FindApolloPackages();
-    std::vector<Package> uaPkgs = FindUaPackages();
+    std::vector<Package> pkgs, uaPkgs;
+    ScanDriverStore(&pkgs, &uaPkgs);
     std::vector<std::wstring> uad = FindUad();
     std::wstring wv2 = WebView2Version();
-    std::vector<std::wstring> unitJson;
-    const Device *x8p = nullptr;
-    size_t x8pIndex = 0;
-    for (size_t i = 0; i < devs.size(); i++) {
-        unitJson.push_back(DeviceJson(devs[i], L"    ", uaPkgs));
-        if (devs[i].IsX8p() && x8p == nullptr) {
-            x8p = &devs[i];
-            x8pIndex = i;
+    /* Every Universal Audio PCI device Windows knows: connected ones, and remembered ones (not
+       connected now) that are still set up with our driver, since uninstall moves those too. */
+    std::vector<std::wstring> unitJson, rememberedJson, pkgJson, uaJson;
+    int x8pIndex = -1;
+    for (auto &d : known) {
+        if (d.Present) {
+            if (d.IsX8p() && x8pIndex < 0)
+                x8pIndex = (int)unitJson.size();
+            unitJson.push_back(DeviceJson(d, L"    ", uaPkgs));
+        } else if (d.OnApollo()) {
+            rememberedJson.push_back(DeviceJson(d, L"    ", uaPkgs));
         }
     }
+    for (auto &p : pkgs)
+        pkgJson.push_back(Fmt(L"{ \"published\": %s, \"driver_ver\": %s, \"in_use\": %s }", JsonStr(p.Published).c_str(),
+                              JsonStr(p.DriverVer).c_str(), PackageInUse(known, p.Published) ? L"true" : L"false"));
+    for (auto &p : uaPkgs)
+        uaJson.push_back(Fmt(L"{ \"published\": %s, \"driver_ver\": %s, \"signer\": %s }", JsonStr(p.Published).c_str(),
+                             JsonStr(p.DriverVer).c_str(), JsonStr(p.Signer).c_str()));
 
     std::wstring s = L"{\r\n";
     s += Fmt(L"  \"helper\": %s,\r\n", JsonStr(HELPER_VERSION).c_str());
@@ -464,48 +523,18 @@ static int CmdCheck()
     s += Fmt(L"  \"bitlocker\": { \"drive\": %s, \"protection\": \"%s\", \"detail\": %s },\r\n",
              JsonStr(blDrive).c_str(), bl < 0 ? L"unknown" : (bl ? L"on" : L"off"), JsonStr(blDetail).c_str());
     /* "x8p" stays for older readers; "units" lists every connected Apollo, the x8p included. */
-    if (x8p != nullptr)
+    if (x8pIndex >= 0)
         s += Fmt(L"  \"x8p\": { \"present\": true, \"device\": %s },\r\n", unitJson[x8pIndex].c_str());
     else
         s += L"  \"x8p\": { \"present\": false },\r\n";
-    s += L"  \"units\": [";
-    bool first = true;
-    for (auto &u : unitJson) {
-        s += first ? L"\r\n    " : L",\r\n    ";
-        s += u;
-        first = false;
-    }
-    s += first ? L"],\r\n" : L"\r\n  ],\r\n";
-    s += L"  \"remembered_on_apollo\": [";
-    first = true;
-    for (auto &d : remembered) {
-        s += first ? L"\r\n    " : L",\r\n    ";
-        s += DeviceJson(d, L"    ", uaPkgs);
-        first = false;
-    }
-    s += first ? L"],\r\n" : L"\r\n  ],\r\n";
+    s += JsonArray(L"units", unitJson);
+    s += JsonArray(L"remembered_on_apollo", rememberedJson);
     s += Fmt(L"  \"unit_settings\": { \"models\": %s, \"units\": %s },\r\n", ModeKeysJson(L"Models").c_str(),
              ModeKeysJson(L"Units").c_str());
     std::wstring loaded = LoadedApolloImage();
     s += Fmt(L"  \"apollo_loaded_image\": %s,\r\n", loaded.empty() ? L"null" : JsonStr(loaded).c_str());
-    s += L"  \"apollo_packages\": [";
-    first = true;
-    for (auto &p : pkgs) {
-        s += first ? L"\r\n    " : L",\r\n    ";
-        s += Fmt(L"{ \"published\": %s, \"driver_ver\": %s, \"in_use\": %s }", JsonStr(p.Published).c_str(),
-                 JsonStr(p.DriverVer).c_str(), PackageInUse(known, p.Published) ? L"true" : L"false");
-        first = false;
-    }
-    s += first ? L"],\r\n" : L"\r\n  ],\r\n";
-    s += L"  \"ua_packages\": [";
-    first = true;
-    for (auto &p : uaPkgs) {
-        s += first ? L"\r\n    " : L",\r\n    ";
-        s += Fmt(L"{ \"published\": %s, \"driver_ver\": %s, \"signer\": %s }", JsonStr(p.Published).c_str(),
-                 JsonStr(p.DriverVer).c_str(), JsonStr(p.Signer).c_str());
-        first = false;
-    }
-    s += first ? L"],\r\n" : L"\r\n  ],\r\n";
+    s += JsonArray(L"apollo_packages", pkgJson);
+    s += JsonArray(L"ua_packages", uaJson);
     s += Fmt(L"  \"uad\": { \"installed\": %s, \"found\": [", uad.empty() ? L"false" : L"true");
     for (size_t i = 0; i < uad.size(); i++)
         s += (i ? L", " : L"") + JsonStr(uad[i]);
@@ -557,20 +586,36 @@ static int Relaunch(const wchar_t *args)
     return EXIT_OK;
 }
 
-/* [Y/n] on the console; Enter = yes. */
+/* "connect" / "disconnect": relaunch elevated (UAC) if needed, run, keep the window open. */
+static int RunElevated(bool elevatedChild, const wchar_t *args, int (*body)())
+{
+    if (!IsElevated()) {
+        if (elevatedChild) {
+            Err(L"Still not elevated after the UAC prompt.");
+            return EXIT_NOT_ELEVATED;
+        }
+        return Relaunch(args);
+    }
+    int rc = body();
+    Pause();
+    return rc;
+}
+
+/* [Y/n] on the console; Enter = yes, no console = no. */
 static bool AskYes()
 {
-    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-    wchar_t buf[32] = {};
-    DWORD n = 0;
-    if (in == nullptr || in == INVALID_HANDLE_VALUE || !ReadConsoleW(in, buf, 31, &n, nullptr))
-        return false;
-    for (DWORD i = 0; i < n; i++) {
-        if (buf[i] == L' ')
-            continue;
-        return !(buf[i] == L'n' || buf[i] == L'N' || buf[i] == L'q' || buf[i] == L'Q');
+    wchar_t k = AskKey();
+    return k != L'n' && k != L'q';
+}
+
+static const wchar_t *DriverText(const Device &d)
+{
+    switch (d.Owner()) {
+    case OWNER_APOLLO: return L"the Apollo driver";
+    case OWNER_UA:     return L"Universal Audio's driver";
+    case OWNER_NONE:   return L"no driver";
+    default:           return d.Service.c_str();
     }
-    return true;
 }
 
 static int ConnectElevated()
@@ -600,9 +645,7 @@ static int ConnectElevated()
             continue;
         anySupported = true;
         const Device &d = present[same[0]];
-        Out(L"%s: on %s%s", UnitKindName(k), d.OnApollo() ? L"the Apollo driver" :
-            (d.Owner() == OWNER_UA ? L"Universal Audio's driver" : (d.Service.empty() ? L"no driver" : d.Service.c_str())),
-            d.HasProblem ? Fmt(L" (problem %lu)", d.Problem).c_str() : L"");
+        Out(L"%s: on %s%s", UnitKindName(k), DriverText(d), d.HasProblem ? Fmt(L" (problem %lu)", d.Problem).c_str() : L"");
         if (same.size() > 1) {
             Out(L"  %zu units of this model are connected: Windows would switch all of them. Connect one at a time.",
                 same.size());
@@ -656,20 +699,6 @@ static int ConnectElevated()
     return rc;
 }
 
-static int CmdConnect(bool elevatedChild)
-{
-    if (!IsElevated()) {
-        if (elevatedChild) {
-            Err(L"Still not elevated after the UAC prompt.");
-            return EXIT_NOT_ELEVATED;
-        }
-        return Relaunch(L"connect --elevated");
-    }
-    int rc = ConnectElevated();
-    Pause();
-    return rc;
-}
-
 /* ------------------------------------------------------------------ */
 /* disconnect: the Start-menu shortcut back to UA's driver             */
 /* ------------------------------------------------------------------ */
@@ -702,8 +731,7 @@ static int DisconnectElevated()
             continue;
         const Device &d = present[same[0]];
         if (!d.OnApollo()) {
-            Out(L"%s: already on %s.", UnitKindName(k),
-                d.Owner() == OWNER_UA ? L"Universal Audio's driver" : (d.Service.empty() ? L"no driver" : d.Service.c_str()));
+            Out(L"%s: already on %s.", UnitKindName(k), DriverText(d));
             continue;
         }
         anyOnApollo = true;
@@ -752,20 +780,6 @@ static int DisconnectElevated()
         Out(L"Restart Windows to finish (see above why).");
     }
     return worst;
-}
-
-static int CmdDisconnect(bool elevatedChild)
-{
-    if (!IsElevated()) {
-        if (elevatedChild) {
-            Err(L"Still not elevated after the UAC prompt.");
-            return EXIT_NOT_ELEVATED;
-        }
-        return Relaunch(L"disconnect --elevated");
-    }
-    int rc = DisconnectElevated();
-    Pause();
-    return rc;
 }
 
 /* ------------------------------------------------------------------ */
@@ -893,9 +907,9 @@ int wmain(int argc, wchar_t **argv)
         const wchar_t *record = Opt(argc, argv, L"--record");
         rc = CmdCert(EqualsI(argv[2], L"add"), argv[3], expect ? expect : L"", record ? record : L"");
     } else if (EqualsI(cmd, L"connect")) {
-        rc = CmdConnect(Flag(argc, argv, L"--elevated"));
+        rc = RunElevated(Flag(argc, argv, L"--elevated"), L"connect --elevated", ConnectElevated);
     } else if (EqualsI(cmd, L"disconnect")) {
-        rc = CmdDisconnect(Flag(argc, argv, L"--elevated"));
+        rc = RunElevated(Flag(argc, argv, L"--elevated"), L"disconnect --elevated", DisconnectElevated);
     } else {
         Err(L"Unknown command or missing argument: %s", cmd.c_str());
         Usage();

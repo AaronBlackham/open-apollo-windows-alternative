@@ -8,8 +8,8 @@
  * onUnits(previous list) for the connect/disconnect notices and the combined device's draft,
  * onAgg(m) for the driver's configuration. This file owns the Units & routing view, the agg-get /
  * agg-set exchange and the demo's units (which it lists through app.js setUnitList). Loaded before
- * app.js; it uses app.js globals (S, el, put, toast, dialog, host, ...) only inside functions,
- * which run after app.js has booted. app.js calls in at the hooks marked "units.js".
+ * app.js; it uses app.js globals (S, el, put, setHidden, thead, clone, kHz, toast, dialog, host, ...)
+ * only inside functions, which run after app.js has booted. app.js calls in at the hooks marked "units.js".
  */
 const Units = (() => {
   /* ---------------------------------------------------------------- */
@@ -96,21 +96,18 @@ const Units = (() => {
   /* Small helpers                                                    */
   /* ---------------------------------------------------------------- */
 
-  const clone = x => JSON.parse(JSON.stringify(x));
   const rkey = r => `${r.src}>${r.unit}:${r.port}`;
   const canon = d => (d ? JSON.stringify({ ...d, routes: d.routes.map(rkey).sort() }) : 'null');
   const shortOf = r => SHORT[r.deviceType] || String(r.model || 'Unit').replace(/^Apollo\s*/, '').replace(/\s+/g, '');
   const portsOf = r => PORTS[r.deviceType] || [];
   const ms = f => `${(f / 48).toFixed(2)} ms`;
-  const rateText = i => (i && i.sampleRate ? `${(i.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')} kHz` : '-');
+  const rateText = i => (i && i.sampleRate ? kHz(i.sampleRate) : '-');
   const roOf = u => readOnlyMode(infoOf(u.index), u);       /* app.js: '' or 'observe' / 'bring-up' */
   const modeText = u => {
     const ro = roOf(u);
     return ro ? `${ro}, read-only` : typeof u.mode === 'number' ? MODE_NAMES[u.mode] || `mode ${u.mode}` : '-';
   };
   const joins = u => !roOf(u) && (u.mode === 2 || u.mode === null);   /* only full-mode units join the combined device */
-  const thead = labels => el('thead', {}, el('tr', {},
-    labels.map(([t, cls, title]) => el('th', { class: cls || null, title: title || null, text: t }))));
 
   function post(obj) {
     if (S.demo) { demoHost(obj); return; }
@@ -697,7 +694,7 @@ const Units = (() => {
       const c = liveCells.get(u.id);
       if (!c) continue;
       const [lt, ld, ltitle] = lockOf(u);
-      c.clockDot.hidden = !ld;
+      setHidden(c.clockDot, !ld);
       if (ld) put(c.clockDot, '', `dot ${ld}`);
       put(c.clockText, lt, ld === 'bad' ? 'bad-text' : ld ? '' : 'faint', ltitle);
       const f = fps(u.index);

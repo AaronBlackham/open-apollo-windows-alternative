@@ -9,9 +9,9 @@
  *
  * Each circuit: host pin (streaming, KSCATEGORY_AUDIO, MaxStreams 1) and a
  * bridge pin whose category is the endpoint's form factor; no elements (no
- * hardware volume: Windows uses software volume); one format, 48 kHz PCM
- * 32-bit container with 24 valid bits, the hardware's own word.
- * [Rate] One format at a time, the unit's rate: the six are made at device add, the host pin's list
+ * hardware volume: Windows uses software volume); one format, PCM 32-bit
+ * container with 24 valid bits (the hardware's own word) at the unit's rate.
+ * [Rate] The six rates' formats are made at device add, the host pin's list
  * holds the one the unit runs at (ApolloAcxSetRate). A change swaps it and tells Windows
  * (AcxPinNotifyDataFormatChange: KSEVENT_PINCAPS_FORMATCHANGE), which re-opens its streams at the new
  * format; a stream still open at the old one is silent meanwhile (stream.c).
@@ -69,8 +69,8 @@ static NTSTATUS ApolloCircuitFormatOne(_In_ WDFDEVICE Device, _In_ ACXCIRCUIT Ci
 }
 
 /*
- * [Rate] The six formats of an endpoint (rate index i at Fmt[i - 1]); the host pin's list gets the
- * 48 kHz one, as before. PrepareHardware (ApolloAcxPrepareHardware) puts the unit's stored rate in
+ * [Rate] The six formats of an endpoint (rate index i at Fmt[i - 1]); the host pin's list starts
+ * with the 48 kHz one. PrepareHardware (ApolloAcxPrepareHardware) puts the unit's stored rate in
  * before the circuit is added; a runtime change swaps it (ApolloAcxSetRate).
  */
 static NTSTATUS ApolloCircuitFormat(_In_ WDFDEVICE Device, _In_ ACXCIRCUIT Circuit, _In_ ACXPIN HostPin,
@@ -177,23 +177,13 @@ static NTSTATUS ApolloCircuitCreate(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_EP
 }
 
 /*
- * [Twin X G0] Which circuit objects to create at device add, before the unit is identified:
- * the legacy global EnabledEndpoints (default 0x3FF), as before. They stay invisible until
- * ApolloAcxPrepareHardware adds the ones this unit's own value allows (unit.c), so a unit key
- * can narrow this set, and a unit that is not an x8p adds none unless its key says so.
- * [Twin X G2] Only on the x8p's hardware ID (or one that could not be read): a device that
- * came in by any other INF line (the Twin X) creates no circuit objects at all (unit.c,
- * apollo_unit.h ApolloAddTimeEndpoints), so nothing of it can ever reach Windows.
- * [G4] The Twin X's hardware ID creates the circuit objects of its own table (endpoints.c,
- * MON L/R out and in); PrepareHardware adds them only in Mode 2 (its unit's EnabledEndpoints,
- * default 0x3) once identification says it is the Twin X. Any other hardware ID: none.
+ * Which circuit objects device add creates, before the unit is identified: every row of the table
+ * the hardware ID chose (apollo_unit.h ApolloAddTimeEndpoints: the x8p's ID, or one that could not
+ * be read, the x8p's table; the Twin X's ID its own; any other ID none). They cost nothing and stay
+ * invisible until ApolloAcxPrepareHardware adds the rows this unit's own Endpoints value names
+ * (unit.c), in Mode 2 only and only once identification confirms the table's model.
  */
 C_ASSERT(APOLLO_EP_DEFAULT_MASK == APOLLO_DEF_ENDPOINTS_X8P);
-
-static ULONG ApolloAcxRegMask(_In_ PDEVICE_CONTEXT Ctx)
-{
-    return ApolloUnitParamBeforeIdentify(Ctx, APOLLO_PARAM_ENABLED_ENDPOINTS);
-}
 
 /*
  * [Endpoints] The device's friendly name, which Windows puts in parentheses after every endpoint name
@@ -246,8 +236,8 @@ NTSTATUS ApolloAcxDeviceInit(PDEVICE_CONTEXT Ctx)
     InitializeListHead(&acx->Parked);
     {
         /*
-         * [G7] Parameters\Aggregate\EndpointSet (apollo_agg.h ApolloAggEpTableFor): 0 / absent = each unit
-         * its own table, exactly the pre-G7 code below; 1 = the host (the x8p's hardware ID) creates the
+         * Parameters\Aggregate\EndpointSet (apollo_agg.h ApolloAggEpTableFor): 0 / absent = each unit
+         * its own table (the last branch below); 1 = the host (the x8p's hardware ID) creates the
          * combined table and every other unit none, so Windows never sees one channel twice.
          */
         ULONG epMask = APOLLO_AGG_EP_DEFAULT;
@@ -267,10 +257,11 @@ NTSTATUS ApolloAcxDeviceInit(PDEVICE_CONTEXT Ctx)
             acx->Mask = 0;
             ApolloLogU(Ctx, "acx: EndpointSet 1: the host unit has the combined endpoints, none on this unit");
         } else {
-            /* [G4] the model's table by the hardware ID: the x8p's as before, the Twin X's own, else none */
+            /* the model's table by the hardware ID: the x8p's, the Twin X's, else none */
             acx->Table = ApolloEndpointTableFor(model);
             acx->Count = (acx->Table != NULL) ? min(acx->Table->Count, (ULONG)APOLLO_ENDPOINTS_ROWS_MAX) : 0;
-            acx->Mask = (acx->Count != 0) ? (ApolloAcxRegMask(Ctx) & ApolloEpAllMask(acx->Count)) : 0;
+            acx->Mask = (acx->Count != 0) ?
+                (ApolloUnitParamBeforeIdentify(Ctx, APOLLO_PARAM_ENABLED_ENDPOINTS) & ApolloEpAllMask(acx->Count)) : 0;
         }
         /* [Endpoints] the name Windows shows in parentheses: "Apollo" for the combined set, else the model's */
         ApolloAcxAssignFriendlyName(Ctx, acx->Combined, model);
@@ -371,11 +362,11 @@ VOID ApolloAcxPrepareHardware(PDEVICE_CONTEXT Ctx)
     if (acx == NULL) {
         return;
     }
-    /* [Twin X G0] this unit's Endpoints value (unit.c; 0 below Mode 2 and for a new model). */
+    /* this unit's Endpoints value (unit.c; 0 below Mode 2 and for a new model) */
     unitMask = ApolloUnitParam(Ctx, APOLLO_PARAM_ENABLED_ENDPOINTS);
     if (acx->Combined) {
         /*
-         * [G7] The combined table: Aggregate\Endpoints (read at device add), in Mode 2 only, and (below)
+         * The combined table: Aggregate\Endpoints (read at device add), in Mode 2 only, and (below)
          * only on the model whose plan has endpoints and only if identification says it is the x8p.
          * The unit's own Endpoints value stays its standalone value, untouched for the way back.
          */
@@ -383,9 +374,8 @@ VOID ApolloAcxPrepareHardware(PDEVICE_CONTEXT Ctx)
     }
     {
         /*
-         * [Twin X G3] and only on a model whose plan has Windows endpoints (x8p; the Twin X since G4).
-         * [G4] and only from the table of the model identified: a device whose hardware ID chose
-         * another model's table adds nothing.
+         * Only on a model whose plan has Windows endpoints, and only from the table of the model
+         * identified: a device whose hardware ID chose another model's table adds nothing.
          */
         const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
 
@@ -420,7 +410,7 @@ VOID ApolloAcxPrepareHardware(PDEVICE_CONTEXT Ctx)
     if (acx->Combined && !acx->Hosted) {
         for (i = 0; i < acx->Count; i++) {
             if (acx->Ep[i].Added) {
-                /* [G7] the aggregate runs a timeline for these from now on (agg.c AggRebuild) */
+                /* the aggregate runs a timeline for these from now on (agg.c AggRebuild) */
                 acx->Hosted = TRUE;
                 ApolloAggEndpointsHosted(Ctx, TRUE);
                 break;
@@ -451,6 +441,6 @@ VOID ApolloAcxReleaseHardware(PDEVICE_CONTEXT Ctx)
     }
     if (acx->Hosted) {
         acx->Hosted = FALSE;
-        ApolloAggEndpointsHosted(Ctx, FALSE);  /* [G7] */
+        ApolloAggEndpointsHosted(Ctx, FALSE);
     }
 }

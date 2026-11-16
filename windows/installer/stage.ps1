@@ -155,7 +155,7 @@ if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -F
 New-Item -ItemType Directory -Path $Stage | Out-Null
 foreach ($rel in $map.Keys) {
     $dst = Join-Path $Stage $rel
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dst) | Out-Null
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $dst))
     Copy-Item -LiteralPath $map[$rel] -Destination $dst
 }
 

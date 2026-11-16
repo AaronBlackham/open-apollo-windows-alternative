@@ -26,8 +26,8 @@ int main()
     /* the example of docs/apollo-control-units.md section 2, with this PC's unit keys */
     const std::string doc =
         "{\"version\":1,\"units\":["
-        "{\"id\":\"000000002F00BEEF\",\"model\":\"Apollo Twin X\",\"deviceType\":153,\"serial\":\"20232024023592\"},"
-        "{\"id\":\"000000003A00C0DE\",\"model\":\"Apollo x8p\",\"deviceType\":34,\"serial\":\"22532017106180\"}],"
+        "{\"id\":\"000000002F00BEEF\",\"model\":\"Apollo Twin X\",\"deviceType\":153,\"serial\":\"20000000000002\"},"
+        "{\"id\":\"000000003A00C0DE\",\"model\":\"Apollo x8p\",\"deviceType\":34,\"serial\":\"20000000000001\"}],"
         "\"master\":\"000000002F00BEEF\",\"channels\":null,\"preset\":\"studio\",\"routes\":["
         "{\"src\":\"daw\",\"unit\":\"000000002F00BEEF\",\"port\":\"mon\",\"ids\":[2305,2306]},"
         "{\"src\":\"windows\",\"unit\":\"000000002F00BEEF\",\"port\":\"mon\",\"ids\":[2305,2306]},"
@@ -67,7 +67,7 @@ int main()
     aggjson::AggCompile(doc, g_c, err);
     g_c.JsonBytes = 0;
     std::map<std::string, aggjson::UnitText> known;
-    known["000000002F00BEEF"] = { "Apollo Twin X (Gen 1)", "20232024023592" };
+    known["000000002F00BEEF"] = { "Apollo Twin X (Gen 1)", "20000000000002" };
     std::string d = aggjson::AggDescribe(g_c, known);
     printf("describe: %s\n", d.c_str());
     Check(aggjson::AggCompile(d, g_c2, err), "the description compiles again");
@@ -109,7 +109,7 @@ int main()
     /* refusals */
     Check(!aggjson::AggCompile("[1,2]", g_c, err), "not an object");
     Check(!aggjson::AggCompile("{\"units\":[],\"master\":\"x\"}", g_c, err), "no units");
-    Check(!aggjson::AggCompile("{\"units\":[{\"id\":\"SN22532017106180\"}],\"master\":\"SN22532017106180\"}", g_c, err),
+    Check(!aggjson::AggCompile("{\"units\":[{\"id\":\"SN20000000000001\"}],\"master\":\"SN20000000000001\"}", g_c, err),
           "a unit without HW_UID key is refused");
     Check(!aggjson::AggCompile("{\"units\":[{\"id\":\"000000003A00C0DE\"}],\"master\":\"000000002F00BEEF\"}", g_c, err),
           "master not a unit");

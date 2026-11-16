@@ -180,7 +180,8 @@ function ConvertTo-JsonText($v) {
 function To-Ascii([string]$s) {
     if ($null -eq $s) { return '' }
     $s = $s.Replace([string][char]0x2026, '...').Replace([string][char]0x00B7, ';').Replace([string][char]0x2013, '-').Replace([string][char]0x2014, '-').Replace([string][char]0x2500, '-')
-    return ($s.ToCharArray() | ForEach-Object { if ([int]$_ -ge 32 -and [int]$_ -le 126) { $_ } else { '?' } }) -join ''
+    # every UTF-16 unit outside printable ASCII -> '?' ([regex]: case-sensitive, unlike -replace)
+    return [regex]::Replace($s, '[^\x20-\x7E]', '?')
 }
 
 function Test-AllowedUrl([string]$Url, [string[]]$Hosts) {
@@ -918,29 +919,12 @@ try {
         $a = Read-Host 'Set up UAD plug-ins now? [Y/n]'
         if ($a -and $a.Trim() -notmatch '^(y|yes)$') { throw (New-SetupError 'cancelled' 'Not started.') }
     }
-    Test-Cancel
-    Phase-Check
-    if ($StopAfter -ne 'check') {
-        Test-Cancel; Phase-Python
-        if ($StopAfter -ne 'python') {
-            Test-Cancel; Phase-Packages
-            if ($StopAfter -ne 'packages') {
-                Test-Cancel; Phase-Tools
-                if ($StopAfter -ne 'tools') {
-                    Test-Cancel; Phase-Specs
-                    if ($StopAfter -ne 'specs') {
-                        Test-Cancel; Phase-Store
-                        if ($StopAfter -ne 'store') {
-                            Test-Cancel; $sel = Phase-Licence
-                            if ($StopAfter -ne 'licence') {
-                                Test-Cancel; Phase-Map $sel
-                                if ($StopAfter -ne 'map') { Test-Cancel; Phase-Modules }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    # the phases in order (Phase-Check .. Phase-Modules), each after a cancel check; -StopAfter ends after its phase
+    $sel = @()
+    foreach ($id in 'check', 'python', 'packages', 'tools', 'specs', 'store', 'licence', 'map', 'modules') {
+        Test-Cancel
+        if ($id -eq 'licence') { $sel = Phase-Licence } elseif ($id -eq 'map') { Phase-Map $sel } else { & "Phase-$id" }
+        if ($StopAfter -eq $id) { break }
     }
     $S.Phase = ''
     $S.Text = if ($S.Summary) { 'Plug-ins are set up: ' + $S.Summary + '.' } else { 'Done.' }

@@ -21,8 +21,8 @@
  * units are running (the link is off at every driver load) and whenever it is changed here.
  * The demo answers like a host (simulated, nothing saved); the monitor link is not in the demo.
  * Loaded before app.js; uses its globals (S, cfg, host, el, seg, sw, put, dialog, toast, toastOnce, now, kHz, hex,
- * setPressed, listedUnit, unitShort, unitIdOf, slotOfId, controlUnits, unitButtons, readOnlyMode, unitReadOnly, writable,
- * newUnitPrefs, saveConfig, rateFor, renderSegHeads, capsOf, MODEL_CAPS, RATES) only inside functions.
+ * setPressed, setHidden, listedUnit, unitShort, unitIdOf, slotOfId, controlUnits, unitButtons, readOnlyMode, unitReadOnly,
+ * writable, newUnitPrefs, saveConfig, rateFor, renderSegHeads, capsOf, MODEL_CAPS, RATES) only inside functions.
  */
 const Clock = (() => {
   const SOURCES = ['internal', 'spdif', 'adat', 'wordclock'];
@@ -330,7 +330,7 @@ const Clock = (() => {
     const full = c && !c.error ? c : null;
     const st = full && (!sum || (full.t || 0) >= P.listT) ? full : sum || full;
     const show = !!st && !sg.gone && !!st.source;
-    sg.clkBadge.hidden = !show;
+    setHidden(sg.clkBadge, !show);
     if (show) {
       const fell = !!st.fellBack, locked = !!st.locked;
       put(sg.clkBadge, fell ? `${TAG[st.wanted] || st.wanted} LOST · INT` : `${TAG[st.source] || st.source} · ${locked ? 'LOCKED' : 'NO LOCK'}`, undefined,
@@ -346,7 +346,7 @@ const Clock = (() => {
         const name = sg.tb.node.querySelector('.tb-name');
         if (name) name.after(n); else sg.tb.node.append(n);
       }
-      if (n) n.hidden = !off;
+      if (n) setHidden(n, !off);
     }
   }
 

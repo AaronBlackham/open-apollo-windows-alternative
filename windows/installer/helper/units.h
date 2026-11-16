@@ -45,7 +45,6 @@ struct Device {
     std::wstring InfPath;           /* published name, e.g. oem12.inf */
     std::wstring DriverVersion;
     bool         Present = false;
-    ULONG        Status = 0;
     ULONG        Problem = 0;
     bool         HasProblem = false;
     bool IsX8p() const { return Kind == UNIT_X8P; }
@@ -53,7 +52,12 @@ struct Device {
     DriverOwner Owner() const;
 };
 
+/* ASCII case-insensitive equality (hardware IDs, services, INF and registry names are ASCII). */
 bool UnitIEq(const std::wstring &a, const std::wstring &b);
+
+/* UTF-16 <-> UTF-8, here so the offline test links them too (defaults_plan.cpp uses them). */
+std::string ToUtf8(const std::wstring &s);
+std::wstring FromUtf8(const std::string &s);
 
 /* PCI\VEN_1A00&DEV_0002&SUBSYS_xxxxxxxx exactly (8 hex digits, nothing after). */
 bool IsFourPartUaHwid(const std::wstring &s);

@@ -15,15 +15,6 @@ VOID ApolloSleepMs(_In_ ULONG Ms)
     KeDelayExecutionThread(KernelMode, FALSE, &t);
 }
 
-VOID ApolloDelayUs(_In_ ULONG Us)
-{
-    if (Us <= 100) {
-        KeStallExecutionProcessor(Us);
-    } else {
-        ApolloSleepMs((Us + 999) / 1000);
-    }
-}
-
 ULONG ApolloDspWindow(_In_ ULONG Dsp)
 {
     return Dsp * 0x800 + (Dsp > 3 ? 0x2000 : 0);
@@ -67,7 +58,7 @@ NTSTATUS ApolloIdentify(_In_ PDEVICE_CONTEXT Ctx)
     in.FpgaRev = Ctx->FpgaRev;
     in.SubsystemId = Ctx->SubsystemId;
 
-    /* ext_caps only on v2 firmware; the rest only once the DSP count is sane (as before). */
+    /* ext_caps only on v2 firmware; the rest only once the DSP count is sane. */
     if (Ctx->FpgaRev != 0xFFFFFFFF && (Ctx->FpgaRev & 0x80000000u) != 0) {
         Ctx->ExtCaps = ApolloRead(Ctx, REG_EXT_CAPS);
         in.ExtCaps = Ctx->ExtCaps;
@@ -131,9 +122,9 @@ NTSTATUS ApolloIdentify(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /*
- * [Twin X G2] A unit the driver does not bring up (observe, refused), right after its quiesce:
- * what the previous owner (UA's driver) left in the notification block, so gate G2 can compare
- * it with spec-twinx Appendix A. Reads only. These values are STALE: nothing of ours runs on the
+ * A unit the driver does not bring up (observe, refused), right after its quiesce: what the
+ * previous owner (UA's driver) left in the notification block, to compare with spec-twinx
+ * Appendix A. Reads only. These values are STALE: nothing of ours runs on the
  * unit, so they are UA's last rate, clock-source mask and IO descriptors, not the current state.
  * GET_INFO carries the summary (Owner*); the log carries every descriptor word.
  */
@@ -149,8 +140,8 @@ VOID ApolloReadOwnerState(_In_ PDEVICE_CONTEXT Ctx)
         return;
     }
     /*
-     * [G2 review] A unit that stops answering reads all ones, and each read on a dead link may
-     * wait for the PCIe completion timeout: stop at the first sign of it instead of 150 reads.
+     * A unit that stops answering reads all ones, and each read on a dead link may wait for the
+     * PCIe completion timeout: stop at the first sign of it instead of 150 reads.
      */
     Ctx->OwnerRateInfo = ApolloRead(Ctx, REG_NOTIF_RATE_INFO);
     if (Ctx->OwnerRateInfo == 0xFFFFFFFF && ApolloRead(Ctx, REG_FPGA_REV) == 0xFFFFFFFF) {
@@ -190,7 +181,7 @@ VOID ApolloReadOwnerState(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /*
- * [Twin X G3] Observe, right after the quiesce (plan ObserveDmaOff: the Twin X): UA's driver
+ * Observe, right after the quiesce (plan ObserveDmaOff: the Twin X): UA's driver
  * left the per-DSP ring DMA engines enabled with ring pages in memory that is no longer anyone's
  * (its driver unloaded). The quiesce already pulled every ring's target back to its position, so
  * nothing is fetched; this also takes the engines' enables off, so a stray DSP or FPGA ring access
@@ -365,7 +356,7 @@ VOID ApolloEvtInterruptDpc(_In_ WDFINTERRUPT Interrupt, _In_ WDFOBJECT Associate
 {
     UNREFERENCED_PARAMETER(Interrupt);
     UNREFERENCED_PARAMETER(AssociatedObject);
-    /* Phase 0: counters only. Phase 2 drives the copy engine from here. */
+    /* Nothing to do: the ISR keeps the counters, the copy engine runs on its own 1 ms timer (engine.c). */
 }
 
 /* ------------------------------------------------------------------ */
@@ -454,7 +445,7 @@ NTSTATUS ApolloWaitDspsReady(_In_ PDEVICE_CONTEXT Ctx)
 {
     ULONG i, tries, v;
 
-    Ctx->DspReadyTimeouts = 0;          /* [Twin X G3] counted for the step record; the x8p ignores it */
+    Ctx->DspReadyTimeouts = 0;          /* counted for the Twin X step record; the x8p ignores it */
     if (!Ctx->FwV2 || ((ApolloRead(Ctx, REG_EXT_CAPS) >> 4) & 0xF) != 1) {
         return STATUS_SUCCESS;
     }

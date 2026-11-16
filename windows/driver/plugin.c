@@ -1,5 +1,5 @@
 /*
- * plugin.c - UAD plug-in hosting on the Apollo's DSPs, phase P0 (docs/PLUGINS.md 2.1, gate P1):
+ * plugin.c - UAD plug-in hosting on the Apollo's DSPs (docs/PLUGINS.md 2.1):
  *
  *   - transaction engine v2: payloads up to 256 KiB as separate 4 KiB common-buffer pages (a
  *     DMA_REF never crosses a page), 128 entries, up to 8 reply descriptors of up to 1024 dwords
@@ -24,7 +24,7 @@
  *   - the caller (FEAT_CALLER): BOARD_QUERY and PLUGIN_INSTANCE only from an elevated
  *     administrator's handle or the PluginHostImage program's own handle (PlugCallerAllowed),
  *     refused before any lock or word;
- *   - per unit (P7, FEAT_UNITS): the x8p and the Twin X Gen 1 Duo (plugin_plan.h PlugModelFor).
+ *   - per unit (FEAT_UNITS): the x8p and the Twin X Gen 1 Duo (plugin_plan.h PlugModelFor).
  *     Everything above is per device already: each unit's strip DSP (DSP 1), its ledger with only
  *     its own strips' room (x8p 8, Twin X 2), its own board query on its DSP 0, its inputs and pair
  *     (Twin X 1-2, the pair 1/2; Hi-Z is input 1's strip; the talkback has none: refused);
@@ -32,7 +32,7 @@
  *     upload, a resync that dropped it) ends all placement on that DSP until a power cycle; on
  *     the strip DSP it also quarantines the strips (strips.c sends nothing more either).
  *
- *   - [Ins] chains of up to four effects are the host's (the directory check took N = 2..5 since P0); Unison (F_UNISON,
+ *   - [Ins] chains of up to four effects are the host's (the directory check takes N = 2..5); Unison (F_UNISON,
  *     STAGE only; BEGIN_UNISON / ACTIVATE_UNISON / UNISON_PARAMS, ops 6/7/5 as upstream): the analog lease of
  *     unison_plan.h on the mixer cache and readback, every other write to an owned field refused (mixer.c asks
  *     ApolloPluginAnalogConflict), the baseline put back after the route is retired, an unproven completion blocks
@@ -102,7 +102,7 @@ C_ASSERT(PLUG_CMD_WORDS_MAX * 4 <= PLUG_PAGE);         /* one startup page or SE
 C_ASSERT(APOLLO_PLUGIN_SYNCH_MONO == PLUG_SYNCH_MONO);
 C_ASSERT(APOLLO_PLUGIN_IMAGE_CCH_MAX >= 1 && APOLLO_PLUGIN_IMAGE_CCH_MAX < 0x7FFF);    /* a UNICODE_STRING's bytes */
 C_ASSERT(APOLLO_PLUGIN_ENABLED_HOST == 1);                                              /* version 8's Enabled = 1 */
-C_ASSERT(PLUG_MODEL_X8P == APOLLO_MODEL_X8P && PLUG_MODEL_X8P == STRIP_MODEL_X8P);         /* [P7] one model id everywhere */
+C_ASSERT(PLUG_MODEL_X8P == APOLLO_MODEL_X8P && PLUG_MODEL_X8P == STRIP_MODEL_X8P);         /* one model id everywhere */
 C_ASSERT(PLUG_MODEL_TWINX == APOLLO_MODEL_TWINX && PLUG_MODEL_TWINX == STRIP_MODEL_TWINX);
 /* [Ins] Unison and aux inserts */
 C_ASSERT(APOLLO_PLUGIN_F_UNISON == PLUG_F_UNISON && APOLLO_PLUGIN_UNISON_WORDS_MAX == APOLLO_UNISON_WORDS_MAX);
@@ -235,7 +235,6 @@ typedef struct _APOLLO_PLUGIN_HOST {
     PLUG_LEASE      Got[PLUG_RES_MAX + PLUG_PRIV_MAX];
     PLUG_BILL       Bills[PLUG_RES_MAX];
     ULONG           Bq[PLUG_BQ_WORDS];
-    CHAR            Why[96];
     /*
      * [Ins] The Unison analog lease (unison_plan.h), DevLock: AnalogMask = every field a lease owns or a
      * failed completion blocked (ApolloPluginAnalogConflict reads it from mixer.c), AnalogBlock = the
@@ -318,15 +317,15 @@ static BOOLEAN PlugAuxEnabled(VOID)
     return PlugRegULong(APOLLO_PLUGIN_REG_AUX) != 0;
 }
 
-/* [P7] The unit's hosting plan (plugin_plan.h): the x8p and the Twin X Gen 1, else NULL (no hosting). */
+/* The unit's hosting plan (plugin_plan.h): the x8p and the Twin X Gen 1, else NULL (no hosting). */
 static const PLUG_MODEL *PlugModel(_In_ PDEVICE_CONTEXT Ctx)
 {
     return (Ctx->Ident.Model > 0) ? PlugModelFor((ULONG)Ctx->Ident.Model) : NULL;
 }
 
 /*
- * Hosting is on for this unit: PluginHost != 0, a model that hosts (the x8p, and since P7 the Twin X
- * Gen 1: its own strip DSP, ledger and licence answer, every one per device), in Mode 2.
+ * Hosting is on for this unit: PluginHost != 0, a model that hosts (the x8p and the Twin X Gen 1:
+ * its own strip DSP, ledger and licence answer, every one per device), in Mode 2.
  */
 static BOOLEAN PlugEnabled(_In_ PDEVICE_CONTEXT Ctx, _Out_writes_bytes_(WhyLen) PCHAR Why, _In_ size_t WhyLen)
 {
@@ -491,11 +490,10 @@ static BOOLEAN PlugUserIs(_In_ PEPROCESS Proc, _In_ PCUNICODE_STRING Want)
  *   (b) all of: the process asking (the IRP's, whatever thread runs the queue) is the one that
  *       opened the handle (APOLLO_FILE.Creator, referenced: a handle inherited by or duplicated
  *       into another process does not count); its primary token's user is PluginHostUser (a SID
- *       string, review finding 1: another account launching the same program does not pass); and
- *       its image, as SeLocateProcessImageName names it (the NT path of the image section), is
- *       PluginHostImage, a DOS path whose drive letter is resolved now through \GLOBAL??\X:
- *       (review finding 2: a stored \Device\HarddiskVolumeN could name another volume after a
- *       reboot).
+ *       string: another account launching the same program does not pass); and its image, as
+ *       SeLocateProcessImageName names it (the NT path of the image section), is PluginHostImage,
+ *       a DOS path whose drive letter is resolved now through \GLOBAL??\X: (a stored
+ *       \Device\HarddiskVolumeN could name another volume after a reboot).
  * No file context (an ACX handle), no requestor, a value absent or malformed, any error: no.
  */
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -632,7 +630,7 @@ static BOOLEAN PlugDspAdmitted(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST
 
 /*
  * The strip DSP takes plug-ins only once its strip pass is over: the strips Live, or in a final
- * state (Off, Failed). Idle (a pass not armed yet), Armed and Building refuse (review P0 finding 3).
+ * state (Off, Failed). Idle (a pass not armed yet), Armed and Building refuse.
  */
 static BOOLEAN PlugStripsSettled(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG D)
 {
@@ -1597,7 +1595,7 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
             err = PLUG_EINVAL;
         } else {
             /* pools 1-3 raised to max(register, the Mic strip's 0x1C0 / 0x80 / 0) and kept there as the
-               ledger's floor (PlugLedgerStripScratch), then the strips' room (review P0 finding 1);
+               ledger's floor (PlugLedgerStripScratch), then the strips' room;
                [Virtual] the room includes this start's Virtual Input Strips, right below the Mic strips' */
             ULONG room[4];
 
@@ -1612,7 +1610,7 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
         }
     }
     if (err == PLUG_OK && D == s->Dsp) {
-        /* [P7] the unit's own strips: x8p 8, Twin X 2 */
+        /* the unit's own strips: x8p 8, Twin X 2 */
         (VOID)RtlStringCbPrintfA(booked, sizeof(booked), " (strip room booked: code 0xe0000+994, the %lu strips + Virtual 0x%02lx at the pool tops)",
                                  model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS, s->VMask);
     }
@@ -2125,6 +2123,32 @@ static PLUG_INST *PlugFind(_In_ APOLLO_PLUGIN_HOST *H, _In_ WDFFILEOBJECT File, 
     return NULL;
 }
 
+/* DevLock held. Another instance routed on DSP Dsp shares an input with Synch (one routed owner per input, whatever the handle). */
+static BOOLEAN PlugRoutedOverlap(_In_ APOLLO_PLUGIN_HOST *H, _In_ const PLUG_INST *Except, _In_ ULONG Dsp, _In_ ULONG Synch)
+{
+    ULONG i;
+
+    for (i = 0; i < APOLLO_PLUGIN_INSTANCES_MAX; i++) {
+        const PLUG_INST *o = H->Inst[i];
+
+        if (o != NULL && o != Except && o->Dsp == Dsp && o->Placed && !o->Lost && o->Started &&
+            PlugInputsOverlap(o->Synch, Synch)) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* StripLock held. H->Addr[] = the DSP address of each of In's private rows (its leases). */
+static VOID PlugRowAddrs(_In_ APOLLO_PLUGIN_HOST *H, _In_ const PLUG_INST *In)
+{
+    ULONG i;
+
+    for (i = 0; i < In->NPriv; i++) {
+        H->Addr[i] = In->Lease[PLUG_RES_MAX + i].Base;
+    }
+}
+
 /* StripLock held. One module upload, acknowledged (ua_plugin_upload.c:185-238). Detail: index + reply. */
 static NTSTATUS PlugUpload(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _In_ ULONG Dsp, _In_ ULONG Epoch,
                            _Inout_ PLUG_CAT *E, _In_ ULONG Dest, _Out_writes_(4) PULONG Reply)
@@ -2195,12 +2219,9 @@ static NTSTATUS PlugPrivates(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *
 {
     PLUG_XACT *x = NULL;
     NTSTATUS status;
-    ULONG i;
     PLUG_DSP *d;
 
-    for (i = 0; i < In->NPriv; i++) {
-        H->Addr[i] = In->Lease[PLUG_RES_MAX + i].Base;
-    }
+    PlugRowAddrs(H, In);
     status = PxBegin(Ctx, H, In->Dsp, In->Epoch, PLUG_PAGE, &x);
     if (!NT_SUCCESS(status) || x == NULL) {
         return NT_SUCCESS(status) ? STATUS_INSUFFICIENT_RESOURCES : status;
@@ -2234,12 +2255,10 @@ static NTSTATUS PlugStart(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, 
 {
     PLUG_XACT *x = NULL;
     NTSTATUS status;
-    ULONG i, ncmds = 0;
+    ULONG ncmds = 0;
     PLUG_DSP *d;
 
-    for (i = 0; i < In->NPriv; i++) {
-        H->Addr[i] = In->Lease[PLUG_RES_MAX + i].Base;
-    }
+    PlugRowAddrs(H, In);
     if ((NW != 0 && Cmd == NULL) || (!Route && NW == 0)) {
         return STATUS_INVALID_PARAMETER;
     }
@@ -2424,7 +2443,7 @@ static VOID PlugCreate(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _In
         if (dsp == Ctx->Strips.Dsp) {
             for (j = 0; j < APOLLO_STRIP_MODULES; j++) {
                 if (g_ApolloStripPins[j].Id == e->Bill.Id) {
-                    status = STATUS_OBJECT_NAME_COLLISION;  /* the strips' ids, whatever arch or state (finding 3) */
+                    status = STATUS_OBJECT_NAME_COLLISION;  /* the strips' ids, whatever arch or state */
                 }
             }
         }
@@ -2441,12 +2460,8 @@ static VOID PlugCreate(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _In
         if (dsp != Ctx->Strips.Dsp || !PlugAuxEnabled()) {
             status = STATUS_NOT_SUPPORTED;
         }
-        for (i = 0; NT_SUCCESS(status) && start && i < APOLLO_PLUGIN_INSTANCES_MAX; i++) {
-            PLUG_INST *o = H->Inst[i];
-
-            if (o != NULL && o->Dsp == dsp && o->Placed && !o->Lost && o->Started && PlugInputsOverlap(o->Synch, q->Synch)) {
-                status = STATUS_DEVICE_BUSY;
-            }
+        if (NT_SUCCESS(status) && start && PlugRoutedOverlap(H, in, dsp, q->Synch)) {
+            status = STATUS_DEVICE_BUSY;
         }
         if (NT_SUCCESS(status)) {
             in->AuxBus = R->Aux + 1;
@@ -2454,12 +2469,8 @@ static VOID PlugCreate(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _In
         }
     } else if (NT_SUCCESS(status) && chain) {
         status = PlugStripTarget(Ctx, dsp, q->Synch, epoch, &in->StripGen, header);
-        for (i = 0; NT_SUCCESS(status) && start && i < APOLLO_PLUGIN_INSTANCES_MAX; i++) {
-            PLUG_INST *o = H->Inst[i];
-
-            if (o != NULL && o->Dsp == dsp && o->Placed && !o->Lost && o->Started && PlugInputsOverlap(o->Synch, q->Synch)) {
-                status = STATUS_DEVICE_BUSY;    /* one routed owner per input, whatever the handle */
-            }
+        if (NT_SUCCESS(status) && start && PlugRoutedOverlap(H, in, dsp, q->Synch)) {
+            status = STATUS_DEVICE_BUSY;
         }
         if (NT_SUCCESS(status)) {
             in->StripOverride = TRUE;           /* staged too: it keeps the strip generation for START */
@@ -2635,10 +2646,7 @@ takedown:
     PlugCatDropBlobs(H);
     return;
 fail:
-    for (i = 0; i < in->NRes; i++) {
-        PlugCatPut(H, in->Cat[i]);
-    }
-    ExFreePoolWithTag(in, PLUG_TAG);
+    PlugInstFree(H, in);                        /* never in Inst[]: its module references and the memory */
     q->Status = status;
     PlugCatDropBlobs(H);
 }
@@ -2727,7 +2735,7 @@ static VOID PlugService(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _I
                !PlugDspAdmitted(Ctx, H, in->Dsp)) {
         status = STATUS_CANCELLED;
     } else if (!in->Loaded || (!in->Started && !in->StripOverride && in->AuxBus == 0)) {
-        status = STATUS_INVALID_DEVICE_STATE;   /* unrouted: no SERVICE (ua_plugin_instance.c:1043-1046, finding 4) */
+        status = STATUS_INVALID_DEVICE_STATE;   /* unrouted: no SERVICE (ua_plugin_instance.c:1043-1046) */
     } else if (nw && PlugCheckCmds(in->Rows, in->NPriv, R->Cmd, nw, &ncmds) != PLUG_OK) {
         status = STATUS_INVALID_PARAMETER;
     } else if (nw && (in->StripOverride || in->AuxBus != 0) && PlugWritesDirectory(R->Cmd, nw)) {
@@ -2740,9 +2748,7 @@ static VOID PlugService(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _I
         q->Status = status;
         return;
     }
-    for (i = 0; i < in->NPriv; i++) {
-        H->Addr[i] = in->Lease[PLUG_RES_MAX + i].Base;
-    }
+    PlugRowAddrs(H, in);
     status = PxBegin(Ctx, H, in->Dsp, in->Epoch, nw ? PLUG_PAGE : 0, &x);
     if (!NT_SUCCESS(status) || x == NULL) {
         q->Status = NT_SUCCESS(status) ? STATUS_INSUFFICIENT_RESOURCES : status;
@@ -2812,7 +2818,7 @@ static VOID PlugStartStaged(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H
     APOLLO_PLUGIN_INSTANCE *q = &R->Hdr;
     PLUG_INST *in;
     NTSTATUS status = STATUS_SUCCESS;
-    ULONG gen = 0, header[2] = { 0, 0 }, i;
+    ULONG gen = 0, header[2] = { 0, 0 };
 
     q->Step = APOLLO_PLUGIN_STEP_ROUTE;
     in = PlugFind(H, File, q->Handle);
@@ -2824,16 +2830,8 @@ static VOID PlugStartStaged(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H
     } else if (in->Lost || !in->Placed || in->Epoch != q->Epoch || Ctx->Strips.Epoch != q->Epoch ||
                !PlugDspAdmitted(Ctx, H, in->Dsp)) {
         status = STATUS_CANCELLED;              /* -ESTALE */
-    } else {
-        for (i = 0; i < APOLLO_PLUGIN_INSTANCES_MAX; i++) {
-            const PLUG_INST *o = H->Inst[i];
-
-            if (o != NULL && o != in && o->Dsp == in->Dsp && o->Placed && !o->Lost && o->Started &&
-                PlugInputsOverlap(o->Synch, in->Synch)) {
-                status = STATUS_DEVICE_BUSY;    /* one routed owner per input, whatever the handle */
-                break;
-            }
-        }
+    } else if (PlugRoutedOverlap(H, in, in->Dsp, in->Synch)) {
+        status = STATUS_DEVICE_BUSY;
     }
     if (NT_SUCCESS(status) && in != NULL && in->AuxBus == 0) {
         /* the retained plain strip (both of a pair) still live, and the same generation as at the CREATE */
@@ -3334,7 +3332,7 @@ static NTSTATUS PlugParseInstance(_In_ PDEVICE_CONTEXT Ctx, _In_reads_bytes_(InL
     }
 
     f = q->Flags;
-    if (q->Handle || q->Epoch || q->ReadRef || q->ReadWords || PlugCreateFlagsOk(f) != PLUG_OK ||   /* finding 2 */
+    if (q->Handle || q->Epoch || q->ReadRef || q->ReadWords || PlugCreateFlagsOk(f) != PLUG_OK ||
         (q->Dsp != APOLLO_PLUGIN_DSP_ANY && q->Dsp >= Ctx->NumDsps)) {
         return STATUS_INVALID_PARAMETER;
     }
@@ -3345,7 +3343,7 @@ static NTSTATUS PlugParseInstance(_In_ PDEVICE_CONTEXT Ctx, _In_reads_bytes_(InL
         return STATUS_SUCCESS;
     }
     if (q->Dsp == 0) {
-        return STATUS_NOT_SUPPORTED;            /* DSP 0 is the mixer's: never placed on in P0 */
+        return STATUS_NOT_SUPPORTED;            /* DSP 0 is the mixer's: never placed on */
     }
     if (q->NResources == 0 || q->NPrivate == 0) {
         return STATUS_INVALID_PARAMETER;
@@ -3436,8 +3434,6 @@ NTSTATUS ApolloPluginIoctl(_In_ PDEVICE_CONTEXT Ctx, _In_ WDFREQUEST Request, _I
                                    "not the plug-in host: an administrator turns hosting on from Apollo Control (PluginHostImage)");
         } else if (!locked) {
             (VOID)RtlStringCbCopyA(why, sizeof(why), "busy: an operation or a strip pass holds the host (host fields left 0)");
-        } else if (enabled && h != NULL && h->Why[0] != '\0') {
-            (VOID)RtlStringCbCopyA(why, sizeof(why), h->Why);
         }
         RtlCopyMemory(c->Why, why, sizeof(c->Why));
         c->Why[sizeof(c->Why) - 1] = '\0';

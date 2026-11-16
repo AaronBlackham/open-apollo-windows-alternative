@@ -11,7 +11,7 @@ const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.htm
 let failed = 0;
 const check = (c, l) => { if (!c) failed++; console.log(`${c ? 'PASS' : 'FAIL'}  ${l}`); };
 
-const X8P = { id: 'SN22532017106180', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '22532017106180', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
+const X8P = { id: 'SN20000000000001', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '20000000000001', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const TWX = { id: '7C1E40A2D3F09B61', index: 1, model: 'Apollo Twin X (Gen 1)', deviceType: 153, serial: '2253202500117', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const FLAGS = 0x40 | 0x80 | 0x100 | 0x200 | 0x400;
 const INFO = { version: 6, failedStage: 0, lastStatus: 0, fpgaRev: 0xA241C5AC, extCaps: 0x81110611, fwRelease: 0x0B0FD613, subsystemId: 0x14,
@@ -31,7 +31,7 @@ const stub = () => {
   window.__last = null;
   window.__run = '';
   window.__doc = { version: 2, mapsDir: '', chains: [] };
-  window.__rates = { SN22532017106180: 48000, '7C1E40A2D3F09B61': 48000 };
+  window.__rates = { SN20000000000001: 48000, '7C1E40A2D3F09B61': 48000 };
   const all = [44100, 48000, 88200, 96000, 176400, 192000];
   const reply = m => setTimeout(() => onHostMessage(m), 5);
   const rate = id => ({ type: 'rate', unit: id, present: true, rate: window.__rates[id], locked: true, changing: false, offered: all, allowed: all, stored: window.__rates[id],
@@ -129,7 +129,7 @@ const stub = () => {
     setInput(0, 'gain', 50, { unit: 0 }); setInput(1, '48v', false, { unit: 0, noLink: true }); setInput(0, 'gain', 20, { unit: 1 });
     setMix(0, 'level', -40, 0); setMix(3, 'mute', true, 0); setMon('source', 0, 0);
     window.__doc = { version: 2, mapsDir: '', chains: [] };
-    window.__rates.SN22532017106180 = 96000;
+    window.__rates.SN20000000000001 = 96000;
   });
   await host({ type: 'rate', unit: X8P.id, present: true, rate: 96000, offered: [48000, 96000], allowed: [48000, 96000], combined: { member: false } });
   await settle(100);

@@ -45,51 +45,6 @@
   color-scheme: dark;
 }
 
-/* ---------- Cyberpunk: near-black, neon magenta / cyan / acid yellow, cut corners, HUD readouts ---------- */
-[data-look="cyber"] {
-  --bg: #05050a;
-  --view-bg: #05050a;
-  --panel: #0b0b14;
-  --panel-2: #11111d;
-  --raised: #1b1b2e;
-  --line: #24243c;
-  --line-strong: #43436c;
-  --text: #e8fbff;
-  --text-dim: #a5cbdb;
-  --text-faint: #8299b4;
-  --head: #ff2bd6;
-  --accent: #ff2bd6;
-  --accent-ink: #12000e;
-  --ok: #19f0ff;
-  --warn: #e6ff2e;
-  --red: #ff5a36;
-  --red-ink: #160300;
-  --idle: #7480a0;
-  --meter-lo: #19f0ff;
-  --meter-mid: #e6ff2e;
-  --meter-hi: #ff5a36;
-  --meter-track: #030308;
-  --meter-seg: 1;
-  --focus: #e6ff2e;
-  --shadow: 0 0 0 1px #43436c, 0 12px 32px rgba(0, 0, 0, 0.7);
-  --radius: 0px;
-  --radius-sm: 0px;
-  --border-w: 1px;
-  --cut: 8px;
-  --glow: 0 0 6px;
-  --lamp-glow: 0 0 6px currentColor;
-  --font-ui: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
-  --font-label: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
-  --font-head: "Bahnschrift", "Segoe UI", system-ui, sans-serif;
-  --font-num: var(--mono);
-  --label-size: 10.5px;
-  --label-weight: 600;
-  --label-track: 0.16em;
-  --label-stretch: semi-condensed;
-  --grid-line: transparent;
-  --sel-bg: #2a0c26;
-  color-scheme: dark;
-}
 /* Cyberpunk: cut corners on panels and buttons (the panel's fill and border are drawn by ::before so content is not clipped) */
 [data-look="cyber"] .panel, [data-look="cyber"] .mon-card, [data-look="cyber"] .useg, [data-look="cyber"] .plb,
 [data-look="cyber"] .pl-drawer, [data-look="cyber"] .cue-card {
@@ -154,8 +109,6 @@
 @keyframes cy-lock { 0% { outline: 2px solid var(--ok); outline-offset: 6px; } 100% { outline: 2px solid transparent; outline-offset: 0; } }
 [data-look="cyber"] .cy-glitch { animation: cy-glitch 340ms steps(3) 1; }
 @keyframes cy-glitch { 0% { transform: translate(0); } 30% { transform: translate(-2px, 1px); filter: hue-rotate(80deg); } 60% { transform: translate(2px, -1px); } 100% { transform: none; filter: none; } }
-[data-look="cyber"] main.cy-sweep::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: cy-sweep 380ms ease-out forwards; pointer-events: none; z-index: 5; }
-@keyframes cy-sweep { to { top: 100%; opacity: 0; } }
 /* the browser: a loadout of mod cards with stat bars */
 [data-look="cyber"] .plb[data-layout="cards"] .plb-item {
   height: auto; grid-template-columns: 40px minmax(0, 1fr) auto auto; grid-template-rows: auto auto; row-gap: 3px; margin: 4px 6px; padding: 5px 7px;

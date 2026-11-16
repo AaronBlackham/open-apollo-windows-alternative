@@ -292,8 +292,8 @@ static NTSTATUS RateMoveClock(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Index, _Out_ 
 /* ------------------------------------------------------------------ */
 
 /*
- * The stored rate at bring-up. 48 kHz runs exactly the path every release ran (the clock is written
- * after the transport start). Any other rate: offered by the unit (else 48 kHz, logged), then the
+ * The stored rate at bring-up. 48 kHz needs nothing here (the clock is written after the transport
+ * start). Any other rate: offered by the unit (else 48 kHz, logged), then the
  * clock moved with the transport stopped as a runtime change does, unless the firmware is there
  * already; the caller starts the transport as always.
  */

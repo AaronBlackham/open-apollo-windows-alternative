@@ -99,9 +99,11 @@ Gate 'step 3 (AKG alone, routed)'
 if ($Upto -le 3) { PluginLog; Done 0 }
 
 # --- 4: two proven inserts, mono ---
+if ($From -le 4) {
 Note ''; Note '=== step 4: Precision De-Esser + UA 1176LN Legacy chain, mono on input 1 for 10 s'
 [void](Plug @('create-start', $c1m, '--dsp', '1', '--hold', '10', '--mon'))
 Gate 'step 4 (two-insert chain, mono)'
+}
 if ($Upto -le 4) { PluginLog; Done 0 }
 
 # --- 5: two proven inserts, stereo ---

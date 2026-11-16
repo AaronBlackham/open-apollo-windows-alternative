@@ -268,7 +268,7 @@ static __inline int ApolloMonHasBus(const APOLLO_MON_MODEL *M, unsigned long Bus
  * the unit names the ones whose strip it builds (strips.c ApolloStripsVirtualBuses, from StripVirtualMask) as
  * Extra, a bus mask, and ApolloMonEncodeEx takes them for the monitor mix, the cue sends and the aux sends
  * exactly as an ANALOG bus (level, pan, mute, solo, mute-all; the same coefficient laws). Extra outside
- * APOLLO_MON_VIRTUAL_BUSES is ignored; Extra 0 is ApolloMonEncode, every code and error as before.
+ * APOLLO_MON_VIRTUAL_BUSES is ignored; Extra 0 is ApolloMonEncode.
  */
 #define APOLLO_MON_VIRTUAL_BUS0     0x18ul
 #define APOLLO_MON_VIRTUAL_BUS(n)   (APOLLO_MON_VIRTUAL_BUS0 + (unsigned long)(n) - 1ul)     /* n = 1..8 */
@@ -481,8 +481,8 @@ static __inline int ApolloMonSwitch(APOLLO_MON_WRITE *W, long V, unsigned long S
 }
 
 /*
- * One SET_MONITOR_PARAM for model M. The ten codes that existed before give exactly the writes and
- * errors mixer.c gave (the x8p's monitor source now also takes CUE 3 and CUE 4).
+ * One SET_MONITOR_PARAM for model M. The ten original codes give exactly the original encoder's writes
+ * and errors on the x8p (mon-plan-test), except that the x8p's monitor source also takes CUE 3 and CUE 4.
  * [Virtual] Extra: the Virtual buses the unit's Input Strips mix (ApolloMonHasBusEx); mixer.c passes the unit's,
  * ApolloMonEncode none.
  */
@@ -799,7 +799,7 @@ static __inline int ApolloMonEncodeEx(const APOLLO_MON_MODEL *M, unsigned long E
     }
 }
 
-/* One SET_MONITOR_PARAM for model M on a unit without Virtual strips (every code and error as before [Virtual]). */
+/* One SET_MONITOR_PARAM for model M on a unit without Virtual strips (ApolloMonEncodeEx, Extra 0). */
 static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Param, long Value, APOLLO_MON_WRITE *W)
 {
     return ApolloMonEncodeEx(M, 0ul, Param, Value, W);
@@ -1004,15 +1004,29 @@ typedef struct _APOLLO_CUE_STATE {
     APOLLO_AUX_STATE Aux;                       /* [Aux] the aux buses (subs 3/4, the returns), same rings and rules */
 } APOLLO_CUE_STATE;
 
+/* A send level as kept in the state: half-dB + 122 (2..146), 0 = off; and back. */
+static __inline unsigned char ApolloMonLevelByte(long V)
+{
+    return (unsigned char)((V <= APOLLO_CUE_SEND_OFF || V > APOLLO_CUE_SEND_MAX) ? 0L : V + 122L);
+}
+
+static __inline long ApolloMonLevelOf(unsigned char V)
+{
+    return (V == 0) ? APOLLO_CUE_SEND_OFF : (long)V - 122L;
+}
+
+/* A pan as kept in the state: clamped to -100..100. */
+static __inline signed char ApolloMonPanByte(long V)
+{
+    return (signed char)((V < -APOLLO_CUE_PAN_MAX) ? -APOLLO_CUE_PAN_MAX : (V > APOLLO_CUE_PAN_MAX) ? APOLLO_CUE_PAN_MAX : V);
+}
+
 static __inline long ApolloCueLevel(const APOLLO_CUE_STATE *S, unsigned long Cue, unsigned long Bus)
 {
-    unsigned char v;
-
     if (Cue >= APOLLO_MON_CUES_MAX || Bus >= APOLLO_MON_BUSES) {
         return APOLLO_CUE_SEND_OFF;
     }
-    v = S->Level[Cue][Bus];
-    return (v == 0) ? APOLLO_CUE_SEND_OFF : (long)v - 122L;
+    return ApolloMonLevelOf(S->Level[Cue][Bus]);
 }
 
 /* Records a SEND, PAN or MUTE write (already validated by ApolloMonEncode). */
@@ -1033,11 +1047,9 @@ static __inline void ApolloCueStore(APOLLO_CUE_STATE *S, const APOLLO_MON_WRITE 
         return;
     }
     if (W->Kind == APOLLO_MONW_SEND) {
-        S->Level[W->Cue][W->Bus] = (W->Arg <= APOLLO_CUE_SEND_OFF || W->Arg > APOLLO_CUE_SEND_MAX) ? 0 :
-                                   (unsigned char)(W->Arg + 122L);
+        S->Level[W->Cue][W->Bus] = ApolloMonLevelByte(W->Arg);
     } else if (W->Kind == APOLLO_MONW_PAN) {
-        S->Pan[W->Cue][W->Bus] = (signed char)((W->Arg < -APOLLO_CUE_PAN_MAX) ? -APOLLO_CUE_PAN_MAX :
-                                               (W->Arg > APOLLO_CUE_PAN_MAX) ? APOLLO_CUE_PAN_MAX : W->Arg);
+        S->Pan[W->Cue][W->Bus] = ApolloMonPanByte(W->Arg);
     }
 }
 
@@ -1114,8 +1126,7 @@ static __inline void ApolloMixStore(APOLLO_MIX_STATE *S, const APOLLO_MON_WRITE 
                                          (W->Arg > APOLLO_MIX_LEVEL_MAX) ? APOLLO_MIX_LEVEL_MAX : W->Arg);
         break;
     case APOLLO_MONW_MIX_PAN:
-        S->Pan[W->Bus] = (signed char)((W->Arg < -APOLLO_MIX_PAN_MAX) ? -APOLLO_MIX_PAN_MAX :
-                                       (W->Arg > APOLLO_MIX_PAN_MAX) ? APOLLO_MIX_PAN_MAX : W->Arg);
+        S->Pan[W->Bus] = ApolloMonPanByte(W->Arg);      /* APOLLO_MIX_PAN_MAX = APOLLO_CUE_PAN_MAX */
         break;
     case APOLLO_MONW_MIX_MUTE:
         S->Muted = W->Arg ? (S->Muted | bit) : (S->Muted & ~bit);
@@ -1202,13 +1213,10 @@ static __inline unsigned long ApolloMonAuxBits(long H)
 
 static __inline long ApolloAuxLevel(const APOLLO_AUX_STATE *S, unsigned long Aux, unsigned long Bus)
 {
-    unsigned char v;
-
     if (Aux >= APOLLO_MON_AUX_BUSES || Bus >= APOLLO_MON_BUSES) {
         return APOLLO_CUE_SEND_OFF;
     }
-    v = S->Level[Aux][Bus];
-    return (v == 0) ? APOLLO_CUE_SEND_OFF : (long)v - 122L;
+    return ApolloMonLevelOf(S->Level[Aux][Bus]);
 }
 
 /*
@@ -1296,10 +1304,10 @@ static __inline void ApolloAuxStore(APOLLO_AUX_STATE *S, const APOLLO_MON_WRITE 
     }
     switch (W->Kind) {
     case APOLLO_MONW_AUX_SEND:
-        S->Level[a][b] = (v <= APOLLO_CUE_SEND_OFF || v > APOLLO_CUE_SEND_MAX) ? 0 : (unsigned char)(v + 122L);
+        S->Level[a][b] = ApolloMonLevelByte(v);
         break;
     case APOLLO_MONW_AUX_PAN:
-        S->Pan[a][b] = (signed char)((v < -APOLLO_CUE_PAN_MAX) ? -APOLLO_CUE_PAN_MAX : (v > APOLLO_CUE_PAN_MAX) ? APOLLO_CUE_PAN_MAX : v);
+        S->Pan[a][b] = ApolloMonPanByte(v);
         break;
     case APOLLO_MONW_AUX_POST:
         S->Post[a] = v ? (S->Post[a] | (1ul << b)) : (S->Post[a] & ~(1ul << b));
@@ -1312,12 +1320,12 @@ static __inline void ApolloAuxStore(APOLLO_AUX_STATE *S, const APOLLO_MON_WRITE 
         break;
     case APOLLO_MONW_AUX_CUE:
         if (b < APOLLO_MON_CUES_MAX) {
-            S->CueLevel[a][b] = (v <= APOLLO_CUE_SEND_OFF || v > APOLLO_CUE_SEND_MAX) ? 0 : (unsigned char)(v + 122L);
+            S->CueLevel[a][b] = ApolloMonLevelByte(v);
         }
         break;
     case APOLLO_MONW_AUX_CUE_PAN:
         if (b < APOLLO_MON_CUES_MAX) {
-            S->CuePan[a][b] = (signed char)((v < -APOLLO_CUE_PAN_MAX) ? -APOLLO_CUE_PAN_MAX : (v > APOLLO_CUE_PAN_MAX) ? APOLLO_CUE_PAN_MAX : v);
+            S->CuePan[a][b] = ApolloMonPanByte(v);
         }
         break;
     default:
@@ -1326,18 +1334,18 @@ static __inline void ApolloAuxStore(APOLLO_AUX_STATE *S, const APOLLO_MON_WRITE 
 }
 
 /* ------------------------------------------------------------------ */
-/* [polish Nov 15] Ring waits per loop (cues.c)                        */
+/* Ring waits per loop (cues.c)                                        */
 /* ------------------------------------------------------------------ */
 
 /*
- * A loop of sends (the replay after a connect, a cue's mute or unmute, a bus moved to a strip DSP) used to
- * give every cell its own wait for command-ring room, 50 x 1 ms sleeps. A DSP that stopped consuming made
- * every cell for it wait in turn: up to 128 cells (4 cues x 32 buses) x 50 sleeps under DevLock, 6.4 s and
- * far more where a 1 ms sleep lasts a whole 15.6 ms clock tick. Now one APOLLO_CUE_PASS per loop:
+ * A loop of sends (the replay after a connect, a cue's mute or unmute, a bus moved to a strip DSP) shares one
+ * APOLLO_CUE_PASS. A wait per cell (50 x 1 ms sleeps each) let a DSP that stopped consuming hold DevLock for up
+ * to 128 cells (4 cues x 32 buses) x 50 sleeps, 6.4 s and far more where a 1 ms sleep lasts a whole 15.6 ms
+ * clock tick. So:
  *   - a send waits for room at most APOLLO_CUE_WAIT_MS of real time (KeQueryInterruptTime, not a sleep count);
  *   - a DSP that did not make room in that time is marked busy: every later send of the loop to it goes
  *     without waiting (STATUS_DEVICE_BUSY when its ring is still full; the cell stays cached for the next
- *     replay, as before);
+ *     replay);
  *   - the whole loop waits APOLLO_CUE_PASS_BUDGET_MS at most, whatever the DSPs do (a DSP that makes room
  *     just before each timeout cannot stretch it either).
  * A healthy DSP whose ring is momentarily full (a burst larger than the ring) still gets its short wait.

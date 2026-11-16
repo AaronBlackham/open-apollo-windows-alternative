@@ -459,9 +459,7 @@ VOID ApolloClockConnected(PDEVICE_CONTEXT Ctx)
 _Use_decl_annotations_
 VOID ApolloClockTransportStarted(PDEVICE_CONTEXT Ctx)
 {
-    if (Ctx->ClockExt) {
-        Ctx->ClockExt = FALSE;
-    }
+    Ctx->ClockExt = FALSE;
     if (Ctx->ClockWantExt && !Ctx->ClockFellBack) {
         InterlockedExchange(&Ctx->ClockReapply, 1);
         ApolloLogU(Ctx, "clock: the transport start wrote Internal: %s goes back on once the start has settled",

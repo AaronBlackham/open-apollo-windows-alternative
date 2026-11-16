@@ -345,7 +345,7 @@ static __inline unsigned long ApolloDigSpdifChannels(const APOLLO_CLOCK_MODEL *M
 
 /*
  * Does the slot with descriptor id Id carry audio on Model at Hz with state Dig? 1 = yes, or nothing chosen here
- * (APOLLO_DIG_KNOWN clear: the layout stays the descriptor's, as before this code); 0 = silent in this format or at
+ * (APOLLO_DIG_KNOWN clear: the layout stays the descriptor's); 0 = silent in this format or at
  * this rate. Only ADAT and S/PDIF ids are ever 0. The combined layout (apollo_agg.h ApolloAggSlotShownAt) and the
  * endpoint rows (APOLLO_EP_FLAG_SILENT) follow it.
  */

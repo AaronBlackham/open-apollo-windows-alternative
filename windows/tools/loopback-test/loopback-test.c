@@ -94,7 +94,7 @@ int main(int argc, char **argv)
     PAPOLLO_CAPTURE_HEADER chd;
     LONG *pdata;
     double amp, w;
-    ULONGLONG start, written, readNext, end, toneStart, lastReport;
+    ULONGLONG start, written, readNext, end, toneStart, settleEnd, lastReport;
     ULONG feederLate = 0, capOverruns = 0, events = 0, printed = 0;
     ULONGLONG lastLateFrame = 0;
     CHECKER ck[2];
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
         return 2;
     }
     play = (unsigned char *)malloc(sizeof(APOLLO_PLAYBACK_HEADER) + (size_t)LEAD_MAX * C * 4);
-    rec = (unsigned char *)malloc(sizeof(APOLLO_CAPTURE_HEADER) + (size_t)8192 * R * 4);
+    rec = (unsigned char *)malloc(sizeof(APOLLO_CAPTURE_HEADER) + (size_t)4096 * R * 4);     /* one READ_CAPTURE */
     if (!play || !rec) return 2;
     ph = (PAPOLLO_PLAYBACK_HEADER)play;
     pdata = (LONG *)(play + sizeof(*ph));
@@ -159,6 +159,7 @@ int main(int argc, char **argv)
     start = pos.Position + LEAD_MIN;
     written = start;
     toneStart = start;
+    settleEnd = toneStart + (ULONGLONG)(SETTLE_SECONDS * RATE);
     end = start + (ULONGLONG)(seconds * RATE);
     readNext = pos.Position > 64 ? pos.Position - 64 : 0;
     lastReport = start;
@@ -259,7 +260,7 @@ int main(int argc, char **argv)
                     double x = (double)row[c ? REC_SLOT_R : REC_SLOT_L] / 2147483648.0;
                     CHECKER *k = &ck[c];
 
-                    if (fr < toneStart + (ULONGLONG)(SETTLE_SECONDS * RATE) || fr >= end) {
+                    if (fr < settleEnd || fr >= end) {
                         k->n = 0;               /* onset, end, and the time before the sine reaches capture */
                         k->x2 = k->x1;
                         k->x1 = x;

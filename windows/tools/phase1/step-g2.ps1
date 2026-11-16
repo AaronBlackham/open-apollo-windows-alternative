@@ -105,7 +105,7 @@ if (-not $x8p) { Note 'The x8p is not connected: G2 needs it up (the Twin X is d
 if (-not $twx) { Note 'The Twin X is not connected or not powered on.'; Done 1 }
 Note "x8p:    $($x8p.InstanceId) driver $($x8p.Inf) $($x8p.Version) service $($x8p.Service) status $($x8p.Status)"
 Note "Twin X: $($twx.InstanceId) driver $($twx.Inf) $($twx.Version) service $($twx.Service) status $($twx.Status)"
-if ($x8p.Service -ne 'apollo' -or $x8p.Status -ne 'OK') { Note 'The x8p is not running on apollo.sys: install a release on it first (step5.ps1).'; Done 1 }
+if ($x8p.Service -ne 'apollo' -or $x8p.Status -ne 'OK') { Note 'The x8p is not running on apollo.sys: install a release on it first (install.ps1).'; Done 1 }
 
 # --- 2. run 1: the x8p must run this very package (one loaded image for both units) ---
 $x8pInfo = Diag @('--unit', 'x8p', 'info')

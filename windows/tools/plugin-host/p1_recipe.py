@@ -30,16 +30,16 @@ UA's files: it stays on this PC (plugins\\p1\\ by default), never in the repo or
 the x8p's own answer); the recipe is refused for a plug-in not in it. --renderids FILE: writes
 "0x<render id> <name>" for every plug-in in the store manifest (apollo-plug licence --names).
 
---unit twinx (P7, Nov 15 2026): a recipe for the Twin X Gen 1: inputs 1-2 (--input 0 or 1; its Hi-Z jack is
+--unit twinx (P7): a recipe for the Twin X Gen 1: inputs 1-2 (--input 0 or 1; its Hi-Z jack is
 input 1), stereo on the pair 1/2 only, written as <plug-in>-twinx-<layout>-in<n>.recipe. The words are the
 x8p's for the same input (both units: analog input n = DSP input n-1 on the strip DSP, DSP 1); only the inputs
 it may name differ. --authorized must then be the Twin X's own answer (apollo-plug --unit twinx licence).
 
 --layout stereo: the stereo bundle on a linked pair (--input 0 = inputs 1/2, 2 = inputs 3/4), as
 upstream's StereoProfiledCarrierProvider builds it (channel counts 2 in rows 0, 1 and 10; in2 = in1 + 1).
-apollo.sys starts a stereo chain only with FEAT_STEREO (Nov 15 2026 build).
+apollo.sys starts a stereo chain only with FEAT_STEREO.
 
-dsp_owned lines (Nov 15 2026): words the running DSP itself writes (meters, envelopes), which a
+dsp_owned lines: words the running DSP itself writes (meters, envelopes), which a
 readback must not compare: "dsp_owned <chain row> <word> <source>", source bundle (the bundle's
 dynamic_observation_refs, from upstream's known-good list; provider.observations() already leaves
 them out), meter (a meter word of the plug-in's panel spec, meterSources vendorSpecificFloat, inside
@@ -209,7 +209,7 @@ def main(argv=None):
     effect = effect_mode(args.name, d['latency_samples'], args.effect)
     owned = dsp_owned(plugins, args.name, data)
     if owned:
-        print(f'DSP-owned words skipped by the readback: ' + ', '.join(f'row {r} word {w} ({src})' for r, w, src in owned))
+        print('DSP-owned words skipped by the readback: ' + ', '.join(f'row {r} word {w} ({src})' for r, w, src in owned))
 
     stem = f'{oa.slug(args.name)}-twinx' if args.unit == 'twinx' else oa.slug(args.name)
     out = args.out or (plugins / 'p1' / f'{stem}-{args.layout}-in{args.input + 1}.recipe')

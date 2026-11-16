@@ -2,7 +2,7 @@
  * apollo_plugin.h - UAD plug-in hosting on the Apollo DSPs, phase P0 (docs/PLUGINS.md 2.1):
  * the IOCTL block 0x40-0x43, interface version 8, plus staged startup (FEAT_STAGE: CREATE F_STAGE,
  * op START), stereo inserts on a linked pair (FEAT_STEREO) and the caller rule (FEAT_CALLER); [Warm]
- * plug-ins after a warm adoption (FEAT_WARM) and [Lat] op LATENCY (FEAT_LATENCY), Nov 15 2026; all
+ * plug-ins after a warm adoption (FEAT_WARM) and [Lat] op LATENCY (FEAT_LATENCY); all
  * additive, every layout unchanged. Included by apollo_ioctl.h; shared by
  * apollo.sys (driver\plugin.c), tools\plugin-host (apollo-plug) and the Python bench.
  *
@@ -21,7 +21,7 @@
  * every call, and the unit: an x8p or (P7, FEAT_UNITS) a Twin X Gen 1, in Mode 2. With PluginHost 0 every
  * call but GET_PLUGIN_CAPS fails with STATUS_NOT_SUPPORTED and nothing is sent.
  *
- * Caller (FEAT_CALLER, Nov 15 2026): all four codes are APOLLO_USER (FILE_READ_ACCESS) like
+ * Caller (FEAT_CALLER): all four codes are APOLLO_USER (FILE_READ_ACCESS) like
  * upstream's, since the driver builds every word, but that does NOT open BOARD_QUERY and
  * PLUGIN_INSTANCE to every local process. With hosting on, the driver takes them only from
  *   (a) a handle opened by an elevated administrator (the opener's token, as for the admin
@@ -118,7 +118,7 @@
                                                        and the analog lease (driver\unison_plan.h); never run on hardware */
 #define APOLLO_PLUGIN_FEAT_AUX              0x400u  /* [Ins] chains on the aux returns (Synch APOLLO_PLUGIN_AUX_SYNCH(a), Input Strip
                                                        carrier 0x83E), only while Enabled has APOLLO_PLUGIN_ENABLED_AUX */
-#define APOLLO_PLUGIN_FEAT_WARM             0x800u  /* [Warm] (Nov 15 2026, docs/STRIPS.md 12.5) the strip DSP takes plug-ins after a
+#define APOLLO_PLUGIN_FEAT_WARM             0x800u  /* [Warm] (docs/STRIPS.md 12.5) the strip DSP takes plug-ins after a
                                                        warm start whose strips were adopted (x8p) or rebuilt (Twin X) from an anchored
                                                        record with no plug-in left there (StripWarmPlugins, default 1); Dsp[].Flags
                                                        carry DSP_WARM / DSP_WARM_PROVEN and, while a DSP is not owned, the reason

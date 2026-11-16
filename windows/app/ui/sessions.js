@@ -42,9 +42,7 @@ const Sess = (() => {
     auto: { known: false, on: false, current: false, command: '', error: 0, detail: '', asked: false },
     dlg: Promise.resolve(),
   };
-  const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const bool = v => typeof v === 'boolean';
-  const clone = x => JSON.parse(JSON.stringify(x));
   const viaHost = () => !!host && !S.demo;
   const scfg = () => cfg.session;
 

@@ -18,8 +18,8 @@
  * 0.5 dB each) added to the monitor unit's level, so the two units' knobs never have to agree on a position; mute,
  * dim and mono as values. Talkback on any unit (its button, or a host write) dims the monitor unit and undims what it
  * dimmed (TALK_DIM); on the monitor unit itself that happens in its own pass. The writes are ordinary
- * SET_MONITOR_PARAM encodings (monitor_plan.h: level, mute, dim, mono, proven on the x8p, the Twin X's monitor
- * section since G4), into the monitor unit's mailbox under ITS DevLock, which the knob unit's service thread takes
+ * SET_MONITOR_PARAM encodings (monitor_plan.h: level, mute, dim, mono, proven on the x8p and on the Twin X's
+ * monitor section), into the monitor unit's mailbox under ITS DevLock, which the knob unit's service thread takes
  * without waiting (busy: the change waits for the next pass) while it holds that unit's member rundown (agg.c
  * ApolloAggUnitRef). So no thread ever holds two DevLocks, and nothing waits on another unit.
  *
@@ -303,11 +303,6 @@ VOID ApolloPanelServiceAfter(PDEVICE_CONTEXT Ctx)
 /* ------------------------------------------------------------------ */
 /* GET_PANEL / SET_PANEL (DevLock held, ioctl.c)                       */
 /* ------------------------------------------------------------------ */
-
-BOOLEAN ApolloPanelIsIoctl(_In_ ULONG Code)
-{
-    return Code == IOCTL_APOLLO_GET_PANEL || Code == IOCTL_APOLLO_SET_PANEL;
-}
 
 static VOID PanelFill(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_PANEL_INFO I)
 {

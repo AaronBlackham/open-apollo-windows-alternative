@@ -1,6 +1,6 @@
 /*
  * Apollo units: classification and the multi-unit decisions (units.h). No device or registry
- * access here: test_units.cpp links this file alone.
+ * access here: test_units.cpp links it without the rest of the helper.
  */
 #include "units.h"
 #include <wchar.h>
@@ -29,7 +29,6 @@ static std::wstring Upper(std::wstring s)
     return s;
 }
 
-/* ASCII case-insensitive; hardware IDs, services and INF names are ASCII. */
 bool UnitIEq(const std::wstring &a, const std::wstring &b)
 {
     if (a.size() != b.size())
@@ -38,6 +37,28 @@ bool UnitIEq(const std::wstring &a, const std::wstring &b)
         if (Up(a[i]) != Up(b[i]))
             return false;
     return true;
+}
+
+std::string ToUtf8(const std::wstring &s)
+{
+    if (s.empty())
+        return std::string();
+    int n = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0, nullptr, nullptr);
+    std::string r((size_t)(n > 0 ? n : 0), '\0');
+    if (n > 0)
+        WideCharToMultiByte(CP_UTF8, 0, s.c_str(), (int)s.size(), &r[0], n, nullptr, nullptr);
+    return r;
+}
+
+std::wstring FromUtf8(const std::string &s)
+{
+    if (s.empty())
+        return std::wstring();
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    std::wstring r((size_t)(n > 0 ? n : 0), L'\0');
+    if (n > 0)
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &r[0], n);
+    return r;
 }
 
 static bool StartsI(const std::wstring &s, const std::wstring &prefix)

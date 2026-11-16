@@ -1,5 +1,5 @@
 /*
- * ring_map.h - [G4b] page math of the two audio rings (docs/spec-streaming.md 1.1-1.3).
+ * ring_map.h - page math of the two audio rings (docs/spec-streaming.md 1.1-1.3).
  *
  * Plain C like bringup_plan.h: no kernel or Windows headers, every function static __inline.
  * driver\audio.c allocates the rings with it; tools\ring-map-test checks it offline.
@@ -8,11 +8,10 @@
  * (1024) entries, one AUDIO_SG_PAGE (4 KiB) page each (regs.h). The FPGA never needs the pages to
  * be contiguous. The driver holds a ring as "chunks": common buffers of ChunkBytes each, in ring
  * order, every one SG-page aligned and below 4 GiB. Two chunk sizes are used (audio.c):
- *   AUDIO_RING_BYTES   one contiguous common buffer, what every release before G4b allocated;
- *                      SG entry i = base + i * 4 KiB, the pre-G4b formula;
+ *   AUDIO_RING_BYTES   one contiguous common buffer (the first choice); SG entry i = base + i * 4 KiB;
  *   AUDIO_SG_PAGE      one common buffer per SG page (1024 chunks), when no contiguous 4 MiB
- *                      below 4 GiB is left (0xc000009a on the Twin X after hours of uptime,
- *                      Nov 14 2026), or when the unit's AudioRingPages value asks for it.
+ *                      below 4 GiB is left (0xc000009a seen on the Twin X after hours of uptime),
+ *                      or when the unit's AudioRingPages value asks for it.
  * Whatever the chunk size, the consumers see the same two things: PageLa[i], the device (logical)
  * address of SG page i, and one linear CPU view in which ring byte Off is page Off / AUDIO_SG_PAGE.
  * SG entry i and page i of the linear view are the same memory: chunk i / PagesPerChunk, page
@@ -45,8 +44,8 @@ static __inline unsigned long ApolloRingPagesPerChunk(unsigned long ChunkBytes)
 
 /*
  * Is one common buffer usable as ring memory: its logical address and its kernel address both
- * SG-page aligned, and the whole of it inside the FPGA's 32-bit window. (The pre-G4b check, per
- * chunk, plus the CPU side, which the linear view of the page path needs.)
+ * SG-page aligned (the CPU side for the linear view of the page path), and the whole of it inside
+ * the FPGA's 32-bit window.
  */
 static __inline int ApolloRingChunkOk(unsigned long long La, unsigned long long Va, unsigned long Bytes)
 {

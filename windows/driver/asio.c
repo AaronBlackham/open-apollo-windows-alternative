@@ -45,7 +45,6 @@
 #include <ntifs.h>
 #include "apollo.h"
 
-#define ASIO_ADC_FRAMES         10          /* x8p ADC latency (spec-streaming 3.6); [Rate] Ctx->AdcFrames per rate */
 #define ASIO_NO_PERIOD          (~0ULL)
 #define ASIO_MAX_LAG            4096u       /* capture lag that forces a re-origination */
 
@@ -56,7 +55,6 @@
 /* ------------------------------------------------------------------ */
 /* Engine side (EngineLock held, DISPATCH_LEVEL)                       */
 /* ------------------------------------------------------------------ */
-
 
 /* Re-originate the client at the current capture head (start, engine restart, long stall). */
 static VOID AsioSync(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONGLONG Head)
@@ -339,10 +337,10 @@ static NTSTATUS AsioOpen(_In_ PDEVICE_CONTEXT Ctx, _In_ WDFREQUEST Request, _In_
         return STATUS_NO_SUCH_DEVICE;
     }
     if (!Ctx->Unit.Active) {
-        return STATUS_DEVICE_NOT_READY;         /* [Twin X G2] observe/refused unit: no audio, ever */
+        return STATUS_DEVICE_NOT_READY;         /* an observed or refused unit: no audio, ever */
     }
     {
-        /* [Twin X G3] ASIO stays the x8p's (a Mode 1 Twin X: none) */
+        /* ASIO stays the x8p's (a Mode 1 Twin X: none) */
         const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
 
         if (plan == NULL || !plan->Asio ||
@@ -447,7 +445,7 @@ static NTSTATUS AsioOpen(_In_ PDEVICE_CONTEXT Ctx, _In_ WDFREQUEST Request, _In_
         (VOID)KeQueryPerformanceCounter(&f);
         sh->QpcFrequency = f.QuadPart;
     }
-    /* [Rate] at this rate: the ADC delay and FRAME_CFG of it (10 and 8 at 48 kHz, as before); [Lat] + the device side */
+    /* [Rate] at this rate: the ADC delay and FRAME_CFG of it (10 and 8 at 48 kHz); [Lat] + the device side */
     sh->InputLatencyFrames = ApolloLatencyIn(Ctx);
     sh->OutputLatencyFrames = ApolloLatencyOut(Ctx);
     sh->SampleRate = Ctx->SampleRate;
@@ -672,7 +670,7 @@ static VOID AsioDispatch(_In_ PDEVICE_CONTEXT Ctx, _In_ WDFREQUEST Request, _In_
         return;
     }
     if (ApolloAggAsioClaims(Request, Code, file)) {
-        /* [G6] the combined client (version 3 open, or this handle owns it): agg.c, its own lock */
+        /* the combined client (version 3 open, or this handle owns it): agg.c, its own lock */
         ApolloAggAsioDispatch(Request, Code, file, f->CleanedUp);
         return;
     }
@@ -763,8 +761,8 @@ VOID ApolloEvtFileCleanup(_In_ WDFFILEOBJECT FileObject)
         AsioRelease(ctx);
     }
     WdfWaitLockRelease(ctx->AsioLock);
-    ApolloAggAsioFileGone(FileObject);      /* [G6] the combined client, if this handle had it */
-    /* [P0] the handle's plug-in instances: destroyed, plain strips restored (StripLock, never with AsioLock) */
+    ApolloAggAsioFileGone(FileObject);      /* the combined client, if this handle had it */
+    /* the handle's plug-in instances: destroyed, plain strips restored (StripLock, never with AsioLock) */
     ApolloPluginFileCleanup(ctx, FileObject);
 }
 
@@ -782,8 +780,8 @@ VOID ApolloEvtFileClose(_In_ WDFFILEOBJECT FileObject)
         }
         WdfWaitLockRelease(ctx->AsioLock);
     }
-    ApolloAggAsioFileGone(FileObject);      /* [G6] backstop, as above */
-    ApolloPluginFileCleanup(ctx, FileObject);   /* [P0] backstop: a CREATE that raced the cleanup */
+    ApolloAggAsioFileGone(FileObject);      /* backstop, as above */
+    ApolloPluginFileCleanup(ctx, FileObject);   /* backstop: a CREATE that raced the cleanup */
     if (f != NULL && f->Creator != NULL) {
         ObDereferenceObject(f->Creator);
         f->Creator = NULL;

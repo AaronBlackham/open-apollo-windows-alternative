@@ -101,7 +101,7 @@ typedef struct _APOLLO_RATE_INFO {
     ULONG   CombinedUnits;      /* units joined */
     ULONG   CombinedStored;     /* Parameters\Aggregate\SampleRate, 0 = none */
     /*
-     * [Lat] (Nov 15 2026; 0 from an older driver) what the unit adds to the copy engine's numbers in the latencies it
+     * [Lat] (0 from an older driver) what the unit adds to the copy engine's numbers in the latencies it
      * reports (ASIO GetLatencies, the Windows endpoints; docs/ASIO.md, Latency). Input, without the buffer: GuardFrames
      * + AdcFrames + InPathFrames. Output: LeadFrames + FrameCfg + DacFrames.
      */

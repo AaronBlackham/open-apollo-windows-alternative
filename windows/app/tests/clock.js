@@ -11,7 +11,7 @@ let failed = 0;
 const check = (c, l) => { if (!c) failed++; console.log(`${c ? 'PASS' : 'FAIL'}  ${l}`); };
 
 const SIX = [44100, 48000, 88200, 96000, 176400, 192000];
-const X8P = { id: '000000003A00C0DE', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '22532017106180', fw: '11.15.54803', mode: 2, present: true,
+const X8P = { id: '000000003A00C0DE', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '20000000000001', fw: '11.15.54803', mode: 2, present: true,
   active: true, observe: false, stage: 5, clock: { source: 'internal', wanted: 'internal', locked: true, fellBack: false }, panel: { knob: 'monitor', role: null } };
 const TWX = { id: '000000002F00BEEF', index: 1, model: 'Apollo Twin X (Gen 1)', deviceType: 153, serial: '2253202500117', fw: '11.15.54803', mode: 2,
   present: true, active: true, observe: false, stage: 5 };

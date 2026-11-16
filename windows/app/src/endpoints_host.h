@@ -2,9 +2,8 @@
  * endpoints_host.h - [Endpoints] Apollo Control's host commands for the Windows endpoint set: which of a
  * unit's endpoints exist in Windows (include\apollo_ioctl.h GET_ENDPOINTS v2, driver\endpoint_plan.h). The
  * UI contract is docs\apollo-control-units.md 1.7. The page posts {"cmd":"endpoints-...", ...} as a string
- * (like the rate-* and corr-* commands) and gets JSON back. Kept out of main.cpp, which only routes
- * "endpoints-*" here and runs the elevated step (two marked hunks), so the UI rework merges without
- * touching it.
+ * (like the rate-* and corr-* commands) and gets JSON back. main.cpp routes "endpoints-*" here and
+ * runs the elevated step.
  *
  *   endpoints-get {unit?}                    -> one {"type":"endpoints",...} per unit (every unit on
  *                                               apollo.sys when "unit" is left out)
@@ -45,15 +44,9 @@ static inline bool Owns(const std::wstring &Cmd)
     return Cmd.rfind(L"endpoints-", 0) == 0;
 }
 
-static inline std::string Q(const std::string &s)
-{
-    return corrhost::Q(s);
-}
-
-static inline std::string Bool(bool b)
-{
-    return b ? "true" : "false";
-}
+using corrhost::Q;
+using corrhost::Bool;
+using corrhost::Text;
 
 static inline const char *ModelName(ULONG m)
 {
@@ -114,11 +107,6 @@ static inline bool Query(HANDLE h, Rows &R, DWORD &Err)
     if (n) memcpy(R.row.data(), buf.data() + FIELD_OFFSET(APOLLO_ENDPOINTS, Endpoint), n * sizeof(APOLLO_ENDPOINT_INFO));
     Err = 0;
     return true;
-}
-
-static inline std::string Text(const CHAR *s, size_t cap)
-{
-    return std::string(s, strnlen(s, cap));
 }
 
 /*

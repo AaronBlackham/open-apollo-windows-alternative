@@ -10,7 +10,7 @@
 ;                    still show no endpoint. Gate G5: its input strips (StripsEnable).
 ; Gate G7: Parameters\Aggregate\EndpointSet = 1 replaces both units' own endpoints with one combined set
 ; on the x8p, "(Apollo)" interfaces below, following the combined device's routing.
-; [Endpoints] Nov 15: every physical output pair of a unit is its own Windows playback endpoint, named by
+; [Endpoints] Every physical output pair of a unit is its own Windows playback endpoint, named by
 ; its jack ("LINE 1-2 (Apollo x8p)"), every mic/line input a mono recording endpoint, plus the monitor-mix
 ; loopback; VIRTUAL and S/PDIF inputs opt-in. The rows are driver\endpoint_plan.h (standalone) and
 ; driver\apollo_agg.h APOLLO_AGG_EP_LIST (combined); tools\agg-test\aggep-test checks these lines against
@@ -217,7 +217,7 @@ AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pVirt78%,     Apollo_Out_Interfa
 AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_X8pSpdifIn%,    Apollo_Out_Interface
 AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_X8pSpdifIn%,    Apollo_Out_Interface
 AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_X8pSpdifIn%,    Apollo_Out_Interface
-; [G7] The combined Windows endpoints (docs/spec-twinx.md 6.7, 6.9.7; driver\apollo_agg.h
+; The combined Windows endpoints (docs/spec-twinx.md 6.7, 6.9.7; driver\apollo_agg.h
 ; APOLLO_AGG_EP_LIST, checked against these lines by tools\agg-test\aggep-test). Only when
 ; Parameters\Aggregate\EndpointSet = 1, and then INSTEAD of the rows above: the x8p hosts one set
 ; for both units (the Twin X then creates none). Their streams run on the combined device's
@@ -336,13 +336,13 @@ HKR,,FriendlyName,,%Apollo.EndpointName%
 HKR,EP\0,%PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%
 HKR,EP\0,%PKEY_AudioEndpoint_Supports_EventDriven_Mode%,0x00010001,0x1
 
-; [G7] Combined outputs and inputs: "Monitor" (Windows audio to the "windows" routes of the combined
+; Combined outputs and inputs: "Monitor" (Windows audio to the "windows" routes of the combined
 ; configuration, Studio: the Twin X MON outputs, summed with the DAW there; its purpose is to be the
 ; default output, spec 6.7), every unit's output jack and input. Choosable as defaults.
 [Apollo_Agg_Out_Interface]
 AddReg = Apollo_Agg_Endpoint_AddReg
 
-; [G7] Combined "Monitor mix" in: the monitor-mix loopback of the unit Windows plays to. Never a default.
+; Combined "Monitor mix" in: the monitor-mix loopback of the unit Windows plays to. Never a default.
 [Apollo_Agg_Mix_Interface]
 AddReg = Apollo_Agg_Endpoint_AddReg, Apollo_NeverDefault_AddReg
 

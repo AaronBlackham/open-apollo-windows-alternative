@@ -11,9 +11,9 @@
  *     again (ApolloCuesReplay; nothing cached, nothing sent);
  *   - a muted cue sends 0.0 for each of its sends and keeps the levels; unmuting sends them again.
  * Fire and forget like the strips' route words: two entries and one doorbell per DSP, never waiting on
- * the DSP; a full ring answers STATUS_DEVICE_BUSY. [polish Nov 15] Loops of sends (replay, mute, bus move)
- * wait for room through one APOLLO_CUE_PASS (monitor_plan.h): at most 50 ms per send, none after a DSP
- * timed out once in the loop, 200 ms per loop in all, so one hung DSP no longer stalls every cell.
+ * the DSP; a full ring answers STATUS_DEVICE_BUSY. Loops of sends (replay, mute, bus move) wait for room
+ * through one APOLLO_CUE_PASS (monitor_plan.h): at most 50 ms per send, none after a DSP timed out once in
+ * the loop, 200 ms per loop in all, so one hung DSP cannot stall every cell.
  *
  * [Mix] The monitor mix rides the same machinery with param 0 (UA_BUS_SUB_MAIN): per bus a level, a pan, a
  * mute and a solo (Ctx->Cues.Mix, monitor_plan.h ApolloMixCoef). Same owner rule, same cache: a bus the host
@@ -69,23 +69,26 @@ C_ASSERT(APOLLO_MON_AUX_RETURN_BUS(1) < APOLLO_MON_BUSES && APOLLO_MON_AUX_BUSES
 
 #define CUES_LOG_BUSY_MAX   5       /* "ring full" lines per device, then only the counter */
 
+/* D when it can mix (a live command ring, not the quarantined strip DSP), else DSP 0 (oa:driver/ua_dsp.c ua_dsp_bus_owner). */
+static ULONG CuesUsable(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG D)
+{
+    if (D == 0 || D >= Ctx->NumDsps || D >= APOLLO_MAX_DSPS || !Ctx->Cmd[D].Allocated || !Ctx->Cmd[D].Live ||
+        (Ctx->Strips.Quarantined && D == Ctx->Strips.Dsp)) {
+        return 0;
+    }
+    return D;
+}
+
 /*
  * The DSP that mixes Bus: its strip's DSP once that strip runs (strips.c BusOwner), else DSP 0; DSP 0 for
- * anything unusable (oa:driver/ua_dsp.c ua_dsp_bus_owner). A quarantined strip DSP gets nothing more.
+ * anything unusable. A quarantined strip DSP gets nothing more.
  * [Virtual] An ANALOG bus is its Mic strip's slot, a VIRTUAL bus (0x18-0x1F) its Input Strip's (strips.c).
  */
 static ULONG CuesOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus)
 {
     ULONG slot = ApolloStripsBusSlot(Bus);
-    ULONG d = (slot < APOLLO_STRIP_SLOTS) ? Ctx->Strips.BusOwner[slot] : 0;
 
-    if (d == 0 || d >= Ctx->NumDsps || d >= APOLLO_MAX_DSPS || !Ctx->Cmd[d].Allocated || !Ctx->Cmd[d].Live) {
-        return 0;
-    }
-    if (Ctx->Strips.Quarantined && d == Ctx->Strips.Dsp) {
-        return 0;
-    }
-    return d;
+    return CuesUsable(Ctx, (slot < APOLLO_STRIP_SLOTS) ? Ctx->Strips.BusOwner[slot] : 0);
 }
 
 /*
@@ -149,34 +152,35 @@ static NTSTATUS CuesPutEx(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Dsp, _In_ ULONG B
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS CuesPut(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Dsp, _In_ ULONG Bus, _In_ ULONG Sub,
-                        _In_ ULONG Left, _In_ ULONG Right, _Inout_opt_ APOLLO_CUE_PASS *Pass)
-{
-    return CuesPutEx(Ctx, Dsp, Bus, Sub, Left, Right, FALSE, Pass);
-}
-
 /*
- * Cue Cue's send of Bus as it stands now: to the owner and DSP 0, or (OwnerOnly) to the owner alone. Pass: the
- * loop's wait budget (CuesPut), NULL for a single send that never waits.
+ * One cell to Owner, then (unless Owner is DSP 0 or OwnerOnly) to DSP 0 as well; the first failure is returned.
+ * Pass: the loop's wait budget (CuesPutEx), NULL for a single send that never waits.
  */
-static NTSTATUS CuesSendCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Cue, _In_ ULONG Bus, _In_ BOOLEAN OwnerOnly,
-                             _Inout_opt_ APOLLO_CUE_PASS *Pass)
+static NTSTATUS CuesPutCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Owner, _In_ BOOLEAN OwnerOnly, _In_ ULONG Bus, _In_ ULONG Sub,
+                            _In_ ULONG Left, _In_ ULONG Right, _In_ BOOLEAN LeftOnly, _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
-    ULONG l, r, owner = CuesOwner(Ctx, Bus), sub = ApolloCueSub(Cue);
-    NTSTATUS status, s0;
+    NTSTATUS status = CuesPutEx(Ctx, Owner, Bus, Sub, Left, Right, LeftOnly, Pass), s0;
 
-    if (sub == 0 || Bus >= APOLLO_MON_BUSES) {
-        return STATUS_INVALID_PARAMETER;
-    }
-    ApolloCueCoef(&Ctx->Cues, Cue, Bus, &l, &r);
-    status = CuesPut(Ctx, owner, Bus, sub, l, r, Pass);
-    if (owner != 0 && !OwnerOnly) {
-        s0 = CuesPut(Ctx, 0, Bus, sub, l, r, Pass);
+    if (Owner != 0 && !OwnerOnly) {
+        s0 = CuesPutEx(Ctx, 0, Bus, Sub, Left, Right, LeftOnly, Pass);
         if (NT_SUCCESS(status)) {
             status = s0;
         }
     }
     return status;
+}
+
+/* Cue Cue's send of Bus as it stands now: to the owner and DSP 0, or (OwnerOnly) to the owner alone. */
+static NTSTATUS CuesSendCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Cue, _In_ ULONG Bus, _In_ BOOLEAN OwnerOnly,
+                             _Inout_opt_ APOLLO_CUE_PASS *Pass)
+{
+    ULONG l, r, owner = CuesOwner(Ctx, Bus), sub = ApolloCueSub(Cue);
+
+    if (sub == 0 || Bus >= APOLLO_MON_BUSES) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    ApolloCueCoef(&Ctx->Cues, Cue, Bus, &l, &r);
+    return CuesPutCell(Ctx, owner, OwnerOnly, Bus, sub, l, r, FALSE, Pass);
 }
 
 static BOOLEAN CuesReady(_In_ PDEVICE_CONTEXT Ctx)
@@ -190,22 +194,13 @@ static BOOLEAN CuesReady(_In_ PDEVICE_CONTEXT Ctx)
  */
 static NTSTATUS MixSendCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus, _In_ BOOLEAN OwnerOnly, _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
-    ULONG l, r, owner;
-    NTSTATUS status, s0;
+    ULONG l, r;
 
     if (Bus >= APOLLO_MON_BUSES) {
         return STATUS_INVALID_PARAMETER;
     }
-    owner = CuesOwner(Ctx, Bus);
     ApolloMixCoef(&Ctx->Cues.Mix, Bus, &l, &r);
-    status = CuesPut(Ctx, owner, Bus, APOLLO_MIX_SUB, l, r, Pass);
-    if (owner != 0 && !OwnerOnly) {
-        s0 = CuesPut(Ctx, 0, Bus, APOLLO_MIX_SUB, l, r, Pass);
-        if (NT_SUCCESS(status)) {
-            status = s0;
-        }
-    }
-    return status;
+    return CuesPutCell(Ctx, CuesOwner(Ctx, Bus), OwnerOnly, Bus, APOLLO_MIX_SUB, l, r, FALSE, Pass);
 }
 
 /* ------------------------------------------------------------------ */
@@ -215,15 +210,7 @@ static NTSTATUS MixSendCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus, _In_ BOOLE
 /* The DSP that mixes aux Aux's return: an aux insert chain's while it runs (plugin.c), else DSP 0; CuesOwner's rules. */
 static ULONG AuxOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux)
 {
-    ULONG d = (Aux < APOLLO_MON_AUX_BUSES) ? Ctx->Cues.Aux.Owner[Aux] : 0;
-
-    if (d == 0 || d >= Ctx->NumDsps || d >= APOLLO_MAX_DSPS || !Ctx->Cmd[d].Allocated || !Ctx->Cmd[d].Live) {
-        return 0;
-    }
-    if (Ctx->Strips.Quarantined && d == Ctx->Strips.Dsp) {
-        return 0;
-    }
-    return d;
+    return CuesUsable(Ctx, (Aux < APOLLO_MON_AUX_BUSES) ? Ctx->Cues.Aux.Owner[Aux] : 0);
 }
 
 /* Bus's send to aux Aux as it stands (param 3 / 4): to the input's mixing DSP and DSP 0, or (OwnerOnly) the owner. */
@@ -231,66 +218,40 @@ static NTSTATUS AuxSendCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG
                             _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
     ULONG l, r, owner;
-    NTSTATUS status, s0;
 
     if (Aux >= APOLLO_MON_AUX_BUSES || Bus >= APOLLO_MON_BUSES) {
         return STATUS_INVALID_PARAMETER;
     }
     owner = CuesOwner(Ctx, Bus);
     ApolloAuxSendCoef(&Ctx->Cues, Aux, Bus, &l, &r);
-    status = CuesPut(Ctx, owner, Bus, APOLLO_AUX_SUB(Aux), l, r, Pass);
-    if (owner != 0 && !OwnerOnly) {
-        s0 = CuesPut(Ctx, 0, Bus, APOLLO_AUX_SUB(Aux), l, r, Pass);
-        if (NT_SUCCESS(status)) {
-            status = s0;
-        }
-    }
-    return status;
+    return CuesPutCell(Ctx, owner, OwnerOnly, Bus, APOLLO_AUX_SUB(Aux), l, r, FALSE, Pass);
 }
 
 /* Aux Aux's return into the monitor mix: bus 0x10 / 0x12, param 0, the left entry only. */
 static NTSTATUS AuxReturnCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ BOOLEAN OwnerOnly, _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
-    ULONG v, owner, bus;
-    NTSTATUS status, s0;
+    ULONG owner;
 
     if (Aux >= APOLLO_MON_AUX_BUSES) {
         return STATUS_INVALID_PARAMETER;
     }
-    bus = APOLLO_MON_AUX_RETURN_BUS(Aux);
     owner = AuxOwner(Ctx, Aux);
-    v = ApolloAuxReturnBits(&Ctx->Cues.Aux, Aux);
-    status = CuesPutEx(Ctx, owner, bus, APOLLO_MIX_SUB, v, 0, TRUE, Pass);
-    if (owner != 0 && !OwnerOnly) {
-        s0 = CuesPutEx(Ctx, 0, bus, APOLLO_MIX_SUB, v, 0, TRUE, Pass);
-        if (NT_SUCCESS(status)) {
-            status = s0;
-        }
-    }
-    return status;
+    return CuesPutCell(Ctx, owner, OwnerOnly, APOLLO_MON_AUX_RETURN_BUS(Aux), APOLLO_MIX_SUB,
+                       ApolloAuxReturnBits(&Ctx->Cues.Aux, Aux), 0, TRUE, Pass);
 }
 
 /* Aux Aux's return into cue Cue: bus 0x10 / 0x12, the cue's param, L and R. */
 static NTSTATUS AuxCueCell(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG Cue, _In_ BOOLEAN OwnerOnly,
                            _Inout_opt_ APOLLO_CUE_PASS *Pass)
 {
-    ULONG l, r, owner, bus, sub = ApolloCueSub(Cue);
-    NTSTATUS status, s0;
+    ULONG l, r, owner, sub = ApolloCueSub(Cue);
 
     if (Aux >= APOLLO_MON_AUX_BUSES || sub == 0) {
         return STATUS_INVALID_PARAMETER;
     }
-    bus = APOLLO_MON_AUX_RETURN_BUS(Aux);
     owner = AuxOwner(Ctx, Aux);
     ApolloAuxCueCoef(&Ctx->Cues, Aux, Cue, &l, &r);
-    status = CuesPut(Ctx, owner, bus, sub, l, r, Pass);
-    if (owner != 0 && !OwnerOnly) {
-        s0 = CuesPut(Ctx, 0, bus, sub, l, r, Pass);
-        if (NT_SUCCESS(status)) {
-            status = s0;
-        }
-    }
-    return status;
+    return CuesPutCell(Ctx, owner, OwnerOnly, APOLLO_MON_AUX_RETURN_BUS(Aux), sub, l, r, FALSE, Pass);
 }
 
 /* The post-fader aux sends of every bus in Buses, again (a monitor-mix change moved their fader, mute or solo). */
@@ -416,9 +377,6 @@ NTSTATUS ApolloCuesApply(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_MON_WRITE *
         return AuxApply(Ctx, W);        /* [Aux] the aux buses */
     }
     ApolloCueStore(&Ctx->Cues, W);
-    if (W->Kind != APOLLO_MONW_MUTE) {
-        Ctx->Cues.Set[W->Cue] |= 1ul << W->Bus;
-    }
     if (W->Kind == APOLLO_MONW_MUTE) {
         /* every send the host set on this cue: as 0.0 now, or back to its level */
         for (b = 0; b < APOLLO_MON_BUSES; b++) {
@@ -442,6 +400,7 @@ NTSTATUS ApolloCuesApply(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_MON_WRITE *
                   n, status);
         return status;
     }
+    Ctx->Cues.Set[W->Cue] |= 1ul << W->Bus;
     return CuesSendCell(Ctx, W->Cue, W->Bus, FALSE, NULL);
 }
 
@@ -521,24 +480,28 @@ ULONG ApolloCuesAuxOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG Ds
  * right after UA's engine had run it: a 0 dB send of VIRTUAL 1 into AUX 1 left AUX 1's record slots exact zero.
  * CUE 3/4 only on a model with four cues (Console turns them off at 176.4 kHz and up: left as the DSP has them then).
  */
-static VOID CuesBusEnableAll(_In_ PDEVICE_CONTEXT Ctx)
+static VOID CuesBusEnable(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Value)
 {
     const APOLLO_MON_MODEL *m = ApolloMonModelFor(Ctx->Ident.Model);
-    ULONG d, b, sent = 0, full = 0, buses = 0;
+    ULONG d, b, sent = 0, full = 0, dsps = 0;
+    ULONG buses = Value & 0x7Ful, dspMask = (Value >> 8) & 0xFFul;
 
-    if (m == 0) {
+    if (m == 0 || buses == 0) {
         return;
     }
-    buses = 0x1Ful;                                     /* monitor, CUE 1, CUE 2, AUX 1, AUX 2 */
-    if (m->Cues >= 4 && Ctx->SampleRate < 176400) {
-        buses |= (1ul << 5) | (1ul << 6);               /* CUE 3, CUE 4 */
+    if (m->Cues < 4 || Ctx->SampleRate >= 176400) {
+        buses &= ~((1ul << 5) | (1ul << 6));            /* CUE 3/4: four-cue models below 176.4 kHz only */
     }
     for (d = 0; d < Ctx->NumDsps && d < APOLLO_MAX_DSPS; d++) {
         PAPOLLO_RING cmd = &Ctx->Cmd[d];
 
+        if (dspMask != 0 && (dspMask & (1ul << d)) == 0) {
+            continue;
+        }
         if (!cmd->Allocated || !cmd->Live || (Ctx->Strips.Quarantined && d == Ctx->Strips.Dsp)) {
             continue;
         }
+        dsps |= 1ul << d;
         if (!NT_SUCCESS(ApolloRingRefresh(Ctx, cmd))) {
             return;
         }
@@ -555,8 +518,8 @@ static VOID CuesBusEnableAll(_In_ PDEVICE_CONTEXT Ctx)
         }
         ApolloRingDoorbell(Ctx, cmd);
     }
-    ApolloLogU(Ctx, "mix: DSP buses 0x%02lx enabled on %lu DSP(s) (%lu command(s)%s)", buses, Ctx->NumDsps, sent,
-               full ? ", some skipped: ring full" : "");
+    ApolloLogU(Ctx, "mix: BusEnable 0x%04lx: buses 0x%02lx enabled on DSP mask 0x%02lx (%lu command(s)%s)", Value, buses,
+               dsps, sent, full ? ", some skipped: ring full" : "");
 }
 
 VOID ApolloCuesReplay(_In_ PDEVICE_CONTEXT Ctx)
@@ -568,12 +531,12 @@ VOID ApolloCuesReplay(_In_ PDEVICE_CONTEXT Ctx)
         return;
     }
     /*
-     * [BusEnable] NOT sent: Nov 16 2026 on both units, {0x001C0003, b, 1, 0} for b 0-6 (x8p) / 0-4 (Twin X) on every DSP
-     * at the connect left EVERY record slot of both units exact zero (VIRTUAL 1, MON, the mic inputs) until a power
-     * cycle; the build before, without it, recorded VIRTUAL 1 at -30 dBFS and the monitor mix at -33 dBFS. The bus
-     * groups or the value's meaning on these kinds are not what oa:driver/ua_dsp.c assumes. Kept for the record only.
+     * [BusEnable] Only what the unit's BusEnable parameter asks (default 0: nothing). Nov 16 2026, x8p: every bus on
+     * every DSP (0x007F, 42 commands), AUX 1 on DSP 0 only and on DSP 1 only all left the mics, VIRTUAL 1 and the
+     * monitor mix as they were, and none of them made AUX 1 carry audio. (The earlier "it silenced both units" was the
+     * warm-start adoption, strip_adopt.h: that build had been installed warm and adopted its strips.) Not needed.
      */
-    (VOID)CuesBusEnableAll;
+    CuesBusEnable(Ctx, ApolloUnitParam(Ctx, APOLLO_PARAM_BUS_ENABLE));
     for (b = 0; b < APOLLO_MON_BUSES; b++) {
         if ((Ctx->Cues.Mix.Set & (1ul << b)) == 0) {
             continue;

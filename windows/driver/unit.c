@@ -135,7 +135,7 @@ VOID ApolloUnitResolve(_In_ PDEVICE_CONTEXT Ctx)
     }
     UnitLogValues(Ctx);
 
-    /* [Twin X G3] a Mode above what this build runs for the model came down (Twin X: 2 -> 1) */
+    /* A Mode above what this build runs for the model came down */
     if (u->Source[APOLLO_PARAM_MODE] == APOLLO_SRC_MODE && u->ModeAsked <= APOLLO_MODE_FULL &&
         u->ModeAsked > u->Value[APOLLO_PARAM_MODE]) {
         ApolloLogU(Ctx, "unit Mode %lu asked: this build runs the %s in Mode %lu at most", u->ModeAsked,
@@ -155,10 +155,9 @@ VOID ApolloUnitResolve(_In_ PDEVICE_CONTEXT Ctx)
     default:
         ApolloLogU(Ctx, "unit Mode 2: full");
         if (!x8p && u->Active) {
-            /* [G4] what Mode 2 means on this model (bringup_plan.h) */
+            /* What Mode 2 means on this model (bringup_plan.h) */
             const APOLLO_BRINGUP_PLAN *plan = ApolloBringupPlanFor(id->Model);
 
-            /* [G5] strips (when StripsEnable says so) and preamp settings too */
             ApolloLogU(Ctx, "unit Mode 2 (gates G4-G5): Windows endpoints %s (Endpoints 0x%lX), monitor settings; "
                       "ASIO %s, strips %s (StripsEnable %lu), preamp settings %s",
                       (plan != NULL && plan->Endpoints) ? "yes" : "no",
@@ -196,22 +195,20 @@ ULONG ApolloUnitParamBeforeIdentify(_In_ PDEVICE_CONTEXT Ctx, _In_ int Id)
         return 0;
     }
     /*
-     * [Twin X G2] Not the x8p's INF line: the safe model default, no registry (apollo_unit.h).
-     * [G4] EnabledEndpoints there: the Twin X's whole table (its unit value narrows it later).
+     * Endpoints: every row of the slot's table, whatever the registry holds (apollo_unit.h
+     * ApolloAddTimeEndpoints ignores the legacy global; the unit's value narrows it later).
      */
+    if (Id == APOLLO_PARAM_ENABLED_ENDPOINTS) {
+        return ApolloAddTimeEndpoints(Ctx->HwidSubsysKnown, Ctx->HwidSubsystem, FALSE, 0);
+    }
+    /* Not the x8p's INF line: the safe model default, no registry (apollo_unit.h). */
     if (!ApolloAddTimeX8pRules(Ctx->HwidSubsysKnown, Ctx->HwidSubsystem)) {
-        if (Id == APOLLO_PARAM_ENABLED_ENDPOINTS) {
-            return ApolloAddTimeEndpoints(Ctx->HwidSubsysKnown, Ctx->HwidSubsystem, FALSE, 0);
-        }
         return ApolloParamDef(Id)->DefaultOther;
     }
     if (NT_SUCCESS(WdfDriverOpenParametersRegistryKey(WdfGetDriver(), KEY_READ,
                                                       WDF_NO_OBJECT_ATTRIBUTES, &params))) {
         have = UnitQuery(params, Id, &v);
         WdfRegistryClose(params);
-    }
-    if (Id == APOLLO_PARAM_ENABLED_ENDPOINTS) {
-        return ApolloAddTimeEndpoints(Ctx->HwidSubsysKnown, Ctx->HwidSubsystem, have, v);
     }
     return have ? v : ApolloParamDef(Id)->DefaultX8p;
 }

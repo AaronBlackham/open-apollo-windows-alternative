@@ -8,6 +8,7 @@ inert fcntl stand-in satisfies the import on Windows (it raises if anything call
 """
 import json
 import os
+import re
 import sys
 import types
 from pathlib import Path
@@ -66,5 +67,4 @@ def store_manifest(store=STORE):
 
 
 def slug(name):
-    import re
     return re.sub(r'[^a-z0-9]+', '-', name.lower().removeprefix('uad ')).strip('-')

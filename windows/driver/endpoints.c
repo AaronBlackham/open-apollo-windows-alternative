@@ -1,7 +1,7 @@
 /*
  * endpoints.c - the tables of Windows audio endpoints (docs/PHASE2.md section 3.1).
  *
- * [Endpoints] Nov 15: what UA's own driver gives Windows users. Every physical output pair of a unit is its
+ * [Endpoints] What UA's own driver gives Windows users: every physical output pair of a unit is its
  * own playback endpoint named by its jack, every mic/line input a mono recording endpoint, plus the
  * monitor-mix loopback; VIRTUAL and S/PDIF inputs opt-in. The rows are data in endpoint_plan.h (standalone,
  * per model) and apollo_agg.h APOLLO_AGG_EP_LIST (the combined set); here only their component IDs are
@@ -91,10 +91,10 @@ const ULONG g_ApolloEndpointCount = RTL_NUMBER_OF(g_ApolloEndpoints);
 /* ------------------------------------------------------------------ */
 
 /*
- * [G4] Mode 2 only. Own reference strings and component IDs: its INF section (Apollo_TwinX_Install) gives
+ * Mode 2 only. Own reference strings and component IDs: its INF section (Apollo_TwinX_Install) gives
  * them the "Apollo Twin X" name, and nothing of it can be mistaken for the x8p's circuits.
  * [Endpoints] Its three output jacks (MON L/R, LINE 3-4 = CUE 2, HP = CUE 1), the loopback (never a default),
- * MIC/LINE 1-2 (the input strips' signal; in the default set since G5 passed), VIRTUAL 1-4 and S/PDIF in.
+ * MIC/LINE 1-2 (the input strips' signal; in the default set), VIRTUAL 1-4 and S/PDIF in.
  */
 static const GUID ApolloTwxMonComponent =
     { 0x76931447, 0xD261, 0x4CC1, { 0xBD, 0xE7, 0x19, 0x84, 0xA9, 0xE8, 0x4D, 0x1C } };
@@ -133,7 +133,7 @@ C_ASSERT(APOLLO_DEF_ENDPOINTS_X8P == APOLLO_X8P_EP_DEFAULT);
 /* ------------------------------------------------------------------ */
 
 /*
- * [G7] The combined table (docs/spec-twinx.md 6.7, 6.9.7): created only on the host unit (the x8p) when
+ * The combined table (docs/spec-twinx.md 6.7, 6.9.7): created only on the host unit (the x8p) when
  * Parameters\Aggregate\EndpointSet is 1 (circuit.c). Rows come from APOLLO_AGG_EP_LIST in apollo_agg.h
  * (reference strings, pin names, bridge, kinds, IDs, fallback slots), the one list the offline test checks
  * against apollo.inf; here only their component IDs are added. Their streams run on the aggregate timeline
@@ -246,8 +246,8 @@ const APOLLO_ENDPOINT_TABLE *ApolloEndpointTableFor(_In_ int Model)
 }
 
 /*
- * The ring slot of a channel: the first descriptor slot carrying its channel ID (spec-streaming 1.5.1).
- * Descriptor words: [0] = 1, [1] = 0x46, [3] input count, [4] output count, from [6] u16 IDs.
+ * The ring slot of a channel: the first descriptor slot carrying its channel ID (spec-streaming 1.5.1;
+ * the descriptor's layout: bringup_plan.h ApolloIoDescCount / ApolloIoDescId).
  * [Endpoints] With a readable descriptor, an ID it does not carry (or carries beyond the unit's transport
  * count, e.g. the x8p's CUE 3/4 past its legacy 34 play slots) has no slot: APOLLO_EP_SLOT_NONE, and the
  * stream plays and records nothing there (stream.c), never another channel. Without one (not read yet):
@@ -258,16 +258,13 @@ ULONG ApolloEndpointSlot(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_ENDPOINT_DE
 {
     BOOLEAN render = (Desc->Type == AcxCircuitTypeRender);
     const ULONG *d = render ? Ctx->IoDescOut : Ctx->IoDescIn;
-    ULONG count = render ? d[4] : d[3];
+    ULONG count = ApolloIoDescCount(d, render ? 0 : 1);      /* 0: not a usable descriptor */
     ULONG limit = render ? Ctx->PlayChannels : Ctx->RecChannels;
     ULONG fallback = Desc->FallbackSlot[Channel], i;
 
-    if (d[0] == 1 && d[1] == 0x46 && count >= 1 && count <= 64) {
-        for (i = 0; i < count && 6 + i / 2 < IO_DESC_WORDS; i++) {
-            ULONG w = d[6 + i / 2];
-            ULONG id = (i & 1) ? (w >> 16) : (w & 0xFFFF);
-
-            if (id == Desc->ChannelId[Channel]) {
+    if (count != 0) {
+        for (i = 0; i < count; i++) {
+            if (ApolloIoDescId(d, i) == Desc->ChannelId[Channel]) {
                 return (i < limit) ? i : APOLLO_EP_SLOT_NONE;
             }
         }

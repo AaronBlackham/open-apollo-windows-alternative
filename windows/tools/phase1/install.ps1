@@ -181,7 +181,6 @@ if ($audio) {
 
 # UA's apps talk to every unit on UA's driver. Close them only when this unit is leaving UA's driver and no
 # other present Apollo is still on it (then nothing else needs them); otherwise leave them running.
-# [release7 review] Before: closed whenever the x8p was not on apollo, even with the Twin X on UAD2Pcie.
 $onUa = @($othersBefore | Where-Object { $_.Service -eq 'UAD2Pcie' })
 if (-not $target.Service) { Note "note: could not read the $name's current driver service; UA's apps are left running" }
 elseif ($target.Service -eq 'apollo') { Note "The $name is already on apollo.sys: UA's apps are left alone." }

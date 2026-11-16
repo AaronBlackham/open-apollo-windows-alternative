@@ -58,10 +58,6 @@
 [data-look="mono"] .knob.refused .mn-bar { border-color: var(--red); }
 [data-look="mono"] .knob.refused .k-readout::before { content: "ERR "; color: var(--red); }
 [data-look="mono"] .mix-top .knob[data-skin="mono"] { width: 100%; }
-/* faders: a vertical bar, press anywhere */
-[data-look="mono"] .mn-vbar { width: 10px; background: #000; border: 1px solid #707070; box-shadow: none; cursor: ns-resize; }
-[data-look="mono"] .mn-vfill { position: absolute; left: 0; right: 0; bottom: 0; background: #ffffff; opacity: 1; border-radius: 0; }
-[data-look="mono"] .fader.refused .mn-vbar { border-color: var(--red); }
 /* switches: [x] text toggles */
 [data-look="mono"] .sw { background: transparent; border: 1px solid #343434; color: var(--text-dim); font-weight: 400; letter-spacing: 0; justify-content: flex-start; padding: 0 3px; }
 [data-look="mono"] .sw .mn-chk::before { content: "[ ]"; }

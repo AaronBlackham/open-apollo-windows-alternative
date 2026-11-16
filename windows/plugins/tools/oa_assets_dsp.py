@@ -31,6 +31,7 @@ import json
 import os
 import struct
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -521,7 +522,6 @@ def collect(root, out, pins, dry_run=False, jobs=0, log=print):
         return None, EXIT_NOTHING
     jobs = jobs or min(os.cpu_count() or 2, 4)
     log(f'[INFO]  Scanning {len(plugins)} plug-in DLLs and {len(system)} UAD system DLLs')
-    import threading
     store, lock = {}, threading.Lock()
     paths = plugins + system
     scans = []
@@ -539,7 +539,8 @@ def collect(root, out, pins, dry_run=False, jobs=0, log=print):
         return None, EXIT_NOTHING
 
     tools = tools_dir(root)
-    ua_xml = parse_ua_xml(read_text(ci_path(tools, ['UA.xml'])) or '') if tools and ci_path(tools, ['UA.xml']) else []
+    ua_path = ci_path(tools, ['UA.xml']) if tools else None
+    ua_xml = parse_ua_xml(read_text(ua_path) or '') if ua_path else []
     vst3 = vst3_index(root)
     pinned = pinned_names(pins)
 

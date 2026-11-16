@@ -687,7 +687,6 @@ static __inline void CorrInstall(CORR_ENGINE *E, int Idx, int Enable)
     E->Pending = Idx;
 }
 
-/* 0 = done; APOLLO_CORR_ERR_NO_PROFILE to enable with none. */
 /* 0 = done; APOLLO_CORR_ERR_NO_PROFILE to enable with none, or one being cleared (only a load brings one back). */
 static __inline unsigned long CorrSetEnabled(CORR_ENGINE *E, int On)
 {
@@ -713,7 +712,6 @@ static __inline void CorrClear(CORR_ENGINE *E)
     if (!CorrRunning(E)) {
         E->Cur = E->Next = E->Pending = -1;
         E->CurLive = E->NextLive = 0;
-        E->Enabled = 0;
         E->Unload = 0;
         E->W = E->X = 0;
         return;

@@ -46,12 +46,24 @@ static LONGLONG StreamQpcAt(_In_ PDEVICE_CONTEXT Ctx, _In_ LONGLONG Frame)
 }
 
 /*
- * [G7] The lock a stream's engine state is under: its unit's EngineLock (standalone rows, as before),
- * or the aggregate's lock for a combined row, whose stream runs on the timeline tick (agg.c).
+ * The lock a stream's engine state is under: its unit's EngineLock (standalone rows), or the
+ * aggregate's lock for a combined row, whose stream runs on the timeline tick (agg.c).
  */
 static PKSPIN_LOCK StreamLockOf(_In_ PAPOLLO_STREAM S)
 {
     return S->Agg ? ApolloAggStreamLock() : &S->Ctx->EngineLock;
+}
+
+/* An Active stream off its tick's list (StreamLockOf held). */
+static VOID StreamUnlink(_Inout_ PAPOLLO_STREAM S)
+{
+    if (S->Agg) {
+        ApolloAggStreamDetach(S);               /* off the timeline tick's list */
+    } else {
+        RemoveEntryList(&S->Link);
+        InitializeListHead(&S->Link);
+    }
+    S->Active = FALSE;
 }
 
 /* Leave the engine and wait until no notification for this stream is in flight. PASSIVE. */
@@ -65,13 +77,7 @@ static VOID StreamDeactivate(_In_ PAPOLLO_STREAM S)
     KeAcquireSpinLock(lock, &irql);
     was = S->Active;
     if (was) {
-        if (S->Agg) {
-            ApolloAggStreamDetach(S);           /* [G7] off the timeline tick's list */
-        } else {
-            RemoveEntryList(&S->Link);
-            InitializeListHead(&S->Link);
-        }
-        S->Active = FALSE;
+        StreamUnlink(S);
     }
     S->Notified = S->Completed;                 /* no completions after Pause */
     KeReleaseSpinLock(lock, irql);
@@ -95,26 +101,6 @@ static VOID StreamResetCounters(_Inout_ PAPOLLO_STREAM S)
     S->UnderrunPacket = 0;
     S->WrittenPacket = -1;
     S->PacketQpc[0] = S->PacketQpc[1] = 0;
-}
-
-/*
- * Capture, EngineLock: the lowest packet whose memory is still intact. Packet p
- * lives at [p % PacketCount], so the packet being written (Completed) reuses
- * the memory of Completed - PacketCount as soon as its first frame lands.
- * With one packet nothing completed stays intact once the next one starts.
- */
-static ULONGLONG StreamOldestIntact(_In_ const APOLLO_STREAM *S)
-{
-    ULONGLONG oldest;
-
-    if (S->Completed < S->PacketCount) {
-        return 0;
-    }
-    oldest = S->Completed - S->PacketCount;
-    if (S->Frames > S->Completed * S->FramesPerPacket) {
-        oldest++;
-    }
-    return oldest;
 }
 
 /* ------------------------------------------------------------------ */
@@ -201,7 +187,7 @@ NTSTATUS ApolloEvtCircuitCreateStream(WDFDEVICE Device, ACXCIRCUIT Circuit, ACXP
     s->Ctx = ctx;
     s->Ep = ep;
     s->Stream = stream;
-    s->Agg = (ep->Desc->AggRow1 != 0) ? TRUE : FALSE;  /* [G7] a combined row: the aggregate timeline */
+    s->Agg = (ep->Desc->AggRow1 != 0) ? TRUE : FALSE;  /* a combined row: the aggregate timeline */
     s->Render = (ep->Desc->Type == AcxCircuitTypeRender);
     s->Rate = AcxDataFormatGetSampleRate(StreamFormat);    /* [Rate] */
     s->Channels = ep->Desc->Channels;
@@ -245,13 +231,7 @@ static VOID StreamCleanup(WDFOBJECT Object)
 
         KeAcquireSpinLock(lock, &irql);
         if (s->Active) {
-            if (s->Agg) {
-                ApolloAggStreamDetach(s);       /* [G7] */
-            } else {
-                RemoveEntryList(&s->Link);
-                InitializeListHead(&s->Link);
-            }
-            s->Active = FALSE;
+            StreamUnlink(s);
         }
         KeReleaseSpinLock(lock, irql);
         ApolloLogU(ctx, "acx: stream cleanup at IRQL %u, no rundown wait", (ULONG)KeGetCurrentIrql());
@@ -484,7 +464,7 @@ static VOID StreamFreeRtPackets(ACXSTREAM Stream, PACX_RTPACKET Packets, ULONG P
 
 /*
  * The stream's ring slots by channel ID (endpoints.c ApolloEndpointSlot), PASSIVE, while the
- * stream is not in the engine's Active list. [G4] A unit whose layout comes from the IO
+ * stream is not in the engine's Active list. A unit whose layout comes from the IO
  * descriptor at connect (the Twin X: no slot counts until G5 ran) may see a stream prepared
  * before that: its slots are marked provisional and resolved again at Run. The x8p has its
  * legacy counts from PrepareHardware on, so it never takes that path.
@@ -514,7 +494,7 @@ static NTSTATUS StreamPrepareHardware(ACXSTREAM Stream)
         return STATUS_INVALID_DEVICE_STATE;
     }
     if (s->Agg) {
-        /* [G7] slots come from the aggregate's configuration at Run (agg.c ApolloAggStreamAttach) */
+        /* slots come from the aggregate's configuration at Run (agg.c ApolloAggStreamAttach) */
         PKSPIN_LOCK lock = ApolloAggStreamLock();
 
         s->SlotsProvisional = FALSE;
@@ -542,7 +522,7 @@ static NTSTATUS StreamReleaseHardware(ACXSTREAM Stream)
 {
     PAPOLLO_STREAM s = ApolloGetStream(Stream);
     PDEVICE_CONTEXT ctx = s->Ctx;
-    PKSPIN_LOCK lock = StreamLockOf(s);         /* [G7] */
+    PKSPIN_LOCK lock = StreamLockOf(s);
     KIRQL irql;
 
     StreamDeactivate(s);
@@ -568,7 +548,7 @@ static NTSTATUS StreamRun(ACXSTREAM Stream)
     }
     if (s->Agg) {
         /*
-         * [G7] A combined endpoint: onto the aggregate timeline's list. Its sources/destinations come
+         * A combined endpoint: onto the aggregate timeline's list. Its sources/destinations come
          * from the configuration (routes, master) and follow it while it runs; positions count
          * timeline frames. With no timeline (no unit running) the position stands still.
          */
@@ -589,7 +569,7 @@ static NTSTATUS StreamRun(ACXSTREAM Stream)
         return STATUS_SUCCESS;
     }
     if (s->SlotsProvisional && !s->Active) {
-        /* [G4] prepared before the unit's layout was known: take the live descriptor's slots now */
+        /* prepared before the unit's layout was known: take the live descriptor's slots now */
         StreamResolveSlots(s);
         ApolloLogU(ctx, "acx: %ws slots resolved again at run: %lu/%lu%s", s->Ep->Desc->RefString, s->Slot[0],
                   s->Slot[1], s->SlotsProvisional ?
@@ -621,7 +601,7 @@ static NTSTATUS StreamGetHwLatency(ACXSTREAM Stream, ULONG *FifoSize, ULONG *Del
 {
     PAPOLLO_STREAM s = ApolloGetStream(Stream);
     PAPOLLO_ACX acx = s->Ctx->Acx;
-    /* [G4] the model's ADC latency (x8p 10 frames, as before; Twin X 5); [Rate] at the stream's rate */
+    /* the model's ADC latency (x8p 10 frames, Twin X 5); [Rate] at the stream's rate */
     ULONG adc = (acx != NULL && acx->Table != NULL) ? acx->Table->AdcFrames : APOLLO_ADC_FRAMES;
     ULONG rate = (s->Rate != 0) ? s->Rate : APOLLO_RATE_DEFAULT_HZ;
 
@@ -633,7 +613,7 @@ static NTSTATUS StreamGetHwLatency(ACXSTREAM Stream, ULONG *FifoSize, ULONG *Del
      * render the model's DAC (docs/ASIO.md, Latency). A chain added later counts for streams created after it.
      */
     if (s->Agg) {
-        /* [G7] the timeline's lead; capture trails it by guard + pad (aligned), the timeline's ADC */
+        /* combined: the timeline's lead; capture trails it by guard + pad (aligned), the timeline's ADC */
         ULONG lead, guard, path, dac;
 
         ApolloAggStreamLatency(&lead, &guard, &adc, &path, &dac);
@@ -655,7 +635,7 @@ _Use_decl_annotations_
 static NTSTATUS StreamGetCurrentPacket(ACXSTREAM Stream, PULONG CurrentPacket)
 {
     PAPOLLO_STREAM s = ApolloGetStream(Stream);
-    PKSPIN_LOCK lock = StreamLockOf(s);         /* [G7] */
+    PKSPIN_LOCK lock = StreamLockOf(s);
     KIRQL irql;
 
     KeAcquireSpinLock(lock, &irql);
@@ -669,14 +649,14 @@ static NTSTATUS StreamGetCapturePacket(ACXSTREAM Stream, PULONG LastCapturePacke
                                        PULONGLONG QPCPacketStart, PBOOLEAN MoreData)
 {
     PAPOLLO_STREAM s = ApolloGetStream(Stream);
-    PKSPIN_LOCK lock = StreamLockOf(s);         /* [G7] */
+    PKSPIN_LOCK lock = StreamLockOf(s);
     ULONGLONG p, oldest;
     KIRQL irql;
 
     /*
      * Hand out completed packets in order, oldest unread first, with MoreData
      * when more are waiting. Only packets whose memory is still intact are
-     * offered (StreamOldestIntact): the packet being written reuses the memory
+     * offered (ApolloStreamOldestIntact): the packet being written reuses the memory
      * of packet p - PacketCount from its first frame. Before the first call
      * nothing is counted; after it, the tick counts the packets it overwrote
      * unread as overruns and moves ReadNext past them.
@@ -688,7 +668,7 @@ static NTSTATUS StreamGetCapturePacket(ACXSTREAM Stream, PULONG LastCapturePacke
         *QPCPacketStart = 0;
         *MoreData = FALSE;
     } else {
-        oldest = StreamOldestIntact(s);
+        oldest = ApolloStreamOldestIntact(s);
         if (s->ReadNext < oldest) {
             s->ReadNext = oldest;
         }
@@ -716,7 +696,7 @@ static NTSTATUS StreamGetPresentationPosition(ACXSTREAM Stream, PULONGLONG Posit
     KIRQL irql;
 
     if (s->Agg) {
-        /* [G7] a combined stream counts timeline frames: the aggregate's snapshot of the last tick */
+        /* a combined stream counts timeline frames: the aggregate's snapshot of the last tick */
         PKSPIN_LOCK lock = ApolloAggStreamLock();
         ULONGLONG tpos;
         LONGLONG tqpc, tfreq;
@@ -775,7 +755,7 @@ static NTSTATUS StreamSetRenderPacket(ACXSTREAM Stream, ULONG Packet, ULONG Flag
                                       ULONG EosPacketLength)
 {
     PAPOLLO_STREAM s = ApolloGetStream(Stream);
-    PKSPIN_LOCK lock = StreamLockOf(s);         /* [G7] */
+    PKSPIN_LOCK lock = StreamLockOf(s);
     NTSTATUS status = STATUS_SUCCESS;
     ULONGLONG cur, into;
     KIRQL irql;
@@ -831,7 +811,7 @@ VOID ApolloStreamsEngineStarted(_In_ PDEVICE_CONTEXT Ctx)
         s->NeedSync = TRUE;
         if (s->SlotsProvisional) {
             /*
-             * [G4 review] It ran before the unit's layout was known (a Twin X stream opened while the
+             * It ran before the unit's layout was known (a Twin X stream opened while the
              * bring-up still ran): its slots are placeholders (slot 0 for both channels). The engine
              * starts only once the descriptor counts exist, so resolve them now, before its first
              * render or capture. ApolloEndpointSlot is non-paged and only reads the descriptor.
@@ -864,21 +844,12 @@ VOID ApolloStreamsLayoutChanged(_In_ PDEVICE_CONTEXT Ctx)
     KeReleaseSpinLock(&Ctx->EngineLock, irql);
 }
 
-/* Render: every packet the hardware side has consumed is complete (notified in order). */
-static VOID StreamComplete(_Inout_ PAPOLLO_STREAM S)
-{
-    while (S->Frames >= (S->Completed + 1) * S->FramesPerPacket) {
-        S->Completed++;
-        S->Ep->Packets++;
-    }
-}
-
 static VOID StreamRenderOne(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_STREAM S, _In_ ULONGLONG From,
                             _In_ ULONGLONG To)
 {
     ULONG stride = Ctx->PlayChannels * 4, mask = Ctx->RingFrames - 1, idx, c;
     LONGLONG next;
-    ULONGLONG h, frame, packet = MAXULONGLONG;
+    ULONGLONG h, frame, packetEnd = 0;          /* the next packet's first frame: one division per packet */
     BOOLEAN play = FALSE;
     /* [Rate] opened at another rate than the unit runs at now: it plays silence until Windows re-opens it */
     BOOLEAN stale = (S->Rate != Ctx->SampleRate) ? TRUE : FALSE;
@@ -900,12 +871,13 @@ static VOID StreamRenderOne(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_STREAM S, 
     frame = S->Frames;
     idx = (ULONG)(frame % S->BufferFrames);
     for (h = (ULONGLONG)next; h < To; h++, frame++) {
-        ULONGLONG q = frame / S->FramesPerPacket;
         LONG *dst;
         const LONG *src;
 
-        if (q != packet) {
-            packet = q;
+        if (frame >= packetEnd) {
+            ULONGLONG q = frame / S->FramesPerPacket;
+
+            packetEnd = (q + 1) * S->FramesPerPacket;
             play = !S->UsesWritePacket || (LONGLONG)q <= S->WrittenPacket;
             if (!play && S->UnderrunPacket != q + 1) {
                 S->UnderrunPacket = q + 1;      /* count each late packet once */
@@ -928,7 +900,7 @@ static VOID StreamRenderOne(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_STREAM S, 
         }
     }
     S->Frames = frame;
-    StreamComplete(S);
+    ApolloStreamComplete(S);
 }
 
 VOID ApolloStreamsRender(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONGLONG From, _In_ ULONGLONG To)
@@ -997,7 +969,7 @@ static VOID StreamCaptureOne(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_STREAM S,
      * mode) never calls it, so nothing is counted.
      */
     if (S->ReadStarted && S->PacketCount > 1) {
-        ULONGLONG oldest = StreamOldestIntact(S);
+        ULONGLONG oldest = ApolloStreamOldestIntact(S);
 
         if (S->ReadNext < oldest) {
             S->Ep->Overruns += (ULONG)min(oldest - S->ReadNext, (ULONGLONG)MAXULONG);

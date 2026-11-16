@@ -8,7 +8,7 @@ const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.htm
 let failed = 0;
 const check = (c, l) => { if (!c) failed++; console.log(`${c ? 'PASS' : 'FAIL'}  ${l}`); };
 
-const X8P = { id: '000000003A00C0DE', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '22532017106180', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
+const X8P = { id: '000000003A00C0DE', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '20000000000001', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const TWX = { id: '000000002F00BEEF', index: 1, model: 'Apollo Twin X (Gen 1)', deviceType: 153, serial: '2253202500117', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const INFO = { version: 6, failedStage: 0, lastStatus: 0, fpgaRev: 0, extCaps: 0, fwRelease: 0x0B0FD613, subsystemId: 0x14, deviceType: 0x22, publicType: 0x16,
   numDsps: 6, playChannels: 34, recChannels: 32, ringFrames: 8192, sampleRate: 48000, servicePasses: 10, interruptCount: 0, notifStatusSeen: 0,

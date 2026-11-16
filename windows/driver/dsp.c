@@ -169,7 +169,10 @@ ULONG ApolloRingPending(_In_ const APOLLO_RING *Ring)
     return (Ring->WritePtr - Ring->Position) & RING_INDEX_MASK;
 }
 
-/* No wait: the caller checked ApolloRingFreeSlots() for the whole batch. */
+/*
+ * No wait: the caller checked ApolloRingFreeSlots() for the whole batch. The 4 pages are
+ * contiguous in our common buffer: slot = index * 16.
+ */
 VOID ApolloRingWrite(_Inout_ PAPOLLO_RING Ring, _In_ ULONG W0, _In_ ULONG W1, _In_ ULONG W2,
                      _In_ ULONG W3)
 {
@@ -317,8 +320,7 @@ NTSTATUS ApolloRingsInit(_In_ PDEVICE_CONTEXT Ctx)
 static NTSTATUS ApolloRingPut(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_RING Ring,
                               _In_ ULONG W0, _In_ ULONG W1, _In_ ULONG W2, _In_ ULONG W3)
 {
-    ULONG free, waited = 0;
-    PULONG slot;
+    ULONG waited = 0;
 
     if (!Ring->Allocated || !Ring->Live) {
         return STATUS_INVALID_DEVICE_STATE;
@@ -331,8 +333,7 @@ static NTSTATUS ApolloRingPut(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_RING Rin
             return status;
         }
         Ring->Position = pos;
-        free = (Ring->Position - Ring->WritePtr - 1) & RING_INDEX_MASK;
-        if (free > 0) {
+        if (ApolloRingFreeSlots(Ring) > 0) {
             break;
         }
         if (waited >= 100) {
@@ -342,14 +343,7 @@ static NTSTATUS ApolloRingPut(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_RING Rin
         ApolloSleepMs(1);
         waited++;
     }
-
-    /* The 4 pages are contiguous in our common buffer: slot = index * 16. */
-    slot = (PULONG)(Ring->Va + (SIZE_T)Ring->WritePtr * RING_ENTRY_BYTES);
-    slot[0] = W0;
-    slot[1] = W1;
-    slot[2] = W2;
-    slot[3] = W3;
-    Ring->WritePtr = (Ring->WritePtr + 1) & RING_INDEX_MASK;
+    ApolloRingWrite(Ring, W0, W1, W2, W3);      /* WritePtr is always < RING_ENTRIES: the same slot */
     return STATUS_SUCCESS;
 }
 
@@ -455,7 +449,7 @@ NTSTATUS ApolloDspConnectAll(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* [Twin X G3] AudioExtension path (docs/spec-twinx.md 2)              */
+/* AudioExtension path, the Twin X Gen 1 (docs/spec-twinx.md 2)        */
 /* ------------------------------------------------------------------ */
 
 /*

@@ -30,7 +30,7 @@
 #     - Checks the driver side (12-row combined table on the x8p, none on the Twin X, the aggregate running
 #       with the Twin X as timeline) and the Windows side (names, one Monitor out, no standalone left).
 #     - Audio (not with -NoAudio), about 50 s in all, PLAYS INTO THE SPEAKERS:
-#         a0) [polish Nov 15] 3 s meter of "Monitor mix" with nothing playing: other signal there (live input
+#         a0) 3 s meter of "Monitor mix" with nothing playing: other signal there (live input
 #            strips, the talkback mic) makes a) read small steady errors, which are then no glitch;
 #         a) 20 s wasapi-loop through "Monitor" -> "Monitor mix": Windows audio through the combined endpoints,
 #            sample-checked for glitches;
@@ -216,20 +216,18 @@ function Restart-BothUnits($x8p, $twx) {
     }
     return $true
 }
-# Everything that holds either unit: processes, ASIO, Windows sessions on any Apollo endpoint, and the ACX
-# streams of BOTH units ([G7 review]: with EndpointSet 1 the combined endpoints are the x8p's circuits).
+# Everything that holds either unit: processes, ASIO, Windows sessions on any Apollo endpoint (Test-ApolloInUse
+# lists those), and the ACX streams of BOTH units ([G7 review]: with EndpointSet 1 the combined endpoints are the
+# x8p's circuits).
 function Test-AllIdle {
     $why = @()
-    if ($audio) { $why += @(Test-ApolloInUse $diag) }
+    if ($audio) { $why += @(Test-ApolloInUse $diag | ForEach-Object { $_ }) }   # it returns ,$array: flatten
     foreach ($un in 'x8p', 'twinx') {
         $ep = Quiet $diag @('--unit', $un, 'endpoints')
         if ($ep -match 'ACX streams: prepared (\d+), running (\d+)' -and [int]$Matches[1] -gt 0) {
             $what = if ($un -eq 'x8p' -and (Get-EndpointSet) -eq 1) { 'the x8p (the combined endpoints)' } else { "the $un" }
             $why += "$($Matches[1]) Windows stream(s) open on $what, $($Matches[2]) running"
         }
-    }
-    if ($audio) {
-        try { foreach ($s in @(Get-ApolloAudioSessions -Filter '(Apollo')) { $why += "$($s.Process) (PID $($s.Pid)) is using $($s.Endpoint)" } } catch { }
     }
     return ,@($why | Select-Object -Unique)
 }
@@ -475,7 +473,7 @@ if ($NoAudio -or -not $audio -or $monOut.Count -ne 1 -or $monIn.Count -ne 1) {
     }
 }
 if (-not $NoAudio -and $audio -and $monOut.Count -eq 1 -and $monIn.Count -eq 1) {
-    # a0) [polish Nov 15] The monitor mix with nothing playing. The loop below is only sample-exact when the mix
+    # a0) The monitor mix with nothing playing. The loop below is only sample-exact when the mix
     #     carries the playback alone: a live input strip (a mic on the Twin X inputs), the talkback mic or another
     #     app on "Monitor" add their own signal, which the sine check reads as small steady errors (the first G7
     #     run: 1.9e-3 at -11.98 dBFS, 0 dropouts). The master's channels are an integer copy (aggep-test 8).

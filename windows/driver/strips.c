@@ -16,9 +16,9 @@
  *     {0x00030002, id, 0, 0} of every module we sent (2.9);
  *   - the mixer-init batch choice (MixerInitBatch, section 6).
  *
- * [Twin X G5] The same strips on the Apollo Twin X Gen 1 (docs/spec-twinx.md 5.2, 6.9.5): its plan
- * row (strip_plan.h StripModelFor: inputs 1-2, DSP 1, room for 2 strips, the same five modules
- * and words) and the bring-up plan's Strips flag decide; the x8p row is the pre-G5 behaviour.
+ * The same strips on the Apollo Twin X Gen 1 (docs/spec-twinx.md 5.2, 6.9.5): its plan row
+ * (strip_plan.h StripModelFor: inputs 1-2, DSP 1, room for 2 strips, the same five modules
+ * and words) and the bring-up plan's Strips flag decide.
  * StripsEnable=2 logs the whole pass the unit would get, per input, and sends nothing.
  *
  * [Warm] Warm starts (docs/STRIPS.md 12, strip_adopt.h). A D0 exit on a model whose warm start
@@ -91,9 +91,8 @@ C_ASSERT(STRIP_PLAN_SLOTS + 1 < XACT_SLOTS);
 
 /*
  * The layout check's constants: the values the recipe was validated on (x4 A6.1, and the
- * x8p's DSP 1 on Nov 14). The planner (strip_plan.h) builds addresses from its own macros;
- * these asserts keep the two from drifting apart. [Twin X G5] The check itself is
- * strip_plan.h StripPlanLayoutCheck now (the same code, run offline by strip-plan-test).
+ * x8p's DSP 1 on Nov 14), pinned against the planner's macros (strip_plan.h, which also holds
+ * the check itself, StripPlanLayoutCheck, run offline by strip-plan-test).
  */
 #define LAYOUT_TOP1             0x0009D1B8u
 #define LAYOUT_TOP2             0x000C6FFEu
@@ -105,7 +104,7 @@ C_ASSERT(LAYOUT_TOP1 == STRIP_TOP1 && LAYOUT_TOP2 == STRIP_TOP2 && LAYOUT_TOP3 =
 C_ASSERT(LAYOUT_PER_STRIP1 == STRIP_POOL1_PER_STRIP);
 C_ASSERT(LAYOUT_PER_STRIP2 == STRIP_POOL2_PER_STRIP);
 C_ASSERT(LAYOUT_PER_STRIP3 == STRIP_POOL3_PER_STRIP);
-/* [Twin X G5] the per-model plan (strip_plan.h) names the models and limits the driver's */
+/* the per-model plan (strip_plan.h) names the models and limits the driver's */
 C_ASSERT(STRIP_MODEL_X8P == APOLLO_MODEL_X8P && STRIP_MODEL_TWINX == APOLLO_MODEL_TWINX);
 C_ASSERT(STRIP_MODULE_IDS == APOLLO_STRIP_MODULES);
 C_ASSERT(STRIP_DSP_ROUTE_MAX == APOLLO_MAX_DSPS);
@@ -123,9 +122,6 @@ C_ASSERT(APOLLO_STRIP_CODE_BASE == 0x000E0000u);
 #define STRIP_WAIT_MS           1000u           /* ua_plugin_host.h:133 */
 #define STRIP_PUBLISH_MS        50u             /* ua_plugin_host.h:134 */
 #define STRIP_SETTLE_MS         500u            /* ua_strips.c:760 */
-#define STRIP_RATE_HZ           48000u     /* [Rate] the captured rate; the gate takes any rate StripRampOf knows */
-#define STRIP_MAX_DSP           3u              /* open-apollo clamps input_strips_dsp below 4: the x8p
-                                                   plan's DspAllowed 0x0F (strip_plan.h, [Twin X G5]) */
 #define STRIP_LAYOUT_UNREAD     0xFFFFFFFFu
 #define STRIP_RX_WORDS_MAX      64u
 
@@ -154,6 +150,19 @@ static VOID StripsOff(_Inout_ APOLLO_STRIPS *S, _In_z_ PCSTR Why)
     S->State = APOLLO_STRIPS_STATE_OFF;
     StripsSetWhy(S, "%s", Why);
     ApolloLogU(CONTAINING_RECORD(S, DEVICE_CONTEXT, Strips), "strips: off: %s", Why);
+}
+
+/* The pass failed: State FAILED, the Why line formatted and logged. */
+static VOID StripsFail(_In_ PDEVICE_CONTEXT Ctx, _In_z_ _Printf_format_string_ PCSTR Fmt, ...)
+{
+    APOLLO_STRIPS *s = &Ctx->Strips;
+    va_list ap;
+
+    s->State = APOLLO_STRIPS_STATE_FAILED;
+    va_start(ap, Fmt);
+    (VOID)RtlStringCbVPrintfA(s->Why, sizeof(s->Why), Fmt, ap);
+    va_end(ap);
+    ApolloLogU(Ctx, "strips: %s", s->Why);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -240,12 +249,6 @@ static PCSTR StripsStepName(_In_ ULONG Steps)
     }
 }
 
-/* Registry StripSteps -> the stage this pass goes to (0 = everything). */
-static ULONG StripsStepLimit(_In_ ULONG Steps)
-{
-    return (Steps == 0 || Steps > STRIP_STEP_ALL) ? STRIP_STEP_ALL : Steps;
-}
-
 static ULONG StripsModulesSent(_In_ const APOLLO_STRIPS *S)
 {
     ULONG j, n = 0;
@@ -262,13 +265,13 @@ static ULONG StripsModulesSent(_In_ const APOLLO_STRIPS *S)
 /* Registry and transaction buffers (PrepareHardware/ReleaseHardware)  */
 /* ------------------------------------------------------------------ */
 
-/* [Twin X G5] This unit's strip plan (strip_plan.h), NULL for a model without one. */
+/* This unit's strip plan (strip_plan.h), NULL for a model without one. */
 static const STRIP_MODEL *StripsModel(_In_ PDEVICE_CONTEXT Ctx)
 {
     return (Ctx->Ident.Model > 0) ? StripModelFor((ULONG)Ctx->Ident.Model) : NULL;
 }
 
-/* [Twin X G5] The modules the model's plan names are exactly the pinned ones, in load order. */
+/* The modules the model's plan names are exactly the pinned ones, in load order. */
 static BOOLEAN StripsModulesArePinned(_In_ const STRIP_MODEL *Model)
 {
     ULONG j;
@@ -640,7 +643,7 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
     ULONG i, off = 0, askedMask, askedDsp;
 
     /*
-     * [Twin X G0] This unit's values, read once per start (unit.c: Units\<unit> -> Models\<type>
+     * This unit's values, read once per start (unit.c: Units\<unit> -> Models\<type>
      * -> the legacy Services\apollo\Parameters values, x8p only -> built-in defaults; Mode < 2
      * forces StripsEnable 0). MixerInitBatch absent on the x8p = x8p-safe (1): the legacy batch's
      * non-preamp settings unchanged, the preamp fields skipped, so the unit keeps its own gains,
@@ -649,7 +652,7 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
      */
     s->Enable = ApolloUnitParam(Ctx, APOLLO_PARAM_STRIPS_ENABLE);
     s->Steps = ApolloUnitParam(Ctx, APOLLO_PARAM_STRIP_STEPS);
-    /* [Twin X G5] mask and DSP as the model's strip plan takes them (x8p: & 0xFF, DSP 0-3, as before) */
+    /* mask and DSP as the model's strip plan takes them (x8p: & 0xFF, DSP 0-3) */
     askedMask = ApolloUnitParam(Ctx, APOLLO_PARAM_STRIP_MASK);
     askedDsp = ApolloUnitParam(Ctx, APOLLO_PARAM_STRIP_DSP);
     s->Mask = StripModelMask(model, askedMask);
@@ -673,10 +676,7 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
         s->Enable = 0;
     }
     {
-        /*
-         * [Twin X G3] strips only on a model whose plan has them; Mode < 2 forced 0 already.
-         * [Twin X G5] the x8p and the Twin X Gen 1, each with its strip plan row (strip_plan.h).
-         */
+        /* Strips only on a model whose plans have them (the x8p and the Twin X Gen 1); Mode < 2 forced 0 already. */
         const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
 
         if (plan == NULL || !plan->Strips || model == NULL) {
@@ -763,14 +763,15 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
                   "as the Mic strips; their buses take mix, cue and aux sends", s->VMask);
     }
     if (s->Enable == 1) {
-        ApolloLogU(Ctx, "strips: stage %lu: %s", StripsStepLimit(s->Steps),
-                  StripsStepName(StripsStepLimit(s->Steps)));
+        ApolloLogU(Ctx, "strips: stage %lu: %s", StripPlanSteps(s->Steps),
+                  StripsStepName(StripPlanSteps(s->Steps)));
     }
     if (s->Enable != 0) {
         ApolloLogU(Ctx, "strips: warm starts: StripAdopt=%lu (%s), StripWarmRebuild=%lu (%s), StripWarmPlugins=%lu (%s)%s",
                   s->AdoptParam,
                   StripsConnectsOnWarm(Ctx) ? "nothing to adopt: this model's warm start ring-connects" :
-                  s->AdoptParam ? "a D0 exit leaves Live strips running, a warm start adopts its own" :
+                  s->AdoptParam ? (s->WarmRebuild ? "a D0 exit leaves Live strips running, a warm start rebuilds them" :
+                                   "a D0 exit leaves Live strips running, a warm start adopts its own") :
                   "torn down at every D0 exit", s->WarmRebuild,
                   s->WarmRebuild ? "built again when proven this driver's" : "a power cycle instead", s->WarmPlugins,
                   s->WarmPlugins ? "plug-ins on adopted or rebuilt strips" : "plug-ins after a power cycle only",
@@ -787,7 +788,7 @@ VOID ApolloStripsPrepareHardware(_In_ PDEVICE_CONTEXT Ctx)
  *   S13                Hi-Z / mic impedance
  *   S16-S22, S24-S30   byte lane per preamp of params 0x09-0x0f (ua_core.c:2610-2616)
  *   S23, S31           knob steps (ua_core.c:2617-2622)
- * [Twin X G3] On the Twin X Gen 1 (docs/spec-twinx.md 4.3): S3 GainC 1-2, S11 output reference /
+ * On the Twin X Gen 1 (docs/spec-twinx.md 4.3): S3 GainC 1-2, S11 output reference /
  * mirror, S13 Hi-Z impedance, S14 HP level, S15 ALT trim / remote, S16/S17 GainB/A, S23 knob steps.
  * S2 (monitor) is never written. Legacy = every build before release5.
  */
@@ -861,25 +862,7 @@ VOID ApolloStripsReleaseHardware(_In_ PDEVICE_CONTEXT Ctx)
 /* Ownership and layout (docs/STRIPS.md 2.3, 2.4)                      */
 /* ------------------------------------------------------------------ */
 
-/*
- * Port of open-apollo ua_strips.c:440-483 (GPL-2.0): 0 = fits, else a reason code.
- * [Twin X G5] The check is strip_plan.h StripPlanLayoutCheck (same code, tested offline); the
- * room it reserves is the model's (x8p 8 strips, as before; Twin X its 2).
- */
-static ULONG ApolloStripLayoutCheck(_In_ PDEVICE_CONTEXT Ctx, _In_reads_(4) const ULONG *Size,
-                                    _In_reads_(4) const ULONG *Base, _In_reads_(4) const ULONG *Scr)
-{
-    const STRIP_MODEL *model = StripsModel(Ctx);
-    ULONG p, codeWords = 0;
-
-    for (p = 0; p < APOLLO_STRIP_MODULES; p++) {
-        codeWords += g_ApolloStripPins[p].PoolWords;    /* 994 */
-    }
-    return StripPlanLayoutCheck(Size, Base, Scr, (model != NULL) ? model->LayoutStrips : APOLLO_STRIP_INPUTS,
-                                codeWords);
-}
-
-/* The strips the layout check reserves room for on this unit (log lines). */
+/* The strips the layout check reserves room for on this unit: the model's (x8p 8, Twin X 2). */
 static ULONG StripsLayoutStrips(_In_ PDEVICE_CONTEXT Ctx)
 {
     const STRIP_MODEL *model = StripsModel(Ctx);
@@ -906,8 +889,9 @@ static PCSTR StripsLayoutText(_In_ ULONG Why)
 }
 
 /*
- * The strip DSP's 11 pool registers (reads only) and the check for the model's strips (x8p: 8).
- * [Virtual] Then the room for this start's Virtual strips below them (strip_plan.h StripPlanRoom): a
+ * The strip DSP's 11 pool registers (reads only) and the check for the model's strips (x8p: 8):
+ * strip_plan.h StripPlanLayoutCheck, the port of open-apollo ua_strips.c:440-483 (GPL-2.0), 0 = fits,
+ * else a reason code. [Virtual] Then the room for this start's Virtual strips below them (strip_plan.h StripPlanRoom): a
  * StripVirtualMask that does not fit is refused whole (VMask 0, VLayoutWhy the code, logged once); the Mic
  * strips are not affected. (A warm start whose record has Virtual strips then sees another plan: PLAN_DIFFERS.)
  */
@@ -926,12 +910,12 @@ static VOID StripsReadLayout(_In_ PDEVICE_CONTEXT Ctx)
             s->Geom[7 + p] = scr[p];
         }
     }
-    s->LayoutWhy = ApolloStripLayoutCheck(Ctx, size, base, scr);
+    for (p = 0; p < APOLLO_STRIP_MODULES; p++) {
+        codeWords += g_ApolloStripPins[p].PoolWords;    /* 994 */
+    }
+    s->LayoutWhy = StripPlanLayoutCheck(size, base, scr, StripsLayoutStrips(Ctx), codeWords);
     s->LayoutRead = TRUE;
     if (s->VMask != 0 && s->LayoutWhy == 0) {
-        for (p = 0; p < APOLLO_STRIP_MODULES; p++) {
-            codeWords += g_ApolloStripPins[p].PoolWords;
-        }
         StripPlanRoom(StripsLayoutStrips(Ctx), s->VMask, room);
         why = StripPlanLayoutCheckRoom(size, base, scr, room, codeWords);
         if (why != 0) {
@@ -1221,7 +1205,7 @@ VOID ApolloStripsFillInfo(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_STRIPS_INFO I)
     I->Why[sizeof(I->Why) - 1] = '\0';
 
     /* Version 2: the strip stages */
-    I->StepsLimit = StripsStepLimit(s->Steps);
+    I->StepsLimit = StripPlanSteps(s->Steps);
     I->StepsDone = s->StepsDone;
     I->MixerInitBatch = s->MixerBatch;
     I->PhantomState = (s->PhantomState == STRIP_PHANTOM_RUNNING) ? APOLLO_STRIPS_PHANTOM_NOT_RUN :
@@ -1815,8 +1799,8 @@ static NTSTATUS XactRun(_In_ PDEVICE_CONTEXT Ctx, _Inout_ PAPOLLO_XACT X)
 
 /*
  * The unit's rate acked to the DSPs and locked by the firmware (ua_audio.c:5168-5180,
- * ua_audio_plugin_rate_ready). DevLock held. [Rate] Any of the six rates now (strip_plan.h
- * StripRateWords has the strip's words for each); before rates could change this was 48 kHz only.
+ * ua_audio_plugin_rate_ready). DevLock held. [Rate] Any of the six rates (strip_plan.h
+ * StripRateWords has the strip's words for each).
  */
 static BOOLEAN StripsRateReady(_In_ PDEVICE_CONTEXT Ctx, _Out_ PULONG Info)
 {
@@ -1854,9 +1838,7 @@ static BOOLEAN StripsUploadOne(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG J, _In_ ULON
     }
     x = XactAlloc(Ctx, s->Dsp);
     if (x == NULL) {
-        s->State = APOLLO_STRIPS_STATE_FAILED;
-        StripsSetWhy(s, "no free transaction buffer for module 0x%03x", pin->Id);
-        ApolloLogU(Ctx, "strips: %s", s->Why);
+        StripsFail(Ctx, "no free transaction buffer for module 0x%03x", pin->Id);
         WdfWaitLockRelease(Ctx->DevLock);
         return FALSE;
     }
@@ -1889,9 +1871,7 @@ static BOOLEAN StripsUploadOne(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG J, _In_ ULON
         /* never published: the DSP saw nothing */
         s->ModState[J] = APOLLO_STRIP_MOD_NONE;
         if (s->State == APOLLO_STRIPS_STATE_BUILDING) {
-            s->State = APOLLO_STRIPS_STATE_FAILED;
-            StripsSetWhy(s, "module 0x%03x not sent (0x%08x)", pin->Id, status);
-            ApolloLogU(Ctx, "strips: %s", s->Why);
+            StripsFail(Ctx, "module 0x%03x not sent (0x%08x)", pin->Id, status);
         }
     } else {
         s->Uploads++;
@@ -2019,17 +1999,13 @@ static BOOLEAN StripsPrepareOne(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Slot, _In_ 
     }
     if (StripPlanPrepareSlot(Slot, StripsLayoutStrips(Ctx), Limit, Ctx->SampleRate, plan) != 0 ||  /* [Rate] the unit's rate */
         plan->N == 0 || plan->N > maxEnts) {
-        s->State = APOLLO_STRIPS_STATE_FAILED;
-        StripsSetWhy(s, "planner error for %s: nothing sent", name);
-        ApolloLogU(Ctx, "strips: %s", s->Why);
+        StripsFail(Ctx, "planner error for %s: nothing sent", name);
         WdfWaitLockRelease(Ctx->DevLock);
         return FALSE;
     }
     x = XactAlloc(Ctx, s->Dsp);
     if (x == NULL) {
-        s->State = APOLLO_STRIPS_STATE_FAILED;
-        StripsSetWhy(s, "no free transaction buffer for %s", name);
-        ApolloLogU(Ctx, "strips: %s", s->Why);
+        StripsFail(Ctx, "no free transaction buffer for %s", name);
         WdfWaitLockRelease(Ctx->DevLock);
         return FALSE;
     }
@@ -2051,9 +2027,7 @@ static BOOLEAN StripsPrepareOne(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Slot, _In_ 
         /* never published: the DSP saw nothing */
         s->StripState[Slot] = APOLLO_STRIP_NONE;
         if (s->State == APOLLO_STRIPS_STATE_BUILDING) {
-            s->State = APOLLO_STRIPS_STATE_FAILED;
-            StripsSetWhy(s, "strip for %s not sent (0x%08x)", name, status);
-            ApolloLogU(Ctx, "strips: %s", s->Why);
+            StripsFail(Ctx, "strip for %s not sent (0x%08x)", name, status);
         }
     } else if (NT_SUCCESS(status)) {
         s->StripAckMs[Slot] = (ULONG)((KeQueryInterruptTime() - x->PublishedAt) / 10000ULL);
@@ -2112,18 +2086,14 @@ static BOOLEAN StripsStartAll(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm, _In_ ULON
     }
     if (n == 0 || StripPlanStartPm(Pm, StripsLayoutStrips(Ctx), Limit, plan) != 0 || plan->N == 0 ||
         plan->N > STRIP_PLAN_ENT_SLOTS) {
-        s->State = APOLLO_STRIPS_STATE_FAILED;
-        StripsSetWhy(s, "planner error for the start of StripMask 0x%02lx Virtual 0x%02lx: nothing started",
+        StripsFail(Ctx, "planner error for the start of StripMask 0x%02lx Virtual 0x%02lx: nothing started",
                      Pm & STRIP_PM_MIC, (Pm & STRIP_PM_VIRTUAL) >> 8);
-        ApolloLogU(Ctx, "strips: %s", s->Why);
         WdfWaitLockRelease(Ctx->DevLock);
         return FALSE;
     }
     x = XactAlloc(Ctx, s->Dsp);
     if (x == NULL) {
-        s->State = APOLLO_STRIPS_STATE_FAILED;
-        StripsSetWhy(s, "no free transaction buffer for the start: nothing started");
-        ApolloLogU(Ctx, "strips: %s", s->Why);
+        StripsFail(Ctx, "no free transaction buffer for the start: nothing started");
         WdfWaitLockRelease(Ctx->DevLock);
         return FALSE;
     }
@@ -2141,9 +2111,7 @@ static BOOLEAN StripsStartAll(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm, _In_ ULON
     } else if (x->State == XactBuilding) {
         /* never published: nothing started */
         if (s->State == APOLLO_STRIPS_STATE_BUILDING) {
-            s->State = APOLLO_STRIPS_STATE_FAILED;
-            StripsSetWhy(s, "start transaction not sent (0x%08x): nothing started", status);
-            ApolloLogU(Ctx, "strips: %s", s->Why);
+            StripsFail(Ctx, "start transaction not sent (0x%08x): nothing started", status);
         }
     } else {
         /* Published: from here every strip in Pm is stopped at D0 exit, proven or not. */
@@ -2177,7 +2145,7 @@ static BOOLEAN StripsStartAll(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Pm, _In_ ULON
                 for (d = 0; d < Ctx->NumDsps && d < APOLLO_MAX_DSPS; d++) {
                     NTSTATUS st;
 
-                    /* [Twin X G5] every DSP but the strip DSP (x8p 0, 2-5; Twin X Duo 0), as before */
+                    /* every DSP but the strip DSP (x8p 0, 2-5; Twin X Duo 0) */
                     if ((StripRouteDsps(Ctx->NumDsps, s->Dsp) & (1u << d)) == 0 ||
                         !Ctx->Cmd[d].Allocated || !Ctx->Cmd[d].Live) {
                         continue;
@@ -2482,7 +2450,7 @@ static BOOLEAN StripsProbeSleep(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Gen, _In_ U
  * StripLock held, DevLock not. After SettleMs, reads the capture ring STRIP_PROBE_READS times
  * (ApolloLevelsRead with DevLock held, as GET_LEVELS does: StripLock -> DevLock -> EngineLock)
  * and keeps each record slot's largest peak. Strip input i records into slot i (x8p legacy
- * layout; [Twin X G5] the Twin X's descriptor too: 0x0001/0x0002 at slots 0/1, strip_plan.h
+ * layout; the Twin X's descriptor too: 0x0001/0x0002 at slots 0/1, strip_plan.h
  * RecId). An open input carries noise, so a live strip never reads exactly zero over ~8k
  * frames. TRUE = measured; *Dead = the inputs in Mask whose slot never left zero.
  */
@@ -2749,7 +2717,7 @@ static VOID StripsProbe(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Mask, _In_ ULONG Li
 }
 
 /*
- * [Twin X G5] StripsEnable=2 (dry run), StripLock and DevLock held, every gate passed: the pass
+ * StripsEnable=2 (dry run), StripLock and DevLock held, every gate passed: the pass
  * this unit would get, built by the same planner and logged, NOT sent. Per input: its DSP input,
  * the record slot of its channel in the live IO descriptor, the instance header and blocks, the
  * PREPARE size, the START words and the DSPs that would get its route word; then the 48V state
@@ -2879,7 +2847,7 @@ static ULONG StripsAdoptDecideNow(_In_ PDEVICE_CONTEXT Ctx, _Out_ int *Teardown,
      */
     Now->Mask = StripsPm(s);
     Now->Rate = Ctx->SampleRate;
-    Now->Limit = StripsStepLimit(s->Steps);
+    Now->Limit = StripPlanSteps(s->Steps);
     Now->ModuleHash = StripsModulesHash();
     Now->PlanHash = StripPlanHashPm(Now->Mask, StripsLayoutStrips(Ctx), Now->Limit, Now->Rate, Now->Dsp, Ctx->NumDsps, plan);
     Now->LayoutOk = (s->LayoutRead && s->LayoutWhy == 0) ? 1u : 0u;
@@ -3245,7 +3213,7 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
         StripsOff(s, "the strip DSP's pools do not match the recipe: nothing sent");
         goto unlock;
     }
-    limit = StripsStepLimit(s->Steps);
+    limit = StripPlanSteps(s->Steps);
     mask = s->Mask & ((1u << APOLLO_STRIP_INPUTS) - 1);
     pm = StripsPm(s);                           /* [Virtual] + the Input Strips of StripVirtualMask (after the pool check) */
     if (s->Enable == 2) {
@@ -3254,7 +3222,7 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
                   "nothing sent", dsp, ApolloRateText(Ctx->SampleRate));
         ApolloLogU(Ctx, "strips: dry run: would go to stage %lu (%s) on StripMask 0x%02lx, StripVirtualMask 0x%02lx", limit,
                   StripsStepName(limit), mask, s->VMask);
-        StripsLogDryRun(Ctx, pm, limit);        /* [Twin X G5] the whole pass, per input, not sent */
+        StripsLogDryRun(Ctx, pm, limit);        /* the whole pass, per input, not sent */
         s->State = APOLLO_STRIPS_STATE_IDLE;
         StripsSetWhy(s, "dry run complete: every gate passed, nothing sent");
         goto unlock;
@@ -3286,9 +3254,7 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
     if (teardown && !StripsTeardownXact(Ctx, "warm rebuild", FALSE)) {
         WdfWaitLockAcquire(Ctx->DevLock, NULL);
         if (s->Gen == gen && s->State == APOLLO_STRIPS_STATE_BUILDING) {
-            s->State = APOLLO_STRIPS_STATE_FAILED;
-            StripsSetWhy(s, "warm rebuild: the old strips' teardown was not proven: power-cycle the Apollo");
-            ApolloLogU(Ctx, "strips: %s", s->Why);
+            StripsFail(Ctx, "warm rebuild: the old strips' teardown was not proven: power-cycle the Apollo");
         }
         WdfWaitLockRelease(Ctx->DevLock);
         return;
@@ -3326,8 +3292,8 @@ static VOID StripsPass(_In_ PDEVICE_CONTEXT Ctx)
     /*
      * Stages 2-8 (docs/STRIPS.md 10.8): a PREPARE transaction per preamp in StripMask (input 1
      * first), [Virtual] then per Virtual input in StripVirtualMask (VIRTUAL 1 first), then ONE START
-     * transaction for all of them, in strip_plan.h's order (StripPassStepPm; StripMask alone: the
-     * same list as before). Every PREPARE buffer stays held until the START is taken.
+     * transaction for all of them, in strip_plan.h's order (StripPassStepPm; StripMask alone:
+     * StripPassStep's list). Every PREPARE buffer stays held until the START is taken.
      */
     {
         PAPOLLO_XACT held[APOLLO_STRIP_SLOTS];
@@ -3567,7 +3533,7 @@ BOOLEAN ApolloStripsExitKeep(PDEVICE_CONTEXT Ctx)
 /*
  * [Warm] D0 exit, no lock held, after the plug-in quiesce: Keep (re-checked: the plug-in teardown may have
  * quarantined the DSP) leaves the strips running and sends nothing, so the next warm start adopts them;
- * otherwise the teardown, as every D0 exit did before.
+ * otherwise the teardown.
  */
 _Use_decl_annotations_
 VOID ApolloStripsExit(PDEVICE_CONTEXT Ctx, BOOLEAN Keep)

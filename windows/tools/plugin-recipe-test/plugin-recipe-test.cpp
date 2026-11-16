@@ -534,7 +534,7 @@ static int SelfTest()
     /* saved inserts (Apollo Control's plugins.json): round trip, damaged entries dropped, one per input */
     {
         Saved a;
-        a.unit = "SN22532017106180";
+        a.unit = "SN20000000000001";
         a.input = 2;
         a.name = "UAD Synthetic Test";
         a.file = "synthetic-test-mono-runtime-bundle.json";

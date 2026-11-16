@@ -119,9 +119,15 @@ private:
     };
 
     bool OpenDevice();
-    bool OpenAggDevice();               /* [G6] */
     bool ReadLayout();                  /* [G6] AGG_GET_LAYOUT into layout_ */
     ASIOError CreateAggBuffers(ASIOBufferInfo *bufferInfos, long numChannels, long bufferSize);
+    bool CheckShared(ULONG version, long bufferSize);
+    void MapBuffers(ASIOBufferInfo *bufferInfos, long numChannels, long bufferSize);
+    ASIOError SetCallbacks(ASIOCallbacks *callbacks);
+    void Message(long selector)
+    {
+        if (callbacks_ && callbacks_->asioMessage) callbacks_->asioMessage(selector, 0, nullptr, nullptr);
+    }
     bool Ioctl(DWORD code, void *in, DWORD inLen, void *out, DWORD outLen, DWORD *err);
     bool ReadSnapshot(Snapshot *s);
     bool ReadRate(APOLLO_RATE_INFO *r);     /* [Rate] GET_RATE on this handle's unit */
@@ -135,7 +141,6 @@ private:
     APOLLO_AGG_LAYOUT *layout_ = nullptr;
     ULONG openLayout_ = 0, openEpoch_ = 0, openInLat_ = 0, openOutLat_ = 0;
     HANDLE dev_ = INVALID_HANDLE_VALUE;
-    APOLLO_INFO info_ = {};
     long numIn_ = 0, numOut_ = 0;
     long blockFrames_ = 0;
     bool inActive_[MAX_CH] = {};
@@ -194,36 +199,6 @@ ApolloAsio::~ApolloAsio()
     delete layout_;
 }
 
-/*
- * [G6] The combined device: any unit's handle reaches the driver-global aggregate. The x8p is
- * preferred (it is upstream on the Thunderbolt chain and outlives the Twin X, spec 6.2), else the
- * first unit the driver runs.
- */
-bool ApolloAsio::OpenAggDevice()
-{
-    APOLLO_UNIT_ENTRY *units = new (std::nothrow) APOLLO_UNIT_ENTRY[APOLLO_SELECT_MAX];
-    if (units == nullptr) {
-        SetError("Out of memory.");
-        return false;
-    }
-    int n = ApolloListUnits(units, APOLLO_SELECT_MAX, nullptr, 0);
-    int pick = n > 0 ? ApolloPickUnit(units, n, APOLLO_PICK_X8P) : -1;
-    for (int i = 0; pick < 0 && i < n; i++) {
-        if (units[i].Error == 0 && ApolloInfoActive(&units[i].Info, units[i].InfoBytes)) pick = i;
-    }
-    bool ok = false;
-    if (pick < 0) {
-        SetError("No Apollo runs on the open driver (apollo.sys).");
-    } else {
-        dev_ = CreateFileW(units[pick].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-        ok = dev_ != INVALID_HANDLE_VALUE;
-        if (!ok) SetError("The Apollo driver refused the connection.");
-    }
-    delete[] units;
-    return ok;
-}
-
 bool ApolloAsio::ReadLayout()
 {
     DWORD err = 0;
@@ -242,6 +217,9 @@ bool ApolloAsio::ReadLayout()
  * [Twin X G2] The x8p only: every Apollo interface is asked GET_INFO through a short-lived
  * read-only handle and the one with DeviceType 0x22 is opened (apollo_select.h). Another unit
  * on the driver (the Twin X in observe mode) is never opened for audio, whatever the order.
+ * [G6] The combined device: any unit's handle reaches the driver-global aggregate. The x8p is
+ * preferred (it is upstream on the Thunderbolt chain and outlives the Twin X, spec 6.2), else the
+ * first unit the driver runs.
  */
 bool ApolloAsio::OpenDevice()
 {
@@ -252,11 +230,14 @@ bool ApolloAsio::OpenDevice()
     }
     int n = ApolloListUnits(units, APOLLO_SELECT_MAX, nullptr, 0);
     int pick = n > 0 ? ApolloPickUnit(units, n, APOLLO_PICK_X8P) : -1;
+    for (int i = 0; agg_ && pick < 0 && i < n; i++) {
+        if (units[i].Error == 0 && ApolloInfoActive(&units[i].Info, units[i].InfoBytes)) pick = i;
+    }
     bool ok = false;
-    if (n <= 0) {
-        SetError("No Apollo x8p on the open driver (apollo.sys is not running).");
-    } else if (pick < 0) {
-        SetError("No Apollo x8p on the open driver (another Apollo is there, but this ASIO driver runs the x8p only).");
+    if (pick < 0) {
+        SetError(agg_ ? "No Apollo runs on the open driver (apollo.sys)."
+                 : n <= 0 ? "No Apollo x8p on the open driver (apollo.sys is not running)."
+                 : "No Apollo x8p on the open driver (another Apollo is there, but this ASIO driver runs the x8p only).");
     } else {
         dev_ = CreateFileW(units[pick].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -282,7 +263,7 @@ ASIOBool ApolloAsio::init(void *)
     qpcFreq_ = f.QuadPart;
     if (agg_) {
         /* [G6] the combined device: its channel list is the driver's layout (spec 6.6) */
-        if (dev_ == INVALID_HANDLE_VALUE && !OpenAggDevice()) return ASIOFalse;
+        if (dev_ == INVALID_HANDLE_VALUE && !OpenDevice()) return ASIOFalse;
         if (!ReadLayout()) return ASIOFalse;
         if (!(layout_->Flags & APOLLO_AGG_LAYOUT_ACTIVE)) {
             SetError("The combined Apollo device is off, or no Apollo runs (Apollo Control, Units & routing).");
@@ -294,27 +275,28 @@ ASIOBool ApolloAsio::init(void *)
         return ASIOTrue;
     }
     if (dev_ == INVALID_HANDLE_VALUE && !OpenDevice()) return ASIOFalse;
+    APOLLO_INFO info = {};
     DWORD infoBytes = 0;
-    if (ApolloQueryInfo(dev_, &info_, &infoBytes) != 0) {
+    if (ApolloQueryInfo(dev_, &info, &infoBytes) != 0) {
         SetError("The Apollo driver did not answer.");
         return ASIOFalse;
     }
     /* [Twin X G2] the handle must still be the x8p, and one the driver runs (not observe). */
-    if (!ApolloInfoIsX8p(&info_, infoBytes) || !ApolloInfoActive(&info_, infoBytes)) {
+    if (!ApolloInfoIsX8p(&info, infoBytes) || !ApolloInfoActive(&info, infoBytes)) {
         SetError("The Apollo x8p is not running on the open driver (observe mode or another unit).");
         return ASIOFalse;
     }
-    if (info_.Version < 2 || info_.Stage != ApolloStageConnected || !(info_.Flags & APOLLO_FLAG_CONNECTED)) {
+    if (info.Version < 2 || info.Stage != ApolloStageConnected || !(info.Flags & APOLLO_FLAG_CONNECTED)) {
         SetError("The Apollo x8p is not ready (still starting up, or bring-up failed: see Apollo Control).");
         return ASIOFalse;
     }
     /* [Rate] any of the six rates (the host asks which with Get/CanSampleRate) */
-    if (info_.SampleRate == 0 || !(info_.Flags & APOLLO_FLAG_TRANSPORT)) {
+    if (info.SampleRate == 0 || !(info.Flags & APOLLO_FLAG_TRANSPORT)) {
         SetError("The Apollo's audio clock is not running.");
         return ASIOFalse;
     }
-    numIn_ = (long)info_.RecChannels < N_IN_NAMES ? (long)info_.RecChannels : N_IN_NAMES;
-    numOut_ = (long)info_.PlayChannels < N_OUT_NAMES ? (long)info_.PlayChannels : N_OUT_NAMES;
+    numIn_ = (long)info.RecChannels < N_IN_NAMES ? (long)info.RecChannels : N_IN_NAMES;
+    numOut_ = (long)info.PlayChannels < N_OUT_NAMES ? (long)info.PlayChannels : N_OUT_NAMES;
     SetError("");
     return ASIOTrue;
 }
@@ -459,16 +441,9 @@ ASIOError ApolloAsio::setSampleRate(ASIOSampleRate sampleRate)
             return ASE_HWMalfunction;
         }
     }
-    if (!agg_) {
-        DWORD ib = 0;
-        ApolloQueryInfo(dev_, &info_, &ib);         /* the new rate, the same channels */
-    } else {
-        ReadLayout();                                /* latencies at the new rate */
-    }
-    if (buffersCreated_ && callbacks_ && callbacks_->asioMessage) {
-        /* the buffers stay, the latencies moved; the combined device's layout version moved too */
-        callbacks_->asioMessage(agg_ ? kAsioResetRequest : kAsioLatenciesChanged, 0, nullptr, nullptr);
-    }
+    if (agg_) ReadLayout();                         /* latencies at the new rate (the x8p's channels stay) */
+    /* the buffers stay, the latencies moved; the combined device's layout version moved too */
+    if (buffersCreated_) Message(agg_ ? kAsioResetRequest : kAsioLatenciesChanged);
     SetError("");
     return ASE_OK;
 }
@@ -522,8 +497,7 @@ ASIOError ApolloAsio::setClockSource(long reference)
         delete c;
         if (!ok) return ASE_HWMalfunction;
         ReadLayout();
-        /* the clock domain changed: the host must reset (the driver re-originates its client too) */
-        if (callbacks_ && callbacks_->asioMessage) callbacks_->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
+        Message(kAsioResetRequest);     /* the clock domain changed (the driver re-originates its client too) */
         return ASE_OK;
     }
     return reference == 0 ? ASE_OK : ASE_InvalidParameter;
@@ -539,10 +513,7 @@ ASIOError ApolloAsio::getChannelInfo(ASIOChannelInfo *info)
     if (agg_ && layout_) {
         /* [G6] "x8p MIC/LINE 1", "TwinX MON L": the unit is in the name (spec 6.6) */
         const APOLLO_AGG_LCHAN *l = info->isInput ? &layout_->In[info->channel] : &layout_->Out[info->channel];
-        char name[APOLLO_AGG_NAME_CHARS + 1];
-        memcpy(name, l->Name, APOLLO_AGG_NAME_CHARS);
-        name[APOLLO_AGG_NAME_CHARS] = 0;
-        strcpy_s(info->name, sizeof(info->name), name);
+        sprintf_s(info->name, sizeof(info->name), "%.*s", (int)strnlen(l->Name, APOLLO_AGG_NAME_CHARS), l->Name);
         info->channelGroup = l->Unit;
         return ASE_OK;
     }
@@ -562,13 +533,7 @@ ASIOError ApolloAsio::createBuffers(ASIOBufferInfo *bufferInfos, long numChannel
     if (agg_) {
         if (!callbacks) return ASE_InvalidParameter;
         ASIOError e = CreateAggBuffers(bufferInfos, numChannels, bufferSize);
-        if (e != ASE_OK) return e;
-        callbacks_ = callbacks;
-        timeInfoMode_ = callbacks->asioMessage &&
-                        callbacks->asioMessage(kAsioSelectorSupported, kAsioSupportsTimeInfo, nullptr, nullptr) == 1 &&
-                        callbacks->asioMessage(kAsioSupportsTimeInfo, 0, nullptr, nullptr) == 1;
-        buffersCreated_ = true;
-        return ASE_OK;
+        return e == ASE_OK ? SetCallbacks(callbacks) : e;
     }
     if (!callbacks || bufferSize < APOLLO_ASIO_MIN_FRAMES || bufferSize > APOLLO_ASIO_MAX_FRAMES ||
         (bufferSize & (bufferSize - 1)) != 0) {
@@ -612,22 +577,30 @@ ASIOError ApolloAsio::createBuffers(ASIOBufferInfo *bufferInfos, long numChannel
         SetError("The Apollo driver refused the ASIO buffers.");
         return ASE_HWMalfunction;
     }
-    shared_ = (PAPOLLO_ASIO_SHARED)(ULONG_PTR)map_.SharedAddress;
-    if (!shared_ || shared_->Version != APOLLO_ASIO_VERSION || shared_->BufferFrames != (ULONG)bufferSize) {
-        Ioctl(IOCTL_APOLLO_ASIO_CLOSE, nullptr, 0, nullptr, 0, nullptr);
-        CloseHandle(event_);
-        event_ = nullptr;
-        shared_ = nullptr;
-        SetError("The Apollo driver's ASIO block does not match this DLL; update both.");
-        return ASE_HWMalfunction;
-    }
+    if (!CheckShared(APOLLO_ASIO_VERSION, bufferSize)) return ASE_HWMalfunction;
+    MapBuffers(bufferInfos, numChannels, bufferSize);
+    return SetCallbacks(callbacks);
+}
 
-    curHalf_ = 0;
-    curSwitch_ = 0;
-    skipped_ = 0;
+/* The block the driver mapped must be this DLL's version and size; else the client is closed again. */
+bool ApolloAsio::CheckShared(ULONG version, long bufferSize)
+{
+    shared_ = (PAPOLLO_ASIO_SHARED)(ULONG_PTR)map_.SharedAddress;
+    if (shared_ && shared_->Version == version && shared_->BufferFrames == (ULONG)bufferSize) return true;
+    Ioctl(IOCTL_APOLLO_ASIO_CLOSE, nullptr, 0, nullptr, 0, nullptr);
+    CloseHandle(event_);
+    event_ = nullptr;
+    shared_ = nullptr;
+    SetError("The Apollo driver's ASIO block does not match this DLL; update both.");
+    return false;
+}
+
+/* Each channel's two halves, in the order the driver was given them; the switch state starts over. */
+void ApolloAsio::MapBuffers(ASIOBufferInfo *bufferInfos, long numChannels, long bufferSize)
+{
     BYTE *base = (BYTE *)shared_;
     long in = 0, out = 0;
-    for (i = 0; i < numChannels; i++) {
+    for (long i = 0; i < numChannels; i++) {
         for (int h = 0; h < 2; h++) {
             ULONG off = bufferInfos[i].isInput ? map_.InOffset[h] + (ULONG)in * map_.ChannelStride
                                                : map_.OutOffset[h] + (ULONG)out * map_.ChannelStride;
@@ -635,10 +608,16 @@ ASIOError ApolloAsio::createBuffers(ASIOBufferInfo *bufferInfos, long numChannel
         }
         if (bufferInfos[i].isInput) in++; else out++;
     }
-
+    curHalf_ = 0;
+    curSwitch_ = 0;
+    skipped_ = 0;
     blockFrames_ = bufferSize;
     openInLat_ = shared_->InputLatencyFrames;      /* [Lat] Run() tells the host when the driver moves them */
     openOutLat_ = shared_->OutputLatencyFrames;
+}
+
+ASIOError ApolloAsio::SetCallbacks(ASIOCallbacks *callbacks)
+{
     callbacks_ = callbacks;
     timeInfoMode_ = callbacks->asioMessage &&
                     callbacks->asioMessage(kAsioSelectorSupported, kAsioSupportsTimeInfo, nullptr, nullptr) == 1 &&
@@ -653,14 +632,11 @@ ASIOError ApolloAsio::createBuffers(ASIOBufferInfo *bufferInfos, long numChannel
  */
 ASIOError ApolloAsio::CreateAggBuffers(ASIOBufferInfo *bufferInfos, long numChannels, long bufferSize)
 {
-    APOLLO_ASIO_OPEN_AGG_IN *req = new (std::nothrow) APOLLO_ASIO_OPEN_AGG_IN;
+    APOLLO_ASIO_OPEN_AGG_IN req = {};
     long i, nIn = 0, nOut = 0;
     DWORD err = 0;
 
-    if (!req) return ASE_NoMemory;
-    memset(req, 0, sizeof(*req));
     if (bufferSize < APOLLO_ASIO_MIN_FRAMES || bufferSize > APOLLO_ASIO_MAX_FRAMES || (bufferSize & (bufferSize - 1)) != 0) {
-        delete req;
         SetError("Buffer size must be a power of two from 64 to 1024 samples.");
         return ASE_InvalidParameter;
     }
@@ -669,33 +645,31 @@ ASIOError ApolloAsio::CreateAggBuffers(ASIOBufferInfo *bufferInfos, long numChan
     for (i = 0; i < numChannels; i++) {
         long ch = bufferInfos[i].channelNum;
         if (bufferInfos[i].isInput) {
-            if (ch < 0 || ch >= numIn_ || nIn >= MAX_CH || inActive_[ch]) { delete req; return ASE_InvalidParameter; }
+            if (ch < 0 || ch >= numIn_ || nIn >= MAX_CH || inActive_[ch]) return ASE_InvalidParameter;
             inActive_[ch] = true;
-            req->In[nIn++] = (USHORT)ch;
+            req.In[nIn++] = (USHORT)ch;
         } else {
-            if (ch < 0 || ch >= numOut_ || nOut >= MAX_CH || outActive_[ch]) { delete req; return ASE_InvalidParameter; }
+            if (ch < 0 || ch >= numOut_ || nOut >= MAX_CH || outActive_[ch]) return ASE_InvalidParameter;
             outActive_[ch] = true;
-            req->Out[nOut++] = (USHORT)ch;
+            req.Out[nOut++] = (USHORT)ch;
         }
     }
     event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (!event_) { delete req; return ASE_NoMemory; }
-    req->Version = APOLLO_ASIO_VERSION_AGG;
-    req->BufferFrames = (ULONG)bufferSize;
-    req->InCount = (ULONG)nIn;
-    req->OutCount = (ULONG)nOut;
-    req->LayoutVersion = layout_ ? layout_->LayoutVersion : 0;
-    req->EventHandle = (ULONGLONG)(ULONG_PTR)event_;
+    if (!event_) return ASE_NoMemory;
+    req.Version = APOLLO_ASIO_VERSION_AGG;
+    req.BufferFrames = (ULONG)bufferSize;
+    req.InCount = (ULONG)nIn;
+    req.OutCount = (ULONG)nOut;
+    req.LayoutVersion = layout_ ? layout_->LayoutVersion : 0;
+    req.EventHandle = (ULONGLONG)(ULONG_PTR)event_;
     memset(&map_, 0, sizeof(map_));
-    bool ok = Ioctl(IOCTL_APOLLO_ASIO_OPEN, req, sizeof(*req), &map_, sizeof(map_), &err);
-    delete req;
-    if (!ok) {
+    if (!Ioctl(IOCTL_APOLLO_ASIO_OPEN, &req, sizeof(req), &map_, sizeof(map_), &err)) {
         CloseHandle(event_);
         event_ = nullptr;
         if (err == ERROR_REVISION_MISMATCH) {
             ReadLayout();
             SetError("The combined device's channels changed: reopen the ASIO driver.");
-            if (callbacks_ && callbacks_->asioMessage) callbacks_->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
+            Message(kAsioResetRequest);
             return ASE_HWMalfunction;
         }
         SetError(err == ERROR_BUSY ? "Another program is already using the combined Apollo device." :
@@ -703,33 +677,10 @@ ASIOError ApolloAsio::CreateAggBuffers(ASIOBufferInfo *bufferInfos, long numChan
                   "The Apollo driver refused the ASIO buffers."));
         return ASE_HWMalfunction;
     }
-    shared_ = (PAPOLLO_ASIO_SHARED)(ULONG_PTR)map_.SharedAddress;
-    if (!shared_ || shared_->Version != APOLLO_ASIO_VERSION_AGG || shared_->BufferFrames != (ULONG)bufferSize) {
-        Ioctl(IOCTL_APOLLO_ASIO_CLOSE, nullptr, 0, nullptr, 0, nullptr);
-        CloseHandle(event_);
-        event_ = nullptr;
-        shared_ = nullptr;
-        SetError("The Apollo driver's ASIO block does not match this DLL; update both.");
-        return ASE_HWMalfunction;
-    }
+    if (!CheckShared(APOLLO_ASIO_VERSION_AGG, bufferSize)) return ASE_HWMalfunction;
     openLayout_ = shared_->Reserved[0];
     openEpoch_ = shared_->Reserved[1];
-    openInLat_ = shared_->InputLatencyFrames;
-    openOutLat_ = shared_->OutputLatencyFrames;
-    curHalf_ = 0;
-    curSwitch_ = 0;
-    skipped_ = 0;
-    BYTE *base = (BYTE *)shared_;
-    long in = 0, out = 0;
-    for (i = 0; i < numChannels; i++) {
-        for (int h = 0; h < 2; h++) {
-            ULONG off = bufferInfos[i].isInput ? map_.InOffset[h] + (ULONG)in * map_.ChannelStride
-                                               : map_.OutOffset[h] + (ULONG)out * map_.ChannelStride;
-            bufferInfos[i].buffers[h] = base + off;
-        }
-        if (bufferInfos[i].isInput) in++; else out++;
-    }
-    blockFrames_ = bufferSize;
+    MapBuffers(bufferInfos, numChannels, bufferSize);
     return ASE_OK;
 }
 
@@ -822,49 +773,39 @@ void ApolloAsio::Run()
 
         if (stopThread_) break;
         if (w == WAIT_TIMEOUT) {
-            /* No half in 500 ms: the unit is gone or the engine stopped. Ask the host to reset once. */
+            /*
+             * No half in 500 ms: the unit is gone or the engine stopped ([G6] the combined device: no unit
+             * is the clock any more, all gone or Combined off). Ask the host to reset once.
+             */
             APOLLO_INFO i = {};
             DWORD ib = 0;
-            if (agg_) {
-                /* [G6] the combined device: no unit is the clock any more (all gone, or Combined off) */
-                if (!resetSent && (!ReadLayout() || !(layout_->Flags & APOLLO_AGG_LAYOUT_ACTIVE))) {
-                    resetSent = true;
-                    if (callbacks_ && callbacks_->asioMessage) callbacks_->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
-                }
-                continue;
-            }
-            if (!resetSent && (ApolloQueryInfo(dev_, &i, &ib) != 0 ||
-                               !(i.Flags & APOLLO_FLAG_TRANSPORT) || (i.Flags & APOLLO_FLAG_ENGINE_LOST))) {
+            if (!resetSent && (agg_ ? !ReadLayout() || !(layout_->Flags & APOLLO_AGG_LAYOUT_ACTIVE)
+                                    : ApolloQueryInfo(dev_, &i, &ib) != 0 || !(i.Flags & APOLLO_FLAG_TRANSPORT) ||
+                                      (i.Flags & APOLLO_FLAG_ENGINE_LOST))) {
                 resetSent = true;
-                if (callbacks_ && callbacks_->asioMessage) callbacks_->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
+                Message(kAsioResetRequest);
             }
             continue;
         }
-        if (agg_ && !resetSent && callbacks_ && callbacks_->asioMessage) {
-            /*
-             * [G6] The timeline unit changed (master lost or back: another clock domain) or the
-             * channel list changed (Apply in Apollo Control): the host must reset (spec 6.3.4, 6.6).
-             * A latency change alone (ASRC size) is reported as such.
-             */
-            if (shared_->Reserved[0] != openLayout_ || shared_->Reserved[1] != openEpoch_ ||
-                (shared_->Reserved[2] & APOLLO_AGG_SHARED_STALE) != 0) {
+        if (callbacks_ && callbacks_->asioMessage && (!agg_ || !resetSent)) {
+            if (agg_ && (shared_->Reserved[0] != openLayout_ || shared_->Reserved[1] != openEpoch_ ||
+                         (shared_->Reserved[2] & APOLLO_AGG_SHARED_STALE) != 0)) {
+                /*
+                 * [G6] The timeline unit changed (master lost or back: another clock domain) or the
+                 * channel list changed (Apply in Apollo Control): the host must reset (spec 6.3.4, 6.6).
+                 */
                 resetSent = true;
                 callbacks_->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
             } else if (shared_->InputLatencyFrames != openInLat_ || shared_->OutputLatencyFrames != openOutLat_) {
+                /*
+                 * [Lat] The driver moved the reported latencies (the input strips went live or away, a plug-in
+                 * chain over its record-delay budget came or went; [G6] the ASRC size): the host asks
+                 * getLatencies again.
+                 */
                 openInLat_ = shared_->InputLatencyFrames;
                 openOutLat_ = shared_->OutputLatencyFrames;
                 callbacks_->asioMessage(kAsioLatenciesChanged, 0, nullptr, nullptr);
             }
-        }
-        if (!agg_ && callbacks_ && callbacks_->asioMessage &&
-            (shared_->InputLatencyFrames != openInLat_ || shared_->OutputLatencyFrames != openOutLat_)) {
-            /*
-             * [Lat] The driver moved the reported latencies (the input strips went live or away, a plug-in chain over
-             * its record-delay budget came or went): the host asks getLatencies again.
-             */
-            openInLat_ = shared_->InputLatencyFrames;
-            openOutLat_ = shared_->OutputLatencyFrames;
-            callbacks_->asioMessage(kAsioLatenciesChanged, 0, nullptr, nullptr);
         }
         if (!ReadSnapshot(&s) || s.switches == last) continue;
         if ((LONG)(s.switches - last) > 1) {

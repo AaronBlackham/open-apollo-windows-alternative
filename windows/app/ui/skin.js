@@ -36,7 +36,6 @@ const Skin = (() => {
     const m = (window.ApolloThemes && window.ApolloThemes.manifests || []).find(x => x.id === id) || { id, name: id, mode: 'dark' };
     packs.set(id, { manifest: m, r: renderers || {} });
   }
-  const list = () => (window.ApolloThemes && window.ApolloThemes.manifests || []).filter(m => packs.has(m.id));
   const manifest = (id = cur) => (packs.get(id) || {}).manifest || { id, name: id, mode: 'dark' };
   const has = id => packs.has(id);
   const id = () => cur;
@@ -253,5 +252,5 @@ const Skin = (() => {
     },
   };
 
-  return { register, list, manifest, has, id, r, use, attach, decorate, decorateAll, deco, on, pulse, R, BASE, reduced };
+  return { register, manifest, has, id, r, use, attach, decorate, decorateAll, deco, on, pulse, R, BASE, reduced };
 })();

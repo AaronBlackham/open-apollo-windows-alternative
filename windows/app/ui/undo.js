@@ -113,5 +113,5 @@ const Undo = (() => {
     return false;
   }
 
-  return { touch, step, build, render, key, forget: idx => U.delete(idx) };
+  return { touch, step, build, render, key };
 })();

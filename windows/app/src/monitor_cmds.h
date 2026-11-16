@@ -3,12 +3,9 @@
  * mixes, talkback to the cues; driver\monitor_plan.h): the names the UI sends as
  * "monitor\t<name>\t<value>[\t<unit>]" beyond G4's ten, and what the host itself refuses per model.
  *
- * Not included by main.cpp in this work copy (main.cpp belongs to the G7 change). The merge is three
- * hunks, in app\src\main-monitor.patch:
- *   1. #include "monitor_cmds.h" after "agg_json.h";
- *   2. MonitorParam(): `return MonFeatureParam(n, p);` instead of its final `return false;`;
- *   3. SettingAllowed(): the x8p block asks MonHostRefusalX8p() (the HP level stays refused: analog knobs;
- *      the HP1/HP2 source refusal goes, the driver's per-model plan decides).
+ * main.cpp: MonitorParam() ends in MonFeatureParam(), and SettingAllowed()'s x8p block asks
+ * MonHostRefusalX8p() (the HP level stays refused: analog knobs; the HP1/HP2 sources go to the driver,
+ * whose per-model plan decides).
  * Every command still goes out as SET_MONITOR_PARAM with the unit's slot; the driver refuses what the
  * unit lacks (STATUS_NOT_SUPPORTED / STATUS_INVALID_PARAMETER), which the UI shows inline.
  * tools\mon-plan-test compiles this file and checks every name against driver\monitor_plan.h.

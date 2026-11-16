@@ -415,6 +415,14 @@ static inline void Esc(std::string &out, const std::string &s)
     out += '"';
 }
 
+/* S as a JSON string (Esc); Apollo Control's host headers quote every UTF-8 string with this one. */
+static inline std::string Quote(const std::string &s)
+{
+    std::string o;
+    Esc(o, s);
+    return o;
+}
+
 /* What the UI knows about a unit (serial, model name), by unit key; may be empty. */
 struct UnitText {
     std::string model, serial;

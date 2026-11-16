@@ -45,51 +45,6 @@
   color-scheme: dark;
 }
 
-/* ---------- Lab: test-equipment slate, measurement grid, blue accent, mono labels ---------- */
-[data-look="lab"] {
-  --bg: #0e1318;
-  --view-bg: #0e1318;
-  --panel: #131a21;
-  --panel-2: #18212a;
-  --raised: #213040;
-  --line: #243140;
-  --line-strong: #37506a;
-  --text: #e3edf5;
-  --text-dim: #a8bacb;
-  --text-faint: #8599ad;
-  --head: #9fd0ff;
-  --accent: #3d9bff;
-  --accent-ink: #02101f;
-  --ok: #3fd47f;
-  --warn: #f5b53f;
-  --red: #ff5c63;
-  --red-ink: #1c0204;
-  --idle: #7d8b99;
-  --meter-lo: #3fd47f;
-  --meter-mid: #f5b53f;
-  --meter-hi: #ff5c63;
-  --meter-track: #090d11;
-  --meter-seg: 0;
-  --focus: #9fd0ff;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  --radius: 2px;
-  --radius-sm: 1px;
-  --border-w: 1px;
-  --cut: 0px;
-  --glow: none;
-  --lamp-glow: 0 0 0 transparent;
-  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-label: var(--mono);
-  --font-head: var(--mono);
-  --font-num: var(--mono);
-  --label-size: 10px;
-  --label-weight: 600;
-  --label-track: 0.06em;
-  --label-stretch: normal;
-  --grid-line: rgba(120, 165, 210, 0.06);
-  --sel-bg: #14283f;
-  color-scheme: dark;
-}
 /* Lab: the measurement grid behind every view */
 [data-look="lab"] .view {
   background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);

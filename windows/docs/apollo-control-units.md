@@ -24,7 +24,7 @@ again at the end of the pass when a Mode, stage or `active` changed.
 
 ```json
 {"type":"units","units":[
-  {"id":"SN22532017106180","index":0,"model":"Apollo x8p","deviceType":34,"serial":"22532017106180",
+  {"id":"SN20000000000001","index":0,"model":"Apollo x8p","deviceType":34,"serial":"20000000000001",
    "fw":"11.15.54803","mode":2,"present":true,"active":true,"observe":false,"stage":5},
   {"id":"7C1E40A2D3F09B61","index":1,"model":"Apollo Twin X (Gen 1)","deviceType":153,"serial":"2253202500117",
    "fw":"11.15.54803","mode":0,"present":true,"active":false,"observe":true,"stage":1}]}
@@ -92,7 +92,7 @@ DIM goes on with talkback, from here or the unit's button, and off again after).
 `pan:<cue>:<bus>`, half-dB, bus = input - 1 or 10), and the cue's source (CUE/MIX, `cue<n>mix`), MONO,
 MUTE and where it is heard. None of these read back, so they live in `cfg.mixes[x8p | unit id]` and go
 out again once per connection, mutes first. Refusals show under the Cues page's selector too. The host
-needs `app/src/monitor_cmds.h` and the three hunks of `app/src/main-monitor.patch` for these names.
+side of these names is `app/src/monitor_cmds.h`.
 
 **[Mix] Monitor mix** (`driver/monitor_plan.h` APOLLO_MON_MIX_*, `driver/cues.c`). On every strip of every segment: a
 console fader (-inf..+12 dB, half-dB; double-click 0 dB, Ctrl/Alt/Shift-drag fine), a pan (none for the talkback: its
@@ -162,7 +162,7 @@ once that insert runs, one `plug-param` per parameter that differs, then `plug-r
 Host to UI:
 
 ```json
-{"type":"plugins","unit":0,"present":true,"unitId":"SN22532017106180",
+{"type":"plugins","unit":0,"present":true,"unitId":"SN20000000000001",
  "model":"x8p","inputs":8,"pairs":[0,2,4,6],"hiz":[0,1],"supported":true,
  "hosting":{"driver":true,"on":true,"caller":true,"stereo":true,"staged":true,"callerRule":true,"why":"enabled","admin":""},
  "dsp":{"index":1,"room":13386,"total":16384,"largest":13386,"estimate":false,"quarantined":false,"owned":true,"admitted":true,"load":1989,
@@ -832,14 +832,14 @@ shown. `last-state.json` in the same folder is the autosave (1.11.4), never list
 
 ```json
 {"format":"apollo-control-session","version":1,"name":"Tracking drums","saved":"2026-11-15T18:02:11.000Z","app":"1.0.0",
- "view":{"look":"studio","screen":"control","unit":"SN22532017106180"},
- "units":[{"id":"SN22532017106180","model":"Apollo x8p","deviceType":34,"serial":"22532017106180","rate":48000,
+ "view":{"look":"studio","screen":"control","unit":"SN20000000000001"},
+ "units":[{"id":"SN20000000000001","model":"Apollo x8p","deviceType":34,"serial":"20000000000001","rate":48000,
    "inputs":[{"gain":38,"line":false,"pad":false,"p48":true,"lowcut":false,"phase":false}],
    "links":[false,true,false,false],"hizImp":-1,
    "monitor":{"level":152,"mute":false,"dim":false,"mono":false,"dimLevel":1,"source":0,"hp1":null,"hp1src":0,"hp2src":1,"alt":0},
    "mix":{"alt":[{},{}],"cues":[{},{},{},{}],"main":{"0":{"level":-12}},"aux":[{"ret":-6},{}]},
    "channels":[{"name":"Kick","color":"red","hidden":false}],
-   "plugins":{"chains":[{"unit":"SN22532017106180","input":0,"aux":null,"stereo":false,"mon":false,"slots":[...],"unison":null}]}}]}
+   "plugins":{"chains":[{"unit":"SN20000000000001","input":0,"aux":null,"stereo":false,"mon":false,"slots":[...],"unison":null}]}}]}
 ```
 
 | Field | Meaning |
@@ -1036,7 +1036,7 @@ unsolicited `agg` whenever the stored config changes for another reason.
   "version": 1,
   "units": [
     {"id":"7C1E40A2D3F09B61","model":"Apollo Twin X","deviceType":153,"serial":"2253202500117"},
-    {"id":"SN22532017106180","model":"Apollo x8p","deviceType":34,"serial":"22532017106180"}],
+    {"id":"SN20000000000001","model":"Apollo x8p","deviceType":34,"serial":"20000000000001"}],
   "master": "7C1E40A2D3F09B61",
   "channels": null,
   "preset": "studio",
@@ -1044,7 +1044,7 @@ unsolicited `agg` whenever the stored config changes for another reason.
     {"src":"daw","unit":"7C1E40A2D3F09B61","port":"mon","ids":[2305,2306]},
     {"src":"windows","unit":"7C1E40A2D3F09B61","port":"mon","ids":[2305,2306]},
     {"src":"7C1E40A2D3F09B61:line3-4","unit":"7C1E40A2D3F09B61","port":"line3-4","ids":[2563,2564]},
-    {"src":"SN22532017106180:mon","unit":"SN22532017106180","port":"mon","ids":[2305,2306]}]
+    {"src":"SN20000000000001:mon","unit":"SN20000000000001","port":"mon","ids":[2305,2306]}]
 }
 ```
 

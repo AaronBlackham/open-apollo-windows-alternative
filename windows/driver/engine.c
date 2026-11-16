@@ -42,7 +42,7 @@ static EXT_CALLBACK ApolloEngineTick;
 /* Configuration (PrepareHardware)                                     */
 /* ------------------------------------------------------------------ */
 
-/* [Twin X G0] the built-in defaults live in apollo_unit.h now; keep the two in step. */
+/* The built-in defaults live in apollo_unit.h; keep the two in step. */
 C_ASSERT(ENGINE_LEAD_DEFAULT == APOLLO_DEF_RENDER_LEAD);
 C_ASSERT(ENGINE_GUARD_DEFAULT == APOLLO_DEF_CAPTURE_GUARD);
 
@@ -497,7 +497,7 @@ static BOOLEAN EngineTickBody(_In_ PDEVICE_CONTEXT ctx)
     if (notes != 0) {
         ApolloStreamsNotify(note, notes, q1.QuadPart);
     }
-    /* [G6] the combined device runs on the timeline unit's tick (agg.c; a no-op when standalone) */
+    /* the combined device runs on the timeline unit's tick (agg.c; a no-op when standalone) */
     ApolloAggAfterTick(ctx);
     /* [Corr] speaker correction (corr.c): every host source is in this unit's ring by now; off = returns at once */
     ApolloCorrAfterTick(ctx);

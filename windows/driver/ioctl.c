@@ -10,12 +10,12 @@
  */
 #include <ntifs.h>
 #include "apollo.h"
-#include "preamp_plan.h"        /* [Twin X G5] GET_INFO NumPreamps per model */
+#include "preamp_plan.h"        /* GET_INFO NumPreamps per model */
 #include <ntstrsafe.h>
 
 #define IOCTL_LOCK_TIMEOUT_MS   3000
 
-/* [G4] bringup_plan.h keeps its own copies of the monitor parameter codes (plain C, no Windows types) */
+/* bringup_plan.h keeps its own copies of the monitor parameter codes (plain C, no Windows types) */
 C_ASSERT(APOLLO_PLAN_MON_LEVEL == APOLLO_MON_LEVEL && APOLLO_PLAN_MON_HP1_LEVEL == APOLLO_MON_HP1_LEVEL &&
          APOLLO_PLAN_MON_MUTE == APOLLO_MON_MUTE && APOLLO_PLAN_MON_SOURCE == APOLLO_MON_SOURCE &&
          APOLLO_PLAN_MON_MONO == APOLLO_MON_MONO && APOLLO_PLAN_MON_HP1_SOURCE == APOLLO_MON_HP1_SOURCE &&
@@ -121,7 +121,7 @@ static VOID ApolloFillInfo(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_INFO I)
     I->InterruptCount = (ULONG)Ctx->InterruptCount;
     I->EndOfBufferCount = (ULONG)Ctx->EndOfBufferCount;
     I->NotifStatusSeen = Ctx->NotifStatusSeen;
-    /* [Twin X G0] an accepted x8p only; [G5] the model's preamp plan: x8p 8, Twin X 2 (spec-twinx 4.1). */
+    /* The model's preamp plan: x8p 8, Twin X 2 (spec-twinx 4.1). */
     I->NumPreamps = ApolloPreampCount(Ctx->Ident.Model);
     RtlCopyMemory(I->Serial, Ctx->Serial, sizeof(I->Serial));
 
@@ -140,13 +140,13 @@ static VOID ApolloFillInfo(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_INFO I)
     if (Ctx->FwUntested)            I->Flags |= APOLLO_FLAG_FW_UNTESTED;
     if (ApolloEngineLost(Ctx))      I->Flags |= APOLLO_FLAG_ENGINE_LOST;
 
-    /* [Twin X G2] version 6: which unit this is (apollo_ioctl.h) */
+    /* Version 6: which unit this is (apollo_ioctl.h) */
     I->HwUidLo = Ctx->HwUidLo;
     I->HwUidHi = Ctx->HwUidHi;
     I->Model = (ULONG)Ctx->Ident.Model;
     I->Mode = Ctx->Unit.Resolved ? Ctx->Unit.Value[APOLLO_PARAM_MODE] : APOLLO_INFO_MODE_UNKNOWN;
     I->UnitFlags = ApolloUnitInfoFlags(Ctx);
-    I->AggRole = ApolloAggRoleOf(Ctx);      /* [G6] standalone / master / follower / acting master */
+    I->AggRole = ApolloAggRoleOf(Ctx);      /* standalone / master / follower / acting master */
     I->AggId = 0;
     I->HwidSubsystem = Ctx->HwidSubsysKnown ? Ctx->HwidSubsystem : 0;
     if (Ctx->Ident.Name != NULL) {
@@ -162,16 +162,16 @@ static VOID ApolloFillInfo(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_INFO I)
         I->OwnerDescOutVersion = Ctx->OwnerDescOutVersion;
         I->OwnerDescOutCount = Ctx->OwnerDescOutCount;
     }
-    /* [Twin X G3] version 7: the AudioExtension bring-up (0 on the x8p path) */
+    /* Version 7: the AudioExtension bring-up (0 on the x8p path) */
     I->ClockSrcsLive = Ctx->NotifClockSrcsLive;
     I->BringupSteps = Ctx->BringupSteps;
     I->BringupFailStep = Ctx->BringupFailStep;
-    I->BringupApplies = Ctx->BringupApplies;            /* [G4] the former Reserved7 */
+    I->BringupApplies = Ctx->BringupApplies;            /* the former Reserved7 */
 }
 
 /*
- * [Twin X G3] Every IOCTL that reaches the queue has a class (bringup_plan.h); 0 = none (an
- * unknown code, answered "invalid request" as before).
+ * Every IOCTL that reaches the queue has a class (bringup_plan.h); 0 = none (an unknown code,
+ * answered "invalid request").
  */
 static ULONG ApolloIoctlClass(_In_ ULONG Code)
 {
@@ -200,8 +200,7 @@ static ULONG ApolloIoctlClass(_In_ ULONG Code)
 }
 
 /*
- * [Twin X G2] A unit the driver does not run (observe: Mode 0 or no bring-up path; refused) is
- * read-only. Besides the lock-free set (info, log, engine stats, endpoints) only these reads
+ * A unit the driver does not run (observe: Mode 0 or no bring-up path; refused) is read-only. Besides the lock-free set (info, log, engine stats, endpoints) only these reads
  * reach it (READ_REG among them, for administrators); every write, the transport and audio I/O
  * are refused, whoever asks. ASIO is refused in asio.c.
  */
@@ -211,13 +210,11 @@ static BOOLEAN ApolloObserveAllows(_In_ ULONG Code)
 }
 
 /*
- * [Twin X G3] A unit the driver runs answers what its plan allows in its Mode: the x8p
- * everything (as before); a Twin X in Mode 1 the reads plus capture and playback (apollo-diag
- * capture, tone): no settings, no raw writes, no transport start/stop.
- * [G4] A Twin X in Mode 2 also takes the SETTINGS class, narrowed per parameter in the switch
- * below (bringup_plan.h): SET_MONITOR_PARAM level, HP1 level, mute, mono, dim only; no
- * SET_INPUT_PARAM (its preamps wait for G5) and no raw SET_MIXER_SETTING. STATUS_NOT_SUPPORTED.
- * [G5] SET_INPUT_PARAM on its 2 preamps (preamp_plan.h) and SET_MONITOR_PARAM talkback too.
+ * A unit the driver runs answers what its plan allows in its Mode (bringup_plan.h): the x8p
+ * everything; a Twin X in Mode 1 the reads plus capture and playback (apollo-diag capture, tone):
+ * no settings, no raw writes, no transport start/stop. A Twin X in Mode 2 also takes the SETTINGS
+ * class, narrowed per parameter in the switch below (SET_MONITOR_PARAM by the plan's monitor and
+ * output bits, SET_INPUT_PARAM on its 2 preamps, never a raw SET_MIXER_SETTING: STATUS_NOT_SUPPORTED).
  */
 static BOOLEAN ApolloActiveAllows(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Code)
 {
@@ -234,9 +231,6 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
     ULONG_PTR info = 0;
     PVOID in = NULL, out = NULL;
     size_t inLen = 0, outLen = 0;
-
-    UNREFERENCED_PARAMETER(OutputBufferLength);
-    UNREFERENCED_PARAMETER(InputBufferLength);
 
     if (InputBufferLength > 0) {
         (VOID)WdfRequestRetrieveInputBuffer(Request, 1, &in, &inLen);
@@ -268,7 +262,7 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
 
     if (ApolloAggIsIoctl(IoControlCode)) {
         /*
-         * [G6] The combined device (agg.c): driver-global, the same from any unit's handle, its own
+         * The combined device (agg.c): driver-global, the same from any unit's handle, its own
          * locks (the clock probe takes this unit's DevLock itself). The admin check above covers
          * AGG_CLOCK_PROBE; the rest are user level by design (spec 6.8: no elevation for Apply).
          */
@@ -283,9 +277,9 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
 
     if (IoControlCode == IOCTL_APOLLO_GET_ENDPOINTS) {
         /*
-         * [ACX endpoints] lock-free like GET_INFO: EngineLock only (stream.c). [Endpoints] v2: an optional
-         * APOLLO_ENDPOINTS_QUERY names the first row; read it before the output is written (METHOD_BUFFERED:
-         * one system buffer for both). A larger output buffer gets more than 16 rows.
+         * Lock-free like GET_INFO: EngineLock only (stream.c). v2: an optional APOLLO_ENDPOINTS_QUERY
+         * names the first row; read it before the output is written (METHOD_BUFFERED: one system buffer
+         * for both). A larger output buffer gets more than 16 rows.
          */
         ULONG first = 0;
 
@@ -304,9 +298,9 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
 
     if (IoControlCode == IOCTL_APOLLO_GET_INFO) {
         /*
-         * Lock-free so it answers during a long bring-up. [Twin X G2] Version 6 grew the
-         * structure: a client built for version 5 (APOLLO_INFO_V5_BYTES) gets exactly the part
-         * it knows, a newer one the whole of it.
+         * Lock-free so it answers during a long bring-up. Version 6 grew the structure: a client
+         * built for version 5 (APOLLO_INFO_V5_BYTES) gets exactly the part it knows, a newer one
+         * the whole of it.
          */
         if (out == NULL || outLen < APOLLO_INFO_V5_BYTES) {
             status = STATUS_BUFFER_TOO_SMALL;
@@ -323,7 +317,7 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
     }
 
     if (IoControlCode == IOCTL_APOLLO_GET_RATE) {
-        /* [Rate] lock-free like GET_INFO: it answers while a change holds DevLock (rate.c) */
+        /* Lock-free like GET_INFO: it answers while a rate change holds DevLock (rate.c) */
         if (out == NULL || outLen < sizeof(APOLLO_RATE_INFO)) {
             status = STATUS_BUFFER_TOO_SMALL;
         } else {
@@ -336,7 +330,7 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
     }
 
     if (IoControlCode == IOCTL_APOLLO_GET_CLOCK) {
-        /* [Clock] lock-free like GET_RATE: it answers while a clock change holds DevLock (clock.c) */
+        /* Lock-free like GET_RATE: it answers while a clock change holds DevLock (clock.c) */
         if (out == NULL || outLen < sizeof(APOLLO_CLOCK_INFO)) {
             status = STATUS_BUFFER_TOO_SMALL;
         } else {
@@ -366,12 +360,12 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
     }
 
     if (ApolloEventsIsIoctl(IoControlCode)) {
-        /* [Events] answered now or parked until the next event (events.c); a gone unit answers NO_SUCH_DEVICE */
+        /* Answered now or parked until the next event (events.c); a gone unit answers NO_SUCH_DEVICE */
         ApolloEventsIoctl(ctx, Request);
         return;
     }
     if (ApolloParamsIsIoctl(IoControlCode)) {
-        /* [Params] lock-free: the values this start resolved, and Units\<key> in the registry (params.c);
+        /* Lock-free: the values this start resolved, and Units\<key> in the registry (params.c);
            SET_PARAM is administrators only (the admin check above) and applies at the next start */
         status = ApolloParamsIoctl(ctx, IoControlCode, in, inLen, out, outLen, &info);
         WdfRequestCompleteWithInformation(Request, status, info);
@@ -383,21 +377,21 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
         return;
     }
     if (ApolloCorrIsIoctl(IoControlCode)) {
-        /* [Corr] speaker correction (corr.c): its own lock, then EngineLock; refuses observe units itself */
+        /* Speaker correction (corr.c): its own lock, then EngineLock; refuses observe units itself */
         status = ApolloCorrIoctl(ctx, IoControlCode, in, inLen, out, outLen, &info);
         WdfRequestCompleteWithInformation(Request, status, info);
         return;
     }
     if (!ctx->Unit.Active && !ApolloObserveAllows(IoControlCode)) {
-        WdfRequestComplete(Request, STATUS_INVALID_DEVICE_STATE);   /* [Twin X G2] observe: read-only */
+        WdfRequestComplete(Request, STATUS_INVALID_DEVICE_STATE);   /* observe: read-only */
         return;
     }
     if (ctx->Unit.Active && !ApolloActiveAllows(ctx, IoControlCode)) {
-        WdfRequestComplete(Request, STATUS_INVALID_DEVICE_STATE);   /* [Twin X G3] Mode 1 Twin X: test set only */
+        WdfRequestComplete(Request, STATUS_INVALID_DEVICE_STATE);   /* not in this plan's Mode (Twin X Mode 1: test set) */
         return;
     }
     if (ApolloPluginIsIoctl(IoControlCode)) {
-        /* [P0] plug-in hosting (plugin.c): it takes StripLock, then DevLock, and waits for the DSP off-lock */
+        /* Plug-in hosting (plugin.c): it takes StripLock, then DevLock, and waits for the DSP off-lock */
         status = ApolloPluginIoctl(ctx, Request, IoControlCode, in, inLen, out, outLen, &info);
         WdfRequestCompleteWithInformation(Request, status, info);
         return;
@@ -546,10 +540,10 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
         }
         p = *(PAPOLLO_INPUT_PARAM)in;
         if (ApolloPlanOf(ctx) == NULL || !ApolloPlanOf(ctx)->InputParams) {
-            status = STATUS_NOT_SUPPORTED;          /* [G4] a plan without preamp settings */
+            status = STATUS_NOT_SUPPORTED;          /* a plan without preamp settings */
             break;
         }
-        /* [G5] mixer.c refuses what the model's preamp plan does not have (preamp_plan.h) */
+        /* mixer.c refuses what the model's preamp plan does not have (preamp_plan.h) */
         status = ApolloSetInputParam(ctx, &p);
         break;
     }
@@ -576,7 +570,7 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
         }
         p = *(PAPOLLO_MONITOR_PARAM)in;
         if (!ApolloPlanMonitorParamAllowed(ApolloPlanOf(ctx), p.Param)) {
-            status = STATUS_NOT_SUPPORTED;          /* [G4] e.g. HP2 on the Twin X (one headphone) */
+            status = STATUS_NOT_SUPPORTED;          /* e.g. HP2 on the Twin X (one headphone) */
             break;
         }
         status = ApolloSetMonitorParam(ctx, &p);
@@ -601,7 +595,7 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
         }
         s = *(PAPOLLO_MIXER_SETTING)in;
         if (ApolloPlanOf(ctx) == NULL || !ApolloPlanOf(ctx)->RawMixerSettings) {
-            status = STATUS_NOT_SUPPORTED;          /* [G4] raw settings: the x8p only */
+            status = STATUS_NOT_SUPPORTED;          /* raw settings: the x8p only */
             break;
         }
         status = ApolloMixerWriteSetting(ctx, s.Index, s.Value, s.Mask);
@@ -609,7 +603,7 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
     }
     case IOCTL_APOLLO_GET_PANEL:
     case IOCTL_APOLLO_SET_PANEL:
-        /* [Clock] the front panel and the monitor link (panel.c); a read-only unit refuses SET_PANEL there */
+        /* The front panel and the monitor link (panel.c); a read-only unit refuses SET_PANEL there */
         status = ApolloPanelIoctl(ctx, IoControlCode, in, inLen, out, outLen, &info);
         break;
 
@@ -624,8 +618,8 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
             info = sizeof(APOLLO_STRIPS_INFO);
         } else {
             /*
-             * [Warm] a version 2 caller (older apollo-diag): the fields it knows. [Virtual] A version 3 caller (a build
-             * before the Virtual strips) gets its whole version 3 part, marked version 3.
+             * A version 2 caller (older apollo-diag): the fields it knows. A version 3 caller (a build before the
+             * Virtual strips) gets its whole version 3 part, marked version 3.
              */
             PAPOLLO_STRIPS_INFO tmp = (PAPOLLO_STRIPS_INFO)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*tmp), APOLLO_POOL_TAG);
             ULONG part = (outLen >= APOLLO_STRIPS_INFO_V3_SIZE) ? APOLLO_STRIPS_INFO_V3_SIZE : APOLLO_STRIPS_INFO_V2_SIZE;
@@ -650,10 +644,10 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
 
     WdfWaitLockRelease(ctx->DevLock);
     /*
-     * [G7 review] A transport started (or a lost engine recovered) by hand: a unit that was not in the
-     * combined device joins it now (it joined only from the bring-up work item before). DevLock is
-     * released first (Agg.Mutex -> DevLock). A member that is already in only needs the tick: the
-     * configured master takes its timeline back after 1 s of running (agg.c AggTakeOver).
+     * A transport started (or a lost engine recovered) by hand: a unit that was not in the combined
+     * device joins it now, as from the bring-up work item. DevLock is released first (Agg.Mutex ->
+     * DevLock). A member that is already in only needs the tick: the configured master takes its
+     * timeline back after 1 s of running (agg.c AggTakeOver).
      */
     if (IoControlCode == IOCTL_APOLLO_TRANSPORT_START && NT_SUCCESS(status)) {
         ApolloAggJoin(ctx);

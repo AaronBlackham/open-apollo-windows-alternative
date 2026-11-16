@@ -20,8 +20,10 @@ $ErrorActionPreference = 'Stop'
 $needles = New-Object System.Collections.Generic.List[object]
 function Add-Needle([string]$text, [string]$why, [int]$min = 4) {
     if (-not $text -or $text.Length -lt $min) { return }
-    foreach ($n in $needles) { if ($n.Text -eq $text.ToLowerInvariant()) { return } }
-    $needles.Add([pscustomobject]@{ Text = $text.ToLowerInvariant(); Why = $why })
+    $low = $text.ToLowerInvariant()
+    foreach ($n in $needles) { if ($n.Text -eq $low) { return } }
+    # Wide: the UTF-16LE form, the ASCII one with a 0 after each char (made once here, not once per file)
+    $needles.Add([pscustomobject]@{ Text = $low; Wide = -join ($low.ToCharArray() | ForEach-Object { "$_$([char]0)" }); Why = $why })
 }
 
 Add-Needle 'C:\Users\' 'a user folder path'
@@ -69,7 +71,7 @@ foreach ($p in $Paths) {
     }
 }
 
-# Each file as Latin-1 (one char per byte), lower case; a UTF-16LE needle is the ASCII one with a 0 after each char.
+# Each file as Latin-1 (one char per byte), lower case, searched for each needle's ASCII and UTF-16LE forms.
 $latin1 = [Text.Encoding]::GetEncoding(28591)
 $hits = @()
 $bytesTotal = 0
@@ -78,9 +80,7 @@ foreach ($f in $files) {
     $bytesTotal += $bytes.Length
     $hay = $latin1.GetString($bytes).ToLowerInvariant()
     foreach ($n in $needles) {
-        $ascii = $n.Text
-        $wide = -join ($ascii.ToCharArray() | ForEach-Object { "$_$([char]0)" })
-        foreach ($form in @(@{ T = $ascii; K = 'ASCII' }, @{ T = $wide; K = 'UTF-16' })) {
+        foreach ($form in @(@{ T = $n.Text; K = 'ASCII' }, @{ T = $n.Wide; K = 'UTF-16' })) {
             $at = $hay.IndexOf($form.T, [StringComparison]::Ordinal)
             if ($at -ge 0) {
                 $start = [Math]::Max(0, $at - 24)

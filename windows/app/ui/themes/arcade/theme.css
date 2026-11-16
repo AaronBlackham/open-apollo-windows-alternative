@@ -45,51 +45,6 @@
   color-scheme: dark;
 }
 
-/* ---------- Arcade: 80s cabinet, pixel headings, LED segment readouts, optional scanlines ---------- */
-[data-look="arcade"] {
-  --bg: #000000;
-  --view-bg: #000000;
-  --panel: #04040c;
-  --panel-2: #0a0a1a;
-  --raised: #16163e;
-  --line: #22226a;
-  --line-strong: #4646d0;
-  --text: #f4f4ff;
-  --text-dim: #c6c6ea;
-  --text-faint: #a0a0d6;
-  --head: #ff3df2;
-  --accent: #00e5ff;
-  --accent-ink: #00121a;
-  --ok: #39ff5a;
-  --warn: #ffe600;
-  --red: #ff2d2d;
-  --red-ink: #140000;
-  --idle: #8080b8;
-  --meter-lo: #39ff5a;
-  --meter-mid: #ffe600;
-  --meter-hi: #ff2d2d;
-  --meter-track: #000000;
-  --meter-seg: 1;
-  --focus: #ffe600;
-  --shadow: 0 0 0 2px #4646d0;
-  --radius: 0px;
-  --radius-sm: 0px;
-  --border-w: 2px;
-  --cut: 0px;
-  --glow: 0 0 5px;
-  --lamp-glow: 0 0 5px currentColor;
-  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-label: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --font-head: "Avium Pixel", var(--mono);
-  --font-num: "Avium Pixel", var(--mono);
-  --label-size: 10px;
-  --label-weight: 700;
-  --label-track: 0.12em;
-  --label-stretch: normal;
-  --grid-line: transparent;
-  --sel-bg: #101040;
-  color-scheme: dark;
-}
 /* Arcade: headings in the pixel face, chunky bevel-free borders, LED ladder meters */
 [data-look="arcade"] .sect-title, [data-look="arcade"] .panel-head h2, [data-look="arcade"] .brand-model,
 [data-look="arcade"] .useg-name, [data-look="arcade"] .plb-title, [data-look="arcade"] .pl-dr-title {

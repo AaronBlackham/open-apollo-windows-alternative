@@ -32,6 +32,7 @@ Upstream evidence for a DLL that is not the build upstream mapped (added Nov 15 
 Nothing opens a device, a socket or a UA program; DLLs are only read (and emulated with --defaults).
 """
 import argparse
+import functools
 import glob
 import hashlib
 import importlib.util
@@ -53,13 +54,19 @@ def qualify_module():
     return mod
 
 
-def upstream_dll_hashes(reference):
-    out = {}
+def upstream_recipes(reference):
+    """From upstream's art recipes, read once: ({dll file: {sha256}} the DLL builds they list,
+    {dll file: {resource 'type/name/lang': sha256}} the newer build's resources)."""
+    hashes, art = {}, {}
     for f in glob.glob(str(Path(reference) / 'console-rs/crates/oa-assets/data/plugin-recipes/*.json')):
-        for v in json.loads(Path(f).read_text(encoding='utf-8')).get('inputs', {}).values():
-            if v.get('kind') == 'dll':
-                out.setdefault(v['file'], set()).update(v['sha256'] if isinstance(v['sha256'], list) else [v['sha256']])
-    return out
+        r = json.loads(Path(f).read_text(encoding='utf-8'))
+        dlls = {k: v for k, v in r.get('inputs', {}).items() if v.get('kind') == 'dll'}
+        for v in dlls.values():
+            hashes.setdefault(v['file'], set()).update(v['sha256'] if isinstance(v['sha256'], list) else [v['sha256']])
+        for b in r.get('blobs', {}).values():
+            if b.get('in') in dlls and 'res' in b:
+                art.setdefault(dlls[b['in']]['file'], {})[b['res']] = b['sha']
+    return hashes, art
 
 
 def upstream_status(reference, name):
@@ -67,20 +74,10 @@ def upstream_status(reference, name):
     return json.loads(p.read_text(encoding='utf-8')) if p.is_file() else None
 
 
-def upstream_art(reference):
-    """{dll file: {resource 'type/name/lang': sha256}} from upstream's art recipes (the newer build's resources)."""
-    out = {}
-    for f in glob.glob(str(Path(reference) / 'console-rs/crates/oa-assets/data/plugin-recipes/*.json')):
-        r = json.loads(Path(f).read_text(encoding='utf-8'))
-        dlls = {k: v['file'] for k, v in r.get('inputs', {}).items() if v.get('kind') == 'dll'}
-        for b in r.get('blobs', {}).values():
-            if b.get('in') in dlls and 'res' in b:
-                out.setdefault(dlls[b['in']], {})[b['res']] = b['sha']
-    return out
-
-
+@functools.lru_cache(maxsize=None)
 def dll_resources(path):
-    """{'type/name/lang': sha256} of a DLL's resources (pefile; bytes only)."""
+    """{'type/name/lang': sha256} of a DLL's resources (pefile; bytes only). Cached: a plug-in's mono and stereo
+    bundles share the DLL, and pefile's close() alone costs a full gc.collect()."""
     import pefile
     pe = pefile.PE(str(path), fast_load=True)
     pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE']])
@@ -280,8 +277,8 @@ def main(argv=None):
     nc, prov, index = oa.load(args.store, args.bundles)
     manifest, kg, q = oa.store_manifest(args.store), oa.known_good(), qualify_module()
     specs = q.load_specs(str(args.specs))
-    up_dlls = upstream_dll_hashes(args.reference)
-    args.art, args.genuine, args.pins = upstream_art(args.reference), genuine_uploads(args.reference), firmware_pins()
+    up_dlls, args.art = upstream_recipes(args.reference)
+    args.genuine, args.pins = genuine_uploads(args.reference), firmware_pins()
     want = set(args.only or []) | (set(GATE_P1) if args.gate else set())
     results = []
     for entry in sorted(index['bundles'], key=lambda e: (e['name'], e['layout'])):

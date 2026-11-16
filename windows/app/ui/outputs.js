@@ -12,11 +12,10 @@
  * Nothing reads back: the values live with the unit's mix (cfg.mixes[...].out) and go out again once per connection
  * (app.js savedMixOut -> applyOut). Untouched = left as the unit has it (UA defaults: +4 dBu, mirror off, FCN none,
  * holds 3 s, aux stereo).
- * Loaded before app.js; uses its globals (el, sw, seg, setPressed, mixOf, saveMix, hwSend, mixWritable, noteUndo, ctl,
- * capsOf, unitType, unitShort, isRefused, S, toast) only inside functions.
+ * Loaded before app.js; uses its globals (el, sw, seg, setPressed, setHidden, put, isInt, mixOf, saveMix, hwSend,
+ * mixWritable, noteUndo, ctl, capsOf, unitType, unitShort, isRefused, S, toast) only inside functions.
  */
 const Outs = (() => {
-  const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   /* per model (driver/monitor_plan.h ApolloMonModelFor [Out]); the x8p is type 0x22, the Twin X 0x99 */
   const CAPS = {
     0x22: { pads: ['Line 1-2', 'Line 3-4', 'Line 5-6', 'Line 7-8'], monRef: true, digMirror: true, fcn: true, meters: true, aux: true },
@@ -164,24 +163,24 @@ const Outs = (() => {
     if (!ui.card) return;
     const idx = S.sel, k = capsFor(idx), o = outOf(idx);
     if (ui.built !== unitType(idx)) build(idx);
-    ui.card.hidden = !(k.monRef || k.pads.length || k.digMirror || k.fcn || k.meters || k.aux);
+    setHidden(ui.card, !(k.monRef || k.pads.length || k.digMirror || k.fcn || k.meters || k.aux));
     for (const r of ui.refs) {
       const v = field(idx, r.name)[0]();
       r.s.set(v ? 1 : 0);                 /* untouched shows UA's default, +4 dBu */
       r.s.node.classList.toggle('refused', isRefused(`out:${r.name}`));
     }
-    ui.mirror.hidden = !k.digMirror;
+    setHidden(ui.mirror, !k.digMirror);
     setPressed(ui.mirror, !!o.digMirror);
     ui.mirror.classList.toggle('refused', isRefused('out:digmirror'));
-    ui.fcnField.hidden = !k.fcn;
+    setHidden(ui.fcnField, !k.fcn);
     ui.fcn.value = String(o.fcn ?? 0);
-    ui.meters.hidden = !k.meters;
+    setHidden(ui.meters, !k.meters);
     ui.clip.value = String(o.clip ?? 2);
     ui.peak.value = String(o.peak ?? 2);
-    ui.auxRow.hidden = !k.aux;
+    setHidden(ui.auxRow, !k.aux);
     ui.aux.forEach((b, a) => { setPressed(b, !!(o.auxMono || [])[a]); b.classList.toggle('refused', isRefused(`out:aux${a + 1}mono`)); });
     ui.ident.disabled = !!blinking;
-    ui.ident.textContent = blinking ? 'Identifying…' : 'Identify';
+    put(ui.ident, blinking ? 'Identifying…' : 'Identify');
   }
 
   return { clean, applyOut, set, restore, name, identify, card, render, isWrite: key => WRITE.test(key || ''), CAPS };

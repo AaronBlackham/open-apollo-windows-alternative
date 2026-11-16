@@ -30,7 +30,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
     ApolloLog("apollo.sys loading (phase 2: ACX, copy engine, ASIO; interface v%d: Twin X Gen 1 bring-up G3, "
               "Twin X Mode 2 endpoints G4, combined device G6)", APOLLO_IOCTL_VERSION);
     WDF_DRIVER_CONFIG_INIT(&config, ApolloEvtDeviceAdd);
-    config.EvtDriverUnload = ApolloEvtDriverUnload;     /* [G6] the aggregate's pool */
+    config.EvtDriverUnload = ApolloEvtDriverUnload;     /* the combined device's pool */
     status = WdfDriverCreate(DriverObject, RegistryPath, WDF_NO_OBJECT_ATTRIBUTES, &config,
                              &driver);
     if (!NT_SUCCESS(status)) {
@@ -46,7 +46,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
     }
     ACX_DRIVER_VERSION_AVAILABLE_PARAMS_INIT(&ver, 1, 1);
     ApolloLog("ACX 1.1 %s", AcxDriverIsVersionAvailable(driver, &ver) ? "available" : "NOT available");
-    /* [G6] the combined device; without it every unit still runs standalone */
+    /* The combined device (agg.c); without it every unit still runs standalone */
     status = ApolloAggInit(driver);
     if (!NT_SUCCESS(status)) {
         ApolloLog("combined device not available (0x%08x): units run standalone", status);
@@ -54,7 +54,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
     return STATUS_SUCCESS;
 }
 
-/* [G6] Unload: the aggregate's tables and staging (every device is gone by now). */
+/* Unload: the combined device's tables and staging (every device is gone by now). */
 static VOID ApolloEvtDriverUnload(_In_ WDFDRIVER Driver)
 {
     UNREFERENCED_PARAMETER(Driver);
@@ -62,7 +62,7 @@ static VOID ApolloEvtDriverUnload(_In_ WDFDRIVER Driver)
 }
 
 /*
- * [Twin X G2] Which slot of apollo.inf this device came in by, before anything else is known:
+ * Which slot of apollo.inf this device came in by, before anything else is known:
  * the subsystem of its PCI hardware ID (apollo_unit.h ApolloHwidSubsystem). It names the unit
  * in the log and decides whether device add creates the x8p's ACX circuits (circuit.c).
  */
@@ -102,11 +102,11 @@ static VOID ApolloEvtDeviceCleanup(_In_ WDFOBJECT Object)
 {
     PDEVICE_CONTEXT ctx = ApolloGetContext((WDFDEVICE)Object);
 
-    ApolloAggLeave(ctx);                /* [G6] backstop: D0 exit normally left already */
+    ApolloAggLeave(ctx);                /* backstop: D0 exit normally left the combined device already */
     ApolloEngineStop(ctx);
     ApolloAsioCloseAny(ctx);
-    ApolloPluginFree(ctx);              /* [P0] */
-    ApolloCorrFree(ctx);                /* [Corr] after the engine stopped and the unit left the combined device */
+    ApolloPluginFree(ctx);
+    ApolloCorrFree(ctx);                /* after the engine stopped and the unit left the combined device */
 }
 
 static NTSTATUS ApolloEvtInterruptEnable(_In_ WDFINTERRUPT Interrupt, _In_ WDFDEVICE Device)
@@ -225,7 +225,7 @@ static NTSTATUS ApolloEvtDeviceAdd(_In_ WDFDRIVER Driver, _Inout_ PWDFDEVICE_INI
     ctx->Shutdown = 1;                  /* gate stays closed until BAR0 is mapped */
     KeInitializeEvent(&ctx->ServiceStop, NotificationEvent, FALSE);
     KeInitializeSpinLock(&ctx->EngineLock);
-    /* [Twin X G2] the unit's log tag and add-time rules, before its first log line */
+    /* The unit's log tag and add-time rules, before its first log line */
     ApolloReadHardwareId(ctx);
 
     status = WdfWaitLockCreate(WDF_NO_OBJECT_ATTRIBUTES, &ctx->DevLock);
@@ -275,13 +275,13 @@ static NTSTATUS ApolloEvtDeviceAdd(_In_ WDFDRIVER Driver, _Inout_ PWDFDEVICE_INI
         return status;
     }
 
-    /* [ACX endpoints, PHASE2.md steps 2-3] circuits per EnabledEndpoints (circuit.c). */
+    /* ACX circuit objects for every row of this slot's endpoint table, if any (circuit.c, PHASE2.md steps 2-3). */
     status = ApolloAcxDeviceInit(ctx);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    /* [Events] the event ring and the queue parked WAIT_EVENTS wait in (events.c) */
+    /* The event ring and the queue parked WAIT_EVENTS wait in (events.c) */
     status = ApolloEventsInit(ctx);
     if (!NT_SUCCESS(status)) {
         return status;

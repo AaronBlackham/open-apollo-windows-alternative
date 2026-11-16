@@ -1,6 +1,6 @@
 /*
  * preamp_plan.h - the preamp controls of each model as data (docs/spec-twinx.md 4.1 and 4.4,
- * gate G5; docs/spec-dsp-mixer.md 5.2-5.3). Which SET_INPUT_PARAM codes a model takes, the
+ * docs/spec-dsp-mixer.md 5.2-5.3). Which SET_INPUT_PARAM codes a model takes, the
  * mixer-mailbox writes each one becomes, and how the hardware readback decodes for it.
  *
  * Plain C like bringup_plan.h: no kernel or Windows headers, every function static __inline.
@@ -22,8 +22,8 @@
  *   Hi-Z impedance 0x11       S13 nibble 4*ch, codes 0-7 = 2.2M 1M 453k 232k   -       0 only (input 1)
  *                             100k 70k 47k 21k (oa:driver/ua_audio.c:7281-7288)
  *
- * [polish Nov 15] Linked pairs stay the host's job. While a pair is linked the unit runs both preamps from
- * the first channel's fields and ignores the second channel's (Twin X Gen 1 on hardware, Nov 15: a low cut
+ * Linked pairs stay the host's job. While a pair is linked the unit runs both preamps from the first
+ * channel's fields and ignores the second channel's (Twin X Gen 1 on hardware: a low cut
  * write to input 2 was taken and did nothing; one to input 1 changed both, and readback then shows input 1's
  * settings on both). This driver stays a per-channel field writer, like UA's kext (ua_preamp_setting); the
  * host gangs the pair: Apollo Control (app\ui\app.js setInput / linkedPair) sends a change made on either
@@ -42,7 +42,7 @@
  * Not offered on any model: mic impedance 0x07 (no code-to-ohm table in any source), the custom
  * (Unison) preamp bit 0x08 (kept 0: gain is refused while it is set, spec-twinx 4.4), the byte
  * lanes 0x0B-0x0F, knob steps, the Hi-Z host write 0x14 and the rest of the kext's ids. The x8p
- * keeps exactly what it had before G5 (no Hi-Z impedance there).
+ * offers no Hi-Z impedance either.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -56,7 +56,7 @@
 #define APOLLO_PRE_48V              0x03ul
 #define APOLLO_PRE_LOWCUT           0x04ul
 #define APOLLO_PRE_PHASE            0x05ul      /* 1 = inverted */
-#define APOLLO_PRE_HIZ_IMP          0x11ul      /* [G5] kPropHiZImpedance, code 0-7 */
+#define APOLLO_PRE_HIZ_IMP          0x11ul      /* kPropHiZImpedance, code 0-7 */
 #define APOLLO_PRE_GAIN_DB          0x100ul     /* driver-side: GainA, GainB, GainC */
 #define APOLLO_PRE_HIZ_CODES        8ul
 #define APOLLO_PRE_GAIN_MIN_DB      10L
@@ -89,8 +89,8 @@ typedef struct _APOLLO_PREAMP_WRITE {
 static __inline const APOLLO_PREAMP_MODEL *ApolloPreampModelFor(int Model)
 {
     static const APOLLO_PREAMP_MODEL t[2] = {
-        /* x8p: as mixer.c had it before G5 (8 preamps, pairs 1-2 .. 7-8); its two front Hi-Z jacks
-           are reported in readback, their impedance is not offered */
+        /* x8p: 8 preamps, pairs 1-2 .. 7-8; its two front Hi-Z jacks are reported in readback,
+           their impedance is not offered */
         { APOLLO_MODEL_X8P, "Apollo x8p", 8, 0x55ul, 0x0ul, 0x3ul },
         /* Twin X Gen 1 (spec-twinx 4.1): 2 preamps, link on input 1 only (oa:mixer-engine/model_info.py
            196-200), Hi-Z on input 1 only (oa:driver/ua_models_gen.h Twin X .hiz = 1) */
@@ -128,7 +128,7 @@ static __inline void ApolloPreampPut(APOLLO_PREAMP_WRITE *W, unsigned long *N, u
 /*
  * One SET_INPUT_PARAM as mailbox writes for model M. APOLLO_PRE_OK with *N writes (the gain's
  * three go out under one lock: one mailbox commit), else a refusal and *N = 0. The order of the
- * checks is mixer.c's before G5: the channel first, then the code, then the value.
+ * checks decides the refusal (preamp-plan-test pins it): the channel, then the code, then the value.
  */
 static __inline int ApolloPreampEncode(const APOLLO_PREAMP_MODEL *M, unsigned long Ch, unsigned long Param,
                                        long Value, APOLLO_PREAMP_WRITE W[APOLLO_PRE_WRITES_MAX], unsigned long *N)
@@ -338,7 +338,7 @@ static __inline int ApolloPreampField(const APOLLO_PREAMP_MODEL *M, unsigned lon
     case APOLLO_PRE_F_PGA_LINE:
         /* line input gain bypass (kPropPGADisabledInLineMode): oa:driver/ua_core.c:2526 S15 bit 24+ch on the
            kinds of UA_KIND_SET_IN_15, which include the x8p (devices/apollo-x8p.json line_pga_disable true);
-           not on the Twin X Gen 1 (apollo-twin-x.json false). Found by the Nov 15 parity audit. */
+           not on the Twin X Gen 1 (apollo-twin-x.json false). */
         if (M->Model != APOLLO_MODEL_X8P) {
             return APOLLO_PRE_NOT_HERE;
         }

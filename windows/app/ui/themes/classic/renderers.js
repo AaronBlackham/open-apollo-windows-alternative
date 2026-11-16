@@ -23,8 +23,6 @@ const ClassicDesk = (() => {
   const D = { on: false, col: null, timer: 0, cues: new Map(), soloMem: [], obs: null, picking: false, lastSlot: null, keyOff: null };
   const vc = () => document.getElementById('view-control');
   const state = () => cfg.classic || (cfg.classic = { view: 'overview', ctrlRoom: true });
-  const pressed = (n, on) => { const v = on ? 'true' : 'false'; if (n.getAttribute('aria-pressed') !== v) n.setAttribute('aria-pressed', v); };
-  const text = (n, t) => { if (n.textContent !== t) n.textContent = t; };
   const fmtSendShort = v => (v <= SEND_OFF ? 'off' : (v / 2).toFixed(1));
 
   /* every soloed bus of every live unit, as [unit, bus] */
@@ -111,12 +109,12 @@ const ClassicDesk = (() => {
     if (!D.col) return;
     const s = state(), v = vc();
     D.view.set(Math.max(0, VIEWS.findIndex(x => x[0] === v.dataset.clView)));
-    pressed(D.aux, !!cfg.auxStrips.open);
-    pressed(D.ctrl, s.ctrlRoom !== false);
-    pressed(D.plbBtn, v.dataset.clPlb === '1');
+    setPressed(D.aux, !!cfg.auxStrips.open);
+    setPressed(D.ctrl, s.ctrlRoom !== false);
+    setPressed(D.plbBtn, v.dataset.clPlb === '1');
     const n = soloed().length;
     D.solo.classList.toggle('cl-lit', n > 0);
-    text(D.soloN, n ? String(n) : '');
+    put(D.soloN, n ? String(n) : '');
     const aria = n ? `Clear solo: ${n} soloed` : D.soloMem.length ? 'Clear solo: none soloed, press to bring back the cleared solos' : 'Clear solo: none soloed';
     if (D.solo.getAttribute('aria-label') !== aria) { D.solo.setAttribute('aria-label', aria); D.solo.title = aria; }
   }

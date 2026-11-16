@@ -16,7 +16,7 @@
 #include "apollo.h"
 #include <ntstrsafe.h>
 #include "apollo_acx.h"
-#include "apollo_agg.h"         /* [G7] the combined endpoint table and APOLLO_AGG_SREF (pure) */
+#include "apollo_agg.h"         /* the combined endpoint table and APOLLO_AGG_SREF (pure) */
 
 #define APOLLO_STREAM_TAG           'sopA'
 #define APOLLO_EP_DEFAULT_MASK      0x1FFFF /* [Endpoints] the x8p's default set (bringup_plan.h APOLLO_X8P_EP_DEFAULT) */
@@ -33,9 +33,9 @@ typedef struct _APOLLO_ENDPOINT_DESC {
     USHORT              ChannelId[2];       /* IO descriptor IDs (type << 8 | number); mono: [1] = [0] */
     UCHAR               FallbackSlot[2];    /* verified slot when the descriptor is unusable; mono: [1] = [0] */
     /*
-     * [G7] 0 = a unit's own (standalone) row, as every row before G7 (the field is left out of those
-     * initialisers, so it is 0); n = row n - 1 of the combined table (apollo_agg.h APOLLO_AGG_EP_LIST):
-     * the stream runs on the aggregate timeline (agg.c), under Agg.Lock instead of EngineLock.
+     * 0 = a unit's own (standalone) row (the field is left out of those initialisers, so it is 0);
+     * n = row n - 1 of the combined table (apollo_agg.h APOLLO_AGG_EP_LIST): the stream runs on the
+     * aggregate timeline (agg.c), under Agg.Lock instead of EngineLock.
      */
     UCHAR               AggRow1;
     UCHAR               Model;              /* [Endpoints] APOLLO_INFO_MODEL_* of the jack's unit, 0 = follows the routing */
@@ -45,8 +45,8 @@ extern const APOLLO_ENDPOINT_DESC g_ApolloEndpoints[];
 extern const ULONG g_ApolloEndpointCount;
 
 /*
- * [G4] One endpoint table per model (endpoints.c): the x8p's g_ApolloEndpoints (unchanged), the
- * Twin X's standalone MON L/R pair. Device add picks it by the PCI hardware ID (apollo_unit.h
+ * One endpoint table per model (endpoints.c, rows in endpoint_plan.h): the x8p's g_ApolloEndpoints,
+ * the Twin X's own rows. Device add picks it by the PCI hardware ID (apollo_unit.h
  * ApolloAddTimeModel); PrepareHardware adds circuits only when the identified model is the same.
  */
 typedef struct _APOLLO_ENDPOINT_TABLE {
@@ -58,7 +58,7 @@ typedef struct _APOLLO_ENDPOINT_TABLE {
 } APOLLO_ENDPOINT_TABLE;
 
 const APOLLO_ENDPOINT_TABLE *ApolloEndpointTableFor(_In_ int Model);   /* NULL: no table */
-/* [G7] the combined table (spec 6.7), created only on the host unit when EndpointSet is 1 */
+/* the combined table (spec 6.7), created only on the host unit when EndpointSet is 1 */
 extern const APOLLO_ENDPOINT_TABLE g_ApolloAggEndpointTable;
 
 ULONG ApolloEndpointSlot(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_ENDPOINT_DESC *Desc,
@@ -104,11 +104,11 @@ typedef struct _APOLLO_PARKED {
 
 /* Device-level ACX state: a second WDF context on the WDFDEVICE (Ctx->Acx points at it). */
 typedef struct _APOLLO_ACX {
-    const APOLLO_ENDPOINT_TABLE *Table;     /* [G4] the model's table, NULL = none (Count 0) */
-    ULONG               Mask;               /* rows with a circuit object ([G7] combined: Aggregate\Endpoints) */
+    const APOLLO_ENDPOINT_TABLE *Table;     /* the model's table, NULL = none (Count 0) */
+    ULONG               Mask;               /* rows with a circuit object (combined: Aggregate\Endpoints) */
     ULONG               InForce;            /* [Endpoints] the mask the last PrepareHardware added from (GET_ENDPOINTS) */
-    BOOLEAN             Combined;           /* [G7] Table is the combined one (EndpointSet 1, host unit) */
-    BOOLEAN             Hosted;             /* [G7] ApolloAggEndpointsHosted(TRUE) was said */
+    BOOLEAN             Combined;           /* Table is the combined one (EndpointSet 1, host unit) */
+    BOOLEAN             Hosted;             /* ApolloAggEndpointsHosted(TRUE) was said */
     ULONG               Count;              /* rows used (<= APOLLO_ENDPOINTS_ROWS_MAX) */
     LIST_ENTRY          Active;             /* running streams, EngineLock */
     volatile LONG       Prepared;           /* streams between Prepare and Release */
@@ -140,7 +140,7 @@ struct _APOLLO_STREAM {
     ULONG               Channels;
     ULONG               BlockAlign;         /* 4 * Channels: 32-bit samples, 24 valid */
     ULONG               Slot[2];
-    BOOLEAN             SlotsProvisional;   /* [G4] resolved before the unit had a layout: again at Run */
+    BOOLEAN             SlotsProvisional;   /* resolved before the unit had a layout: again at Run */
 
     /* Packets (allocated and freed at PASSIVE, read by the tick only while Active) */
     PACX_RTPACKET       Packets;
@@ -173,7 +173,7 @@ struct _APOLLO_STREAM {
     EX_RUNDOWN_REF      Rundown;            /* held by the tick across a notification */
 
     /*
-     * [G7] A combined endpoint's stream (Ep->Desc->AggRow1 != 0): Link is in the aggregate's list,
+     * A combined endpoint's stream (Ep->Desc->AggRow1 != 0): Link is in the aggregate's list,
      * the engine fields above are under Agg.Lock (ApolloAggStreamLock) and HwBase counts timeline
      * frames; AggRef (Agg.Lock) is where its channels come from or go to, from the configuration.
      */
@@ -183,8 +183,38 @@ struct _APOLLO_STREAM {
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(APOLLO_STREAM, ApolloGetStream)
 
+/* Packet bookkeeping shared by the standalone (stream.c) and combined (agg.c) streams, under the stream's lock. */
+
+/* Render: every packet the hardware side has consumed is complete (notified in order). */
+static __inline VOID ApolloStreamComplete(_Inout_ PAPOLLO_STREAM S)
+{
+    while (S->Frames >= (S->Completed + 1) * S->FramesPerPacket) {
+        S->Completed++;
+        S->Ep->Packets++;
+    }
+}
+
 /*
- * [G7] agg.c: combined streams. Attach/Detach/Clock with ApolloAggStreamLock() held (DISPATCH);
+ * Capture: the lowest packet whose memory is still intact. Packet p lives at [p % PacketCount], so the
+ * packet being written (Completed) reuses the memory of Completed - PacketCount as soon as its first
+ * frame lands. With one packet nothing completed stays intact once the next one starts.
+ */
+static __inline ULONGLONG ApolloStreamOldestIntact(_In_ const APOLLO_STREAM *S)
+{
+    ULONGLONG oldest;
+
+    if (S->Completed < S->PacketCount) {
+        return 0;
+    }
+    oldest = S->Completed - S->PacketCount;
+    if (S->Frames > S->Completed * S->FramesPerPacket) {
+        oldest++;
+    }
+    return oldest;
+}
+
+/*
+ * agg.c: combined streams. Attach/Detach/Clock with ApolloAggStreamLock() held (DISPATCH);
  * Latency at PASSIVE (it takes the lock). Lock order: nothing else is held with it here.
  */
 PKSPIN_LOCK ApolloAggStreamLock(VOID);

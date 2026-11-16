@@ -2,7 +2,7 @@
  * clock_host.h - [Clock] Apollo Control's host side of the clock source, the digital formats, the front panel and
  * the monitor link (include\apollo_clock.h; the UI contract is docs\apollo-control-units.md 1.10). The page posts
  * {"cmd":"clock-...", ...} as a string (like rate-*); main.cpp routes "clock-", "digital-" and "panel-" here and
- * calls PollUnit from the worker's per-unit pass (three marked hunks), so the UI rework merges without touching it.
+ * calls PollUnit from the worker's per-unit pass.
  *
  *   clock-get {unit?}                         -> {"type":"clock",...} per unit (every unit without "unit")
  *   clock-set {unit, source, try?, hold?}     -> {"type":"clock-result",...,"pending":true} at once; the change runs on
@@ -40,15 +40,10 @@ static inline bool Owns(const std::wstring &Cmd)
     return Cmd.rfind(L"clock-", 0) == 0 || Cmd.rfind(L"digital-", 0) == 0 || Cmd.rfind(L"panel-", 0) == 0;
 }
 
-static inline std::string Q(const std::string &s)
-{
-    return corrhost::Q(s);
-}
-
-static inline std::string Bool(bool b)
-{
-    return b ? "true" : "false";
-}
+using corrhost::Q;
+using corrhost::Bool;
+using corrhost::UnitIoctl;
+using ratehost::Rates;
 
 /* ------------------------------------------------------------------ */
 /* Names                                                               */
@@ -84,19 +79,6 @@ static inline std::string Sources(ULONG Mask)
         if (Mask & (1ul << s)) {
             if (j.size() > 1) j += ",";
             j += Q(SourceName(s));
-        }
-    }
-    return j + "]";
-}
-
-static inline std::string Rates(ULONG Mask)
-{
-    static const unsigned hz[7] = { 0, 44100, 48000, 88200, 96000, 176400, 192000 };
-    std::string j = "[";
-    for (int i = 1; i < 7; i++) {
-        if (Mask & (1ul << i)) {
-            if (j.size() > 1) j += ",";
-            j += std::to_string(hz[i]);
         }
     }
     return j + "]";
@@ -140,14 +122,7 @@ static inline const char *Code(ULONG e)
 
 static inline std::string WhyOf(const APOLLO_CLOCK_INFO &c)
 {
-    return std::string(c.Why, strnlen(c.Why, sizeof(c.Why)));
-}
-
-static inline std::string UidId(ULONGLONG Uid)
-{
-    char b[24];
-    snprintf(b, sizeof(b), "%016llX", Uid);
-    return b;
+    return corrhost::Text(c.Why, sizeof(c.Why));
 }
 
 /* ------------------------------------------------------------------ */
@@ -238,7 +213,7 @@ static inline std::string PanelJson(const std::string &Id, const APOLLO_PANEL_IN
          "[" + std::to_string(p.TalkSlot[0]) + "," + std::to_string(p.TalkSlot[1]) + "]";
     j += ",\"strip\":" + Bool(p.TalkStrip != 0) + "}";
     j += ",\"link\":{\"on\":" + Bool(p.LinkFlags != 0) + ",\"monitor\":" +
-         (p.LinkFlags != 0 ? Q(UidId(p.LinkMonitorUid)) : std::string("null")) +
+         (p.LinkFlags != 0 ? Q(aggjson::UidText(p.LinkMonitorUid)) : std::string("null")) +
          ",\"level\":" + Bool((p.LinkFlags & APOLLO_PANEL_LINK_LEVEL) != 0) + ",\"mute\":" +
          Bool((p.LinkFlags & APOLLO_PANEL_LINK_MUTE) != 0) + ",\"dim\":" + Bool((p.LinkFlags & APOLLO_PANEL_LINK_DIM) != 0) +
          ",\"mono\":" + Bool((p.LinkFlags & APOLLO_PANEL_LINK_MONO) != 0) + ",\"talkDim\":" +
@@ -260,23 +235,6 @@ static inline std::string Absent(const char *Type, const std::string &Id, DWORD 
                                                     : corrhost::ErrText(Err);
     return std::string("{\"type\":\"") + Type + "\",\"unit\":" + Q(Id) + ",\"present\":" + Bool(Err != ERROR_FILE_NOT_FOUND) +
            ",\"error\":" + std::to_string(Err) + ",\"detail\":" + Q(why) + "}";
-}
-
-/* One IOCTL on a short-lived handle of the unit. */
-static inline DWORD UnitIoctl(const std::string &Id, DWORD Code, void *In, DWORD InLen, void *Out, DWORD OutLen, DWORD &Ret)
-{
-    APOLLO_INFO info{};
-    DWORD err = 0;
-    HANDLE h = corrhost::OpenUnit(Id, info, err);
-
-    Ret = 0;
-    if (h == INVALID_HANDLE_VALUE) {
-        return err ? err : ERROR_FILE_NOT_FOUND;
-    }
-    BOOL ok = DeviceIoControl(h, Code, In, InLen, Out, OutLen, &Ret, nullptr);
-    err = ok ? 0 : GetLastError();
-    CloseHandle(h);
-    return err;
 }
 
 static inline std::string ClockMsg(const std::string &Id)
@@ -436,20 +394,18 @@ static std::string g_lastPanel[kSlots], g_lastClock[kSlots];
 static std::string g_summaryClock[kSlots], g_summaryPanel[kSlots];   /* for the "units" entries (UnitsExtra) */
 static ULONGLONG   g_lastClockPost[kSlots];
 static bool        g_noDriver[kSlots];
-
-/* The unit id of a GET_INFO (the "units" message's). */
-static inline std::string IdOf(const APOLLO_INFO &Info, DWORD Bytes)
-{
-    if (ApolloInfoHasUnit(&Info, Bytes) && Info.UnitKey[0] != 0 && Info.UnitKey[sizeof(Info.UnitKey) - 1] == 0) {
-        return Info.UnitKey;
-    }
-    return "SN" + std::string(Info.Serial, strnlen(Info.Serial, sizeof(Info.Serial)));
-}
+/* The answers the strings above were built from (PollUnit), with the fields their JSON leaves out zeroed */
+static std::string       g_rawId[kSlots];
+static APOLLO_CLOCK_INFO g_rawClock[kSlots];
+static APOLLO_PANEL_INFO g_rawPanel[kSlots];
+static bool              g_haveClock[kSlots], g_havePanel[kSlots];
 
 /*
  * Ioctl: (code, out, outLen, &ret) -> ok, on the worker's own handle of the slot. Posts "panel" when the front panel
  * changed and "clock" when the clock state changed (the measured rate alone: at most every 5 s). A driver without
- * these IOCTLs is asked once per slot occupancy (Forget clears it).
+ * these IOCTLs is asked once per slot occupancy (Forget clears it). The JSON is built only when the driver's answer
+ * moved (the measured rate and the panel's ReadbackSeq are not compared: the compared JSON has neither), so a steady
+ * unit costs the two IOCTLs per pass and no strings.
  */
 template <typename F>
 static inline void PollUnit(int Slot, const APOLLO_INFO &Info, DWORD Bytes, F Ioctl, Post post, ULONGLONG Now)
@@ -457,7 +413,7 @@ static inline void PollUnit(int Slot, const APOLLO_INFO &Info, DWORD Bytes, F Io
     if (Slot < 0 || Slot >= kSlots || g_noDriver[Slot]) {
         return;
     }
-    std::string id = IdOf(Info, Bytes);
+    std::string id = corrhost::KeyOf(Info, Bytes);
     APOLLO_PANEL_INFO p{};
     APOLLO_CLOCK_INFO c{};
     DWORD ret = 0;
@@ -467,17 +423,38 @@ static inline void PollUnit(int Slot, const APOLLO_INFO &Info, DWORD Bytes, F Io
         g_noDriver[Slot] = true;                /* an older apollo.sys: nothing to poll */
         return;
     }
-    std::string cj = ClockJson(id, c, false);
-    g_summaryClock[Slot] = ",\"clock\":{\"source\":" + Q(SourceName(c.Source)) + ",\"wanted\":" + Q(SourceName(c.Wanted)) +
-                           ",\"locked\":" + Bool((c.Flags & APOLLO_CLOCK_F_LOCKED) != 0) + ",\"fellBack\":" +
-                           Bool((c.Flags & APOLLO_CLOCK_F_FELL_BACK) != 0) + "}";
-    if (cj != g_lastClock[Slot] || Now - g_lastClockPost[Slot] >= 5000) {
-        g_lastClock[Slot] = cj;
+    if (id != g_rawId[Slot]) {
+        g_rawId[Slot] = id;
+        g_haveClock[Slot] = g_havePanel[Slot] = false;
+    }
+    APOLLO_CLOCK_INFO ck = c;
+    ck.MeasuredMilliHz = 0;
+    bool moved = false;
+    if (!g_haveClock[Slot] || memcmp(&ck, &g_rawClock[Slot], sizeof(ck)) != 0) {
+        g_rawClock[Slot] = ck;
+        g_haveClock[Slot] = true;
+        std::string cj = ClockJson(id, c, false);
+        g_summaryClock[Slot] = ",\"clock\":{\"source\":" + Q(SourceName(c.Source)) + ",\"wanted\":" + Q(SourceName(c.Wanted)) +
+                               ",\"locked\":" + Bool((c.Flags & APOLLO_CLOCK_F_LOCKED) != 0) + ",\"fellBack\":" +
+                               Bool((c.Flags & APOLLO_CLOCK_F_FELL_BACK) != 0) + "}";
+        moved = cj != g_lastClock[Slot];
+        if (moved) {
+            g_lastClock[Slot] = std::move(cj);
+        }
+    }
+    if (moved || Now - g_lastClockPost[Slot] >= 5000) {
         g_lastClockPost[Slot] = Now;
         post(ClockJson(id, c));
     }
     if (Ioctl((DWORD)IOCTL_APOLLO_GET_PANEL, &p, (DWORD)sizeof(p), &ret) && ret >= sizeof(p) &&
         p.Version == APOLLO_CLOCK_VERSION) {
+        APOLLO_PANEL_INFO pk = p;
+        pk.ReadbackSeq = 0;
+        if (g_havePanel[Slot] && memcmp(&pk, &g_rawPanel[Slot], sizeof(pk)) == 0) {
+            return;
+        }
+        g_rawPanel[Slot] = pk;
+        g_havePanel[Slot] = true;
         static const char *const knob[3] = { "preamp", "monitor", "hp" };
         std::string pj = PanelJson(id, p);
         g_summaryPanel[Slot] = ",\"panel\":{\"knob\":" +
@@ -501,6 +478,8 @@ static inline void Forget(int Slot)
         g_noDriver[Slot] = false;
         g_summaryClock[Slot].clear();
         g_summaryPanel[Slot].clear();
+        g_rawId[Slot].clear();
+        g_haveClock[Slot] = g_havePanel[Slot] = false;
     }
 }
 

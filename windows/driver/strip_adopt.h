@@ -4,7 +4,9 @@
  * After a driver update, a PC restart or a device restart the Apollo stays powered, so the
  * driver comes up WARM. On the x8p the warm path never ring-connects, so the DSPs still run
  * whatever the last host left there. When that host was this driver and its D0 exit left its
- * strips running, they are adopted: marked Live without sending anything.
+ * strips running, they are stopped and built again (StripWarmRebuild, default 1), or, with
+ * StripWarmRebuild=0, adopted: marked Live without sending anything. Adoption is not proven to
+ * pass audio (StripAdoptDecide).
  *
  * What proves "ours" (nothing is written to the DSP for it, so nothing can collide with what
  * UA's software or the firmware keep there): a record in the registry, written by the driver
@@ -101,6 +103,41 @@ static __inline int StripRecordValid(const STRIP_RECORD *R, ULONG Bytes)
 
 /* ---- The plan's identity (strip_plan.h must be included first) ---- */
 
+/* The words a plan hash starts with. */
+static __inline ULONG StripPlanHashBegin(ULONG Mask, ULONG Limit, ULONG Rate, ULONG Dsp)
+{
+    return StripFnv(StripFnv(StripFnv(StripFnv(STRIP_FNV_INIT, Mask), Limit), Rate), Dsp);
+}
+
+/* One transaction of the pass into the hash: its kind, input (slot), up to MaxEnts entries and the payload. */
+static __inline ULONG StripPlanHashXact(ULONG H, ULONG Kind, ULONG In, const STRIP_PLAN *Plan, ULONG MaxEnts)
+{
+    ULONG j;
+
+    H = StripFnv(H, Kind);
+    H = StripFnv(H, In);
+    H = StripFnv(H, Plan->N);
+    for (j = 0; j < Plan->N && j < MaxEnts; j++) {
+        H = StripFnv(H, Plan->Ent[j].Dma);
+        H = StripFnvWords(H, Plan->Ent[j].W, 4);
+        H = StripFnv(H, Plan->Ent[j].Off);
+        H = StripFnv(H, Plan->Ent[j].Dwords);
+    }
+    return StripFnvWords(H, Plan->Payload, Plan->Len <= STRIP_PLAN_PAYLOAD_MAX ? Plan->Len : 0);
+}
+
+/* The end of a plan hash: the DSPs that get the route word (stage 8 on); a real hash of 0 is mapped to 1. */
+static __inline ULONG StripPlanHashEnd(ULONG H, ULONG Limit, ULONG Dsp, ULONG NumDsps)
+{
+    if (StripPlanSteps(Limit) >= STRIP_STEP_OTHERS) {
+        H = StripFnv(H, StripRouteDsps(NumDsps, Dsp));
+        H = StripFnv(H, STRIP_CMD_INPUT);
+        H = StripFnv(H, STRIP_INPUT_ROUTE);
+        H = StripFnv(H, STRIP_ROUTE_NONE);
+    }
+    return H ? H : 1u;
+}
+
 /*
  * Every word the pass for Mask at stage Limit and Rate sends on the strip DSP, in order (each
  * PREPARE, then the START), plus the DSPs that get the route word: one FNV-1a. Plan = scratch.
@@ -108,15 +145,9 @@ static __inline int StripRecordValid(const STRIP_RECORD *R, ULONG Bytes)
  */
 static __inline ULONG StripPlanHash(ULONG Mask, ULONG Limit, ULONG Rate, ULONG Dsp, ULONG NumDsps, STRIP_PLAN *Plan)
 {
-    ULONG h = STRIP_FNV_INIT, k, kind, in, j;
+    ULONG h = StripPlanHashBegin(Mask, Limit, Rate, Dsp), k, kind, in, rc;
 
-    h = StripFnv(h, Mask);
-    h = StripFnv(h, Limit);
-    h = StripFnv(h, Rate);
-    h = StripFnv(h, Dsp);
     for (k = 0; k <= STRIP_PLAN_INPUTS; k++) {
-        ULONG rc;
-
         kind = StripPassStep(Mask, Limit, k, &in);
         if (kind == STRIP_XACT_END) {
             break;
@@ -125,24 +156,9 @@ static __inline ULONG StripPlanHash(ULONG Mask, ULONG Limit, ULONG Rate, ULONG D
         if (rc != 0 || Plan->Err != 0) {
             return 0;
         }
-        h = StripFnv(h, kind);
-        h = StripFnv(h, in);
-        h = StripFnv(h, Plan->N);
-        for (j = 0; j < Plan->N && j < STRIP_PLAN_ENTS_MAX; j++) {
-            h = StripFnv(h, Plan->Ent[j].Dma);
-            h = StripFnvWords(h, Plan->Ent[j].W, 4);
-            h = StripFnv(h, Plan->Ent[j].Off);
-            h = StripFnv(h, Plan->Ent[j].Dwords);
-        }
-        h = StripFnvWords(h, Plan->Payload, Plan->Len <= STRIP_PLAN_PAYLOAD_MAX ? Plan->Len : 0);
+        h = StripPlanHashXact(h, kind, in, Plan, STRIP_PLAN_ENTS_MAX);
     }
-    if (StripPlanSteps(Limit) >= STRIP_STEP_OTHERS) {
-        h = StripFnv(h, StripRouteDsps(NumDsps, Dsp));
-        h = StripFnv(h, STRIP_CMD_INPUT);
-        h = StripFnv(h, STRIP_INPUT_ROUTE);
-        h = StripFnv(h, STRIP_ROUTE_NONE);
-    }
-    return h ? h : 1u;
+    return StripPlanHashEnd(h, Limit, Dsp, NumDsps);
 }
 
 /*
@@ -154,15 +170,9 @@ static __inline ULONG StripPlanHash(ULONG Mask, ULONG Limit, ULONG Rate, ULONG D
 static __inline ULONG StripPlanHashPm(ULONG Pm, ULONG MicSlots, ULONG Limit, ULONG Rate, ULONG Dsp, ULONG NumDsps,
                                       STRIP_PLAN *Plan)
 {
-    ULONG h = STRIP_FNV_INIT, k, kind, in, j;
+    ULONG h = StripPlanHashBegin(Pm, Limit, Rate, Dsp), k, kind, in, rc;
 
-    h = StripFnv(h, Pm);
-    h = StripFnv(h, Limit);
-    h = StripFnv(h, Rate);
-    h = StripFnv(h, Dsp);
     for (k = 0; k <= STRIP_PLAN_SLOTS; k++) {
-        ULONG rc;
-
         kind = StripPassStepPm(Pm, Limit, k, &in);
         if (kind == STRIP_XACT_END) {
             break;
@@ -172,24 +182,9 @@ static __inline ULONG StripPlanHashPm(ULONG Pm, ULONG MicSlots, ULONG Limit, ULO
         if (rc != 0 || Plan->Err != 0) {
             return 0;
         }
-        h = StripFnv(h, kind);
-        h = StripFnv(h, in);
-        h = StripFnv(h, Plan->N);
-        for (j = 0; j < Plan->N && j < STRIP_PLAN_ENT_SLOTS; j++) {
-            h = StripFnv(h, Plan->Ent[j].Dma);
-            h = StripFnvWords(h, Plan->Ent[j].W, 4);
-            h = StripFnv(h, Plan->Ent[j].Off);
-            h = StripFnv(h, Plan->Ent[j].Dwords);
-        }
-        h = StripFnvWords(h, Plan->Payload, Plan->Len <= STRIP_PLAN_PAYLOAD_MAX ? Plan->Len : 0);
+        h = StripPlanHashXact(h, kind, in, Plan, STRIP_PLAN_ENT_SLOTS);
     }
-    if (StripPlanSteps(Limit) >= STRIP_STEP_OTHERS) {
-        h = StripFnv(h, StripRouteDsps(NumDsps, Dsp));
-        h = StripFnv(h, STRIP_CMD_INPUT);
-        h = StripFnv(h, STRIP_INPUT_ROUTE);
-        h = StripFnv(h, STRIP_ROUTE_NONE);
-    }
-    return h ? h : 1u;
+    return StripPlanHashEnd(h, Limit, Dsp, NumDsps);
 }
 
 /* Header[i] of every input in Mask (0 elsewhere): the address its SYNCH points at. */
@@ -477,6 +472,17 @@ static __inline ULONG StripAdoptDecide(const STRIP_RECORD *R, const STRIP_ADOPT_
     if (!StripRecordPlanSame(R, Now)) {
         *Teardown = rebuild;
         return rebuild ? STRIP_ADOPT_REBUILD : STRIP_ADOPT_PLAN_DIFFERS;
+    }
+    /*
+     * The same plan, kept at exit: rebuild whenever rebuilds are allowed. Adopted strips were never heard
+     * passing audio: on Nov 16 2026 an x8p that adopted its strips after a warm restart recorded exact zero
+     * on every input (the monitor mix still played) until a power cycle. The warm rebuild (stop, then the
+     * pass again) is the path proven on hardware (VIRTUAL 1 recorded at -30 dBFS right after one), so it
+     * wins; adoption stays for StripWarmRebuild=0.
+     */
+    if (rebuild) {
+        *Teardown = 1;
+        return STRIP_ADOPT_REBUILD;
     }
     if (!Now->Adopt) {
         return STRIP_ADOPT_DISABLED;

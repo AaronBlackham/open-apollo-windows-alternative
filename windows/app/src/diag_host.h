@@ -11,6 +11,8 @@
  *
  * Reply: {"type":"diag-result","ok":true|false,"dir":"...","why":"..."}.
  *
+ * Included by main.cpp after its helpers (KnownFolder, Narrow, ExeDir, WriteWhole) and the other host headers.
+ *
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #pragma once
@@ -28,25 +30,6 @@ static inline bool Owns(const std::wstring &Cmd)
     return Cmd == L"diag-save";
 }
 
-static inline std::wstring Folder(REFKNOWNFOLDERID id)
-{
-    PWSTR p = nullptr;
-    std::wstring s;
-    if (SUCCEEDED(SHGetKnownFolderPath(id, KF_FLAG_CREATE, nullptr, &p))) s = p;
-    CoTaskMemFree(p);
-    return s;
-}
-
-static inline bool WriteText(const std::wstring &Path, const std::string &Text)
-{
-    HANDLE f = CreateFileW(Path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    DWORD w = 0;
-    BOOL ok = WriteFile(f, Text.data(), (DWORD)Text.size(), &w, nullptr);
-    CloseHandle(f);
-    return ok && w == Text.size();
-}
-
 static inline std::string Fmt(const char *f, ...)
 {
     char b[512];
@@ -55,15 +38,6 @@ static inline std::string Fmt(const char *f, ...)
     vsnprintf(b, sizeof(b), f, a);
     va_end(a);
     return b;
-}
-
-static inline std::string Narrow8(const std::wstring &w)
-{
-    if (w.empty()) return {};
-    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), nullptr, 0, nullptr, nullptr);
-    std::string s((size_t)n, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), s.data(), n, nullptr, nullptr);
-    return s;
 }
 
 static inline const char *EventName(ULONG k)
@@ -143,7 +117,7 @@ static inline void Save(Post post, const std::wstring &AppVersion)
     GetLocalTime(&now);
     wchar_t stamp[32];
     swprintf_s(stamp, L"%04u%02u%02u-%02u%02u%02u", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
-    std::wstring dir = Folder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloControl\\diagnostics\\" + stamp;
+    std::wstring dir = KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloControl\\diagnostics\\" + stamp;
     if (SHCreateDirectoryExW(nullptr, (dir + L"\\app").c_str(), nullptr) != ERROR_SUCCESS) {
         post("{\"type\":\"diag-result\",\"ok\":false,\"why\":\"could not create the folder\"}");
         return;
@@ -152,7 +126,7 @@ static inline void Save(Post post, const std::wstring &AppVersion)
 
     /* the driver's log, from any unit's handle (one ring for all) */
     std::vector<std::string> ids = ratehost::UnitIds();
-    std::string summary = "Apollo Control " + Narrow8(AppVersion) + " diagnostics, " + Narrow8(stamp) + "\r\n";
+    std::string summary = "Apollo Control " + Narrow(AppVersion) + " diagnostics, " + Narrow(stamp) + "\r\n";
     summary += Fmt("%zu unit(s) on apollo.sys\r\n", ids.size());
     for (const std::string &id : ids) {
         APOLLO_INFO i{};
@@ -165,17 +139,17 @@ static inline void Save(Post post, const std::wstring &AppVersion)
             ret >= sizeof(APOLLO_LOG_HEADER)) {
             auto *hdr = (PAPOLLO_LOG_HEADER)buf.data();
             ULONG len = (ULONG)std::min<size_t>(hdr->Length, ret - sizeof(*hdr));
-            files += WriteText(dir + L"\\driver-log.txt", std::string((const char *)(hdr + 1), len)) ? 1 : 0;
+            files += WriteWhole(dir + L"\\driver-log.txt", std::string((const char *)(hdr + 1), len)) ? 1 : 0;
         }
         CloseHandle(h);
         break;
     }
     for (const std::string &id : ids) {
-        files += WriteText(dir + L"\\unit-" + std::wstring(id.begin(), id.end()) + L".txt", UnitReport(id)) ? 1 : 0;
+        files += WriteWhole(dir + L"\\unit-" + std::wstring(id.begin(), id.end()) + L".txt", UnitReport(id)) ? 1 : 0;
     }
     /* Apollo Control's own files */
-    std::wstring roam = Folder(FOLDERID_RoamingAppData) + L"\\Avium\\ApolloControl", local = Folder(FOLDERID_LocalAppData) +
-                        L"\\Avium\\ApolloControl";
+    std::wstring roam = KnownFolder(FOLDERID_RoamingAppData) + L"\\Avium\\ApolloControl",
+                 local = KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloControl";
     CopyIf(roam + L"\\config.json", dir + L"\\app\\config.json", files);
     CopyIf(roam + L"\\plugins.json", dir + L"\\app\\plugins.json", files);
     CopyIf(local + L"\\plughelper.log", dir + L"\\app\\plughelper.log", files);
@@ -192,10 +166,8 @@ static inline void Save(Post post, const std::wstring &AppVersion)
         if (!newest.empty()) CopyIf(local + L"\\crashes\\" + newest, dir + L"\\app\\" + newest, files);
     }
     /* a source-tree build: the scripts' logs (app\bin\apollo-control.exe -> tools\phase1) */
-    wchar_t exe[MAX_PATH];
-    if (GetModuleFileNameW(nullptr, exe, MAX_PATH)) {
-        std::wstring p1 = exe;
-        for (int up = 0; up < 3; up++) p1 = p1.substr(0, p1.find_last_of(L'\\'));
+    if (std::wstring p1 = ExeDir(); !p1.empty()) {
+        for (int up = 0; up < 2; up++) p1 = p1.substr(0, p1.find_last_of(L'\\'));
         p1 += L"\\tools\\phase1";
         WIN32_FIND_DATAW fd;
         HANDLE f = FindFirstFileW((p1 + L"\\*.log").c_str(), &fd);
@@ -212,9 +184,9 @@ static inline void Save(Post post, const std::wstring &AppVersion)
     auto rgv = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
     if (rgv && rgv(&os) == 0) summary += Fmt("Windows %lu.%lu build %lu\r\n", os.dwMajorVersion, os.dwMinorVersion, os.dwBuildNumber);
     summary += Fmt("%d file(s) written\r\n", files + 1);
-    WriteText(dir + L"\\README.txt", summary);
+    WriteWhole(dir + L"\\README.txt", summary);
     ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    post("{\"type\":\"diag-result\",\"ok\":true,\"files\":" + std::to_string(files + 1) + ",\"dir\":" + corrhost::Q(Narrow8(dir)) + "}");
+    post("{\"type\":\"diag-result\",\"ok\":true,\"files\":" + std::to_string(files + 1) + ",\"dir\":" + corrhost::Q(Narrow(dir)) + "}");
 }
 
 }   /* namespace diaghost */

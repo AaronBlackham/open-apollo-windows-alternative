@@ -6,10 +6,9 @@
  * 3.7 G5 and 4.1. The x8p runs the legacy layout (34 play / 32 rec), the
  * one verified on hardware.
  *
- * [Twin X G3] The Twin X Gen 1 (AudioExtension path, bringup_plan.h) adds the boot transport
- * (E7-E13), the ring connect after ACEFACE with a consumption check, the descriptor counts and
- * the rate confirmation; every such branch is gated on the unit's plan, so the x8p runs what it
- * ran before.
+ * The Twin X Gen 1 (AudioExtension path, bringup_plan.h) adds the boot transport (E7-E13), the
+ * ring connect after ACEFACE with a consumption check, the descriptor counts and the rate
+ * confirmation; every such branch is gated on the unit's plan, so the x8p never takes one.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -21,7 +20,7 @@
 /* ------------------------------------------------------------------ */
 
 /*
- * [G4b] How a ring's memory is held (apollo.h APOLLO_AUDIO_RING, ring_map.h).
+ * How a ring's memory is held (apollo.h APOLLO_AUDIO_RING, ring_map.h).
  *
  * Why plain AllocateCommonBuffer on the enabler's own adapter, one call per chunk, and an MDL for
  * the linear view:
@@ -30,11 +29,10 @@
  *    addresses must come from the DMA adapter: apollo.inf sets DmaRemappingCompatible=1, so under
  *    Kernel DMA Protection the logical address is an IOMMU address, not the physical one.
  *  - AllocateCommonBuffer is in every DMA_OPERATIONS version (wdm.h, 10.0.28000: the first entries
- *    of the table); it is the call WdfCommonBufferCreate made for the pre-G4b ring, through the
- *    same adapter, with the same CacheEnabled TRUE (KMDF FxDmaEnabler::AllocateCommonBuffer), so
- *    DMA remapping and Driver Verifier's DMA checks treat these pages exactly as they treated the
- *    old 4 MiB, and the memory is MmCached as before. The view below maps it MmCached too: one
- *    cache type for every mapping of a page.
+ *    of the table); it is the call WdfCommonBufferCreate makes, through the same adapter, with the
+ *    same CacheEnabled TRUE (KMDF FxDmaEnabler::AllocateCommonBuffer), so DMA remapping and Driver
+ *    Verifier's DMA checks treat these pages exactly as KMDF's own common buffers, and the memory
+ *    is MmCached. The view below maps it MmCached too: one cache type for every mapping of a page.
  *  - Not AllocateCommonBufferVector: it is there in the same table (after
  *    AllocateCommonBufferWithBounds), but only an adapter from a DEVICE_DESCRIPTION_VERSION3
  *    exposes it, and on x64 KMDF asks for version 2 unless WDF_DMA_ENABLER_CONFIG.
@@ -191,9 +189,8 @@ static NTSTATUS ApolloRingMapView(_Inout_ PAPOLLO_RING_ALLOC A)
 }
 
 /*
- * [G4b] One ring (docs/spec-streaming.md 1.1): one contiguous 4 MiB common buffer if there is one
- * below 4 GiB (what every release before allocated, SG entry i = base + i * 4 KiB), else, or when
- * PagesOnly, 1024 common buffers of one SG page each plus one linear view of them. Both paths fill
+ * One ring (docs/spec-streaming.md 1.1): one contiguous 4 MiB common buffer if there is one below
+ * 4 GiB (SG entry i = base + i * 4 KiB), else, or when PagesOnly, 1024 common buffers of one SG page each plus one linear view of them. Both paths fill
  * the same Ring->Va / Ring->PageLa, so every consumer runs one code path. One log line per ring.
  * Any failure gives back everything this ring took (the object's cleanup) and leaves Ring zero.
  */
@@ -267,8 +264,8 @@ static NTSTATUS ApolloAudioRingAlloc(_In_ PDEVICE_CONTEXT Ctx, _Inout_ APOLLO_AU
 }
 
 /*
- * Device lifetime: allocated once, before anything can start the transport. [G4b] A failure
- * frees both rings (all or nothing): nothing is left for the enabler's teardown to find.
+ * Device lifetime: allocated once, before anything can start the transport. A failure frees
+ * both rings (all or nothing): nothing is left for the enabler's teardown to find.
  */
 NTSTATUS ApolloAudioAllocate(_In_ PDEVICE_CONTEXT Ctx)
 {
@@ -292,7 +289,7 @@ NTSTATUS ApolloAudioAllocate(_In_ PDEVICE_CONTEXT Ctx)
         }
     }
     if (ApolloIsAudioExt(Ctx)) {
-        /* [Twin X G3] no legacy layout: the counts come from the IO descriptors at connect (G5) */
+        /* no legacy layout: the counts come from the IO descriptors at connect (G5) */
         Ctx->PlayChannels = 0;
         Ctx->RecChannels = 0;
     } else {
@@ -308,9 +305,9 @@ NTSTATUS ApolloAudioAllocate(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /*
- * Only after the transport stopped and 100 ms passed (IOMMU, R6). [G4b] Deleting the allocation
- * object runs its cleanup now: view unmapped, every common buffer back to the adapter. Again is a
- * no-op (the ring is zero after the first call).
+ * Only after the transport stopped and 100 ms passed (IOMMU, R6). Deleting the allocation object
+ * runs its cleanup now: view unmapped, every common buffer back to the adapter. Again is a no-op
+ * (the ring is zero after the first call).
  */
 VOID ApolloAudioFree(_In_ PDEVICE_CONTEXT Ctx)
 {
@@ -325,8 +322,8 @@ VOID ApolloAudioFree(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /*
- * E6 / F7 ua_audio_program_sg: never under a running transport. [G4b] Entry i is the ring's SG
- * page i as the adapter mapped it (PageLa): base + i * 4 KiB for a contiguous ring, as before.
+ * E6 / F7 ua_audio_program_sg: never under a running transport. Entry i is the ring's SG page i
+ * as the adapter mapped it (PageLa): base + i * 4 KiB for a contiguous ring.
  */
 VOID ApolloAudioProgramSg(_In_ PDEVICE_CONTEXT Ctx)
 {
@@ -357,7 +354,7 @@ VOID ApolloAudioProgramSg(_In_ PDEVICE_CONTEXT Ctx)
     d = ApolloRead(Ctx, REG_DMA_CTRL);
     ApolloWrite(Ctx, REG_DMA_CTRL, ApolloDmaCtrlClean(Ctx, d));
     Ctx->DmaCtrlCache = ApolloRead(Ctx, REG_DMA_CTRL);
-    /* page 0 of each ring: the ring's base when contiguous, as every release logged it */
+    /* page 0 of each ring: the ring's base when contiguous */
     ApolloLogU(Ctx, "SG tables programmed (play 0x%llx rec 0x%llx), DMA_CTRL 0x%08x",
               Ctx->Play.PageLa[0], Ctx->Rec.PageLa[0], Ctx->DmaCtrlCache);
 
@@ -368,12 +365,10 @@ VOID ApolloAudioProgramSg(_In_ PDEVICE_CONTEXT Ctx)
 /* Audio-extension connect (spec-bringup 3.7 G5)                       */
 /* ------------------------------------------------------------------ */
 
-/* [Rate] ApolloRateHz (rate index -> Hz) is rate_plan.h's now: the same table. */
-
 /*
  * The ACEFACE handshake (spec-bringup 3.7 G5 / E8). Retries x Polls x PollMs; the disconnect
- * doorbell 0x10 before the second try. What: a log prefix ("" on the x8p: its lines are the
- * ones every release logged). [Twin X G3] The early handshake runs with 2 x 10 x 50 ms.
+ * doorbell 0x10 before the second try. What: a log prefix ("" on the x8p). The Twin X's early
+ * handshake runs with 2 x 10 x 50 ms.
  */
 static NTSTATUS ApolloAcefaceRun(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Retries, _In_ ULONG Polls,
                                  _In_ ULONG PollMs, _In_z_ PCSTR What)
@@ -419,13 +414,8 @@ static NTSTATUS ApolloAcefaceRun(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Retries, _
     return STATUS_IO_TIMEOUT;
 }
 
-static NTSTATUS ApolloAceface(_In_ PDEVICE_CONTEXT Ctx)
-{
-    return ApolloAcefaceRun(Ctx, ACEFACE_RETRIES, ACEFACE_POLLS, ACEFACE_POLL_MS, "");
-}
-
 /* ------------------------------------------------------------------ */
-/* [Twin X G3] AudioExtension path: the end of every failure           */
+/* AudioExtension path (Twin X): the end of every failure              */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -455,7 +445,7 @@ NTSTATUS ApolloAudioExtAbort(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Step, _In_ APO
 }
 
 /* ------------------------------------------------------------------ */
-/* [Twin X G3] Boot transport: E7, E8, DMA pulse, E10, E12, E13         */
+/* Boot transport (Twin X): E7, E8, DMA pulse, E10, E12, E13           */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -600,7 +590,7 @@ NTSTATUS ApolloBootTransport(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* [Twin X G3] The firmware IO descriptors decide the DMA frame        */
+/* The firmware IO descriptors decide the DMA frame (Twin X)           */
 /* ------------------------------------------------------------------ */
 
 /* One area (72 words) the torn-read-safe way (ua_io_desc_fetch): words, then the header again. */
@@ -700,7 +690,7 @@ static NTSTATUS ApolloAudioExtDescriptors(_In_ PDEVICE_CONTEXT Ctx)
 NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx)
 {
     const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
-    BOOLEAN ext = (plan != NULL && plan->AudioExtension) ? TRUE : FALSE;   /* [Twin X G3] */
+    BOOLEAN ext = (plan != NULL && plan->AudioExtension) ? TRUE : FALSE;
     NTSTATUS status;
     ULONG s, i, idx, rate;
 
@@ -708,7 +698,7 @@ NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx)
         return STATUS_SUCCESS;
     }
     if (!Ctx->AcefaceDone && ext) {
-        /* [Twin X G3] warm start (or no early answer): the full handshake, transport stopped */
+        /* warm start (or no early answer): the full handshake, transport stopped */
         status = ApolloAcefaceRun(Ctx, plan->AcefaceTries, plan->AcefacePolls, plan->AcefacePollMs,
                                   "G5 (transport stopped): ");
         if (status == STATUS_DEVICE_NOT_CONNECTED || status == STATUS_CANCELLED) {
@@ -722,7 +712,7 @@ NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx)
                                        "Power-cycle the Twin X.");
         }
     } else if (!Ctx->AcefaceDone) {
-        status = ApolloAceface(Ctx);
+        status = ApolloAcefaceRun(Ctx, ACEFACE_RETRIES, ACEFACE_POLLS, ACEFACE_POLL_MS, "");
         if (!NT_SUCCESS(status)) {
             return status;
         }
@@ -746,7 +736,7 @@ NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx)
     ApolloLogU(Ctx, "IO descriptors: in v%lu count %lu, out v%lu count %lu",
               Ctx->IoDescIn[0], Ctx->IoDescIn[3], Ctx->IoDescOut[0], Ctx->IoDescOut[4]);
     if (ext) {
-        /* [Twin X G3] the descriptor IS the layout (spec-twinx 3.1): read it properly, use its counts */
+        /* the descriptor IS the layout (spec-twinx 3.1): read it properly, use its counts */
         status = ApolloAudioExtDescriptors(Ctx);
         if (status == STATUS_DEVICE_NOT_CONNECTED) {
             return status;
@@ -772,7 +762,7 @@ NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx)
     /* x8p: the ring connect ran at probe (cold only). No deferred connect here. */
     if (ext && plan->RingConnectAtConnect) {
         /*
-         * [Twin X G3] AudioExtension: the ring connect follows ACEFACE on every connect, cold and
+         * AudioExtension: the ring connect follows ACEFACE on every connect, cold and
          * warm (ua_kext_ring_connect; skipping it "left playback silent"). Each command must be
          * consumed, else the unit stops here and nothing more goes to the DSPs.
          */
@@ -829,7 +819,7 @@ static VOID ApolloCheckAxFaults(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Ctrl, _In_ 
 }
 
 /*
- * [G4] After the rate change: are the IO descriptors the ones the transport was started on? The
+ * After the rate change: are the IO descriptors the ones the transport was started on? The
  * firmware republishes them (notification bits 0/1) when the rate band changes; 44.1 -> 48 kHz
  * stays in one band (G3: the same 34 / 46 at 0x101 and 0x201). A change is logged, the transport
  * keeps the connect-time layout (its counts are what AX_PLAY_CH / AX_REC_CH say) and step
@@ -919,18 +909,18 @@ BOOLEAN ApolloAudioDescriptorsReread(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /*
- * [Twin X G3] After the transport start and the clock write: wait for 0xC07C to say the asked
- * rate, locked, and log it; check that SAMPLE_POS moves (a start the FPGA ignored fails here);
- * re-seed the 64-bit position, which nothing has read yet; log the clock-source mask on a LIVE
- * read (spec-twinx 6.3.7: is Peer 0x0A offered?). A rate that does not lock is logged for the
- * gate (step RATE_48K missing), not fatal; a frozen SAMPLE_POS is.
- * [G4] The wait (plan RateConfirmMs, 2 s) acknowledges the notification status while it polls,
+ * After the transport start and the clock write: wait for 0xC07C to say the asked rate, locked,
+ * and log it; check that SAMPLE_POS moves (a start the FPGA ignored fails here); re-seed the
+ * 64-bit position, which nothing has read yet; log the clock-source mask on a LIVE read
+ * (spec-twinx 6.3.7: is Peer 0x0A offered?). A rate that does not lock is logged for the gate
+ * (step RATE_48K missing), not fatal; a frozen SAMPLE_POS is.
+ * The wait (plan RateConfirmMs, 2 s) acknowledges the notification status while it polls,
  * as the kext's handler and open-apollo's service step do: the firmware posts nothing new while
  * earlier bits stay set (oa:driver/ua_audio.c:2150-2154), it publishes the new rate only after
  * that write (oa:driver/ua_audio.c:5357-5361), and this runs under DevLock before the service
  * thread exists, so nobody else clears them (G3 cold start: still 0x101 after 529 ms, 0x201 once
- * the service thread ran). Then the DSPs get the 48 kHz rate ack, after the firmware reports the
- * rate: the kext's order for a clock change (oa:driver/ua_audio.c:5387-5453, ua_audio_rate_change_kext).
+ * the service thread ran). Then the DSPs get the rate ack, after the firmware reports the rate:
+ * the kext's order for a clock change (oa:driver/ua_audio.c:5387-5453, ua_audio_rate_change_kext).
  */
 static NTSTATUS ApolloAudioExtConfirmRate(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_BRINGUP_PLAN *Plan)
 {
@@ -1038,12 +1028,13 @@ NTSTATUS ApolloTransportStart(_In_ PDEVICE_CONTEXT Ctx)
 
 /*
  * [Rate] Engine FALSE: the transport alone (rate.c's 48 kHz session before a Hi-band start, which
- * streams nothing). AX_FRAME_CFG is the rate's (Ctx->FrameCfg: 8 at 44.1/48 kHz as before, 16, 32).
+ * streams nothing). AX_FRAME_CFG is the rate's (Ctx->FrameCfg, rate.c ApolloRateDerive: the plan's
+ * FrameCfg48k, or X8P_SAFETY_FRAMES_48K, at 44.1/48 kHz; x2 per band above).
  */
 NTSTATUS ApolloTransportStartEx(_In_ PDEVICE_CONTEXT Ctx, _In_ BOOLEAN Engine)
 {
     const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
-    BOOLEAN ext = (plan != NULL && plan->AudioExtension) ? TRUE : FALSE;   /* [Twin X G3] */
+    BOOLEAN ext = (plan != NULL && plan->AudioExtension) ? TRUE : FALSE;
     ULONG d, clean, frames, frameCfg, fc, ctrl, i;
 
     if (!Ctx->Connected) {
@@ -1053,9 +1044,9 @@ NTSTATUS ApolloTransportStartEx(_In_ PDEVICE_CONTEXT Ctx, _In_ BOOLEAN Engine)
         return STATUS_SUCCESS;
     }
     frames = Ctx->RingFrames;
-    frameCfg = Ctx->FrameCfg;                   /* [Rate] X8P_SAFETY_FRAMES_48K at 44.1/48 kHz, as before */
+    frameCfg = Ctx->FrameCfg;   /* [Rate] at 44.1/48 kHz: X8P_SAFETY_FRAMES_48K, or the plan's FrameCfg48k */
     if (ext) {
-        /* [Twin X G3] the IO descriptor counts (G5) or nothing: no guessed layout */
+        /* the IO descriptor counts (G5) or nothing: no guessed layout */
         if (Ctx->PlayChannels == 0 || Ctx->RecChannels == 0 || Ctx->PlayChannels > AUDIO_MAX_CHANNELS ||
             Ctx->RecChannels > AUDIO_MAX_CHANNELS ||
             ApolloPlanBufFrames(Ctx->PlayChannels, Ctx->RecChannels) != frames) {
@@ -1063,7 +1054,6 @@ NTSTATUS ApolloTransportStartEx(_In_ PDEVICE_CONTEXT Ctx, _In_ BOOLEAN Engine)
                       Ctx->PlayChannels, Ctx->RecChannels);
             return STATUS_DEVICE_CONFIGURATION_ERROR;
         }
-        frameCfg = Ctx->FrameCfg;               /* [Rate] plan->FrameCfg48k at 44.1/48 kHz, as before */
     }
 
     /* A fresh start plays silence until a client writes. */
@@ -1091,7 +1081,7 @@ NTSTATUS ApolloTransportStartEx(_In_ PDEVICE_CONTEXT Ctx, _In_ BOOLEAN Engine)
     ApolloWrite(Ctx, REG_AX_CONTROL, AX_CTRL_ARM);                                  /* 11 */
     (VOID)ApolloRead(Ctx, REG_AX_STATUS);                                           /* 12 */
     if (plan == NULL || plan->P2pRouteAtStart) {
-        /* The legacy layout's step; [Twin X G3] the descriptor layout skips it, as the kext does. */
+        /* The legacy layout's step; the descriptor layout skips it, as the kext does. */
         ApolloWrite(Ctx, REG_AX_P2P_ROUTE, 0x100 | (Ctx->PlayChannels - 1));        /* 13 */
     }
     ApolloCheckAxFaults(Ctx, ApolloRead(Ctx, REG_AX_CONTROL), "prepare");           /* 13b */
@@ -1138,8 +1128,8 @@ NTSTATUS ApolloTransportStartEx(_In_ PDEVICE_CONTEXT Ctx, _In_ BOOLEAN Engine)
 
         ApolloStepPassed(Ctx, APOLLO_BSTEP_XPORT_START);
         if (plan->ConfirmRate) {
-            /* [Twin X G3] 48 kHz explicitly: logged; SAMPLE_POS must move; the live clock mask */
-            /* [G4] notifications acknowledged while it waits (2 s), then the 48 kHz rate ack */
+            /* the rate locked (logged; notifications acknowledged while it waits, 2 s), the rate ack,
+               SAMPLE_POS moving, the live clock mask */
             rs = ApolloAudioExtConfirmRate(Ctx, plan);
             if (!NT_SUCCESS(rs)) {
                 ApolloTransportStop(Ctx);
@@ -1291,13 +1281,12 @@ NTSTATUS ApolloCaptureCopy(_In_ PDEVICE_CONTEXT Ctx, _In_ PAPOLLO_CAPTURE_REQUES
 }
 
 #define LEVEL_WINDOW_FRAMES     1024    /* ~21 ms at 48 kHz; [Rate] the same time at any rate (LevelWindow) */
-#define PLAYBACK_TICK_FRAMES    48      /* one 1 ms engine tick at 48 kHz: the snapshot's age ([Rate] TickFrames) */
 #define PLAYBACK_MAX_FRAMES     (APOLLO_ZERO_AHEAD_FRAMES * 3 / 4)  /* fits the write window */
 
 /* Peak per record slot over the newest LEVEL_WINDOW_FRAMES frames (meters). */
 VOID ApolloLevelsRead(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_LEVELS L)
 {
-    ULONG chans = Ctx->RecChannels, ringFrames = Ctx->RingFrames, n, ch, f, raw;
+    ULONG chans = Ctx->RecChannels, ringFrames = Ctx->RingFrames, n, ch, f, raw, slot;
     ULONG window = min(ApolloRateScale(LEVEL_WINDOW_FRAMES, Ctx->SampleRate), 4096ul);   /* [Rate] */
     ULONGLONG end, start, pos;
     LONGLONG qpc;
@@ -1315,9 +1304,9 @@ VOID ApolloLevelsRead(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_LEVELS L)
         return;
     }
     start = end - window;
+    slot = (ULONG)(start % ringFrames);         /* = (start + f) % ringFrames, one division per read */
     for (f = 0; f < window; f++) {
-        const LONG *frame = (const LONG *)(Ctx->Rec.Va +
-                                           (SIZE_T)((start + f) % ringFrames) * chans * 4);
+        const LONG *frame = (const LONG *)(Ctx->Rec.Va + (SIZE_T)slot * chans * 4);
 
         for (ch = 0; ch < n; ch++) {
             LONG s = frame[ch] / 256;           /* 24 valid bits, MSB-aligned */
@@ -1326,6 +1315,9 @@ VOID ApolloLevelsRead(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_LEVELS L)
             if (a > L->Peak[ch]) {
                 L->Peak[ch] = a;
             }
+        }
+        if (++slot == ringFrames) {
+            slot = 0;
         }
     }
     L->Valid = 1;

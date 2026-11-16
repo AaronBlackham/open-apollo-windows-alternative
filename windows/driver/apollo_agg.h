@@ -1,5 +1,5 @@
 /*
- * apollo_agg.h - the combined device's pure logic (gate G6, docs/spec-twinx.md 6.3-6.6): the
+ * apollo_agg.h - the combined device's pure logic (docs/spec-twinx.md 6.3-6.6): the
  * follower clock loop, the adaptive resampler's filter, the configuration checks and the logical
  * channel layout. Plain C with no kernel or CRT calls (no sin, sqrt or memset), so the driver
  * (agg.c, DISPATCH_LEVEL for the per-tick parts) and the offline test (tools/agg-test/asrc-test.c)
@@ -23,7 +23,7 @@
 #define APOLLO_AGG_RATE         48000.0
 #define APOLLO_AGG_MARGIN       16          /* M: jitter margin, frames (spec 6.3.3) */
 /*
- * [G7 review] The most capture frames one aggregate tick catches up (ASIO client and each combined
+ * The most capture frames one aggregate tick catches up (ASIO client and each combined
  * stream); a bigger lag re-originates instead. Was 4096: after a stall that was up to 4096 frames
  * of resampling in one DPC under Agg.Lock and the members' EngineLocks (tens of ms at h 32 with 128
  * inputs). 1024 frames = 21 ms of backlog; asrc-test bounds the worst case it can cost.
@@ -244,12 +244,12 @@ static __inline long ApolloAsrcToSample(float V)
 }
 
 /*
- * [polish Nov 15] One combined sample, the rule every combined client follows (spec 6.3.3, 6.4: "master
+ * One combined sample, the rule every combined client follows (spec 6.3.3, 6.4: "master
  * channels: read and written directly in the master ring"). agg.c's ASIO capture, combined Windows capture
  * and follower render all take their samples here, and tools\agg-test\aggep-test proves it offline:
  *   - the timeline unit's channels are an integer copy of its ring at the same frame: no filter, no gain,
  *     no fade, so bit-exact (ApolloAggRingSample); its render clients ADD straight into its ring;
- *   - only another unit's (a follower's) go through the ASRC (ApolloAggAsrcSample), as before.
+ *   - only another unit's (a follower's) go through the ASRC (ApolloAggAsrcSample).
  * Rings are Frames (a power of two) x Channels S32 samples, frame after frame.
  */
 static __inline int ApolloAggResampled(unsigned long U, unsigned long Timeline)
@@ -578,13 +578,13 @@ static __inline unsigned long ApolloAggValidate(const APOLLO_AGG_CONFIG *C)
 typedef struct _APOLLO_AGG_UNIT_RT {
     int             Present;        /* joined: bring-up done, transport and engine started */
     unsigned long   Guard, Lead, Adc, FrameCfg;
-    long            CapTrim, RenTrim;   /* [G7] CaptureTrimFrames / RenderTrimFrames, -64..64 (0 = as G6) */
+    long            CapTrim, RenTrim;   /* CaptureTrimFrames / RenderTrimFrames, -64..64 */
     unsigned long   Rate;               /* [Rate] Hz the unit runs at (its Guard, Lead, Adc, FrameCfg are at it); 0 = 48 kHz */
     unsigned long   Dig;                /* [Clock] the unit's digital formats (clock_plan.h APOLLO_DIG_*); 0 = none chosen */
 } APOLLO_AGG_UNIT_RT;
 
 /* ------------------------------------------------------------------ */
-/* [G7] Alignment, trims (spec 6.3.5)                                  */
+/* Alignment, trims (spec 6.3.5)                                      */
 /* ------------------------------------------------------------------ */
 
 #define APOLLO_AGG_TRIM_MAX         64
@@ -622,7 +622,7 @@ static __inline long ApolloAggCapOffset(const APOLLO_AGG_CONFIG *C, const APOLLO
 }
 
 /*
- * [G7 review] How much earlier than the timeline a follower may play (a positive render offset reads
+ * How much earlier than the timeline a follower may play (a positive render offset reads
  * staging ahead of the frames it plays). The staging is written up to Pm + the timeline's lead; the
  * follower's ring frames must be written before Pf + FRAME_CFG + 4 is fetched, one tick (48 frames)
  * later at the latest, with the resampler's look-ahead h and the jitter margin M on top. More than
@@ -647,9 +647,9 @@ static __inline long ApolloAggRenOffsetMax(unsigned long TlLead, unsigned long H
 
 /*
  * A follower's playback: its ring frame k plays the staging (timeline) frame Unmap(k) + this, so a
- * positive RenderTrim plays that unit later. 0 with equal trims (G6). Not affected by ALIGN: output
+ * positive RenderTrim plays that unit later. 0 with equal trims. Not affected by ALIGN: output
  * latency is the same on every unit by construction (6.3.3).
- * [G7 review] "Earlier" (positive) is clamped to ApolloAggRenOffsetMax; "later" needs only older staging
+ * "Earlier" (positive) is clamped to ApolloAggRenOffsetMax; "later" needs only older staging
  * (the ring keeps 4096 frames), so -128 is fine.
  */
 static __inline long ApolloAggRenOffsetRaw(const APOLLO_AGG_UNIT_RT *Rt, unsigned long Tl, unsigned long U)
@@ -719,7 +719,7 @@ static __inline long ApolloAggOutSlot(const APOLLO_AGG_CONFIG *C, unsigned long 
  * pad = h + M + the largest ADC excess of another unit over the timeline's. Only when the
  * configuration has more than one unit (present or not), so a unit coming and going does not
  * move the reported latency.
- * [G7] The excess is the largest follower read offset (ApolloAggCapOffset: ADC difference minus the
+ * The excess is the largest follower read offset (ApolloAggCapOffset: ADC difference minus the
  * trim difference; with every trim 0 exactly G6's). Unaligned (ALIGN clear): no pad at all, the
  * reported latency is the timeline's own and followers read h + M behind (their latency is longer,
  * which ASIO cannot express: Apollo Control says so).
@@ -917,7 +917,7 @@ static __inline int ApolloAggSameLists(const APOLLO_AGG_COMPILED *A, const APOLL
 }
 
 /* ------------------------------------------------------------------ */
-/* [G7] The combined Windows endpoints (spec 6.7, 6.10)                */
+/* The combined Windows endpoints (spec 6.7, 6.10)                    */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -936,9 +936,9 @@ static __inline int ApolloAggSameLists(const APOLLO_AGG_COMPILED *A, const APOLL
  *             follower's through the staging rings and the resampler, like ASIO's outputs).
  * The list is the single source for endpoints.c (ACX rows), this header's pure table (offline test)
  * and, by test, apollo.inf (aggep-test parses the INF and requires the same reference strings).
- * [Endpoints] Nov 15: every output jack of both units (endpoint_plan.h's standalone rows, the pin names
- * prefixed with the unit), the inputs of both units by default, VIRTUAL and S/PDIF inputs opt-in; new
- * reference strings ("Ap2C...") so no endpoint inherits a name Windows cached for the G7 rows.
+ * [Endpoints] Every output jack of both units (endpoint_plan.h's standalone rows, the pin names
+ * prefixed with the unit), the inputs of both units by default, VIRTUAL and S/PDIF inputs opt-in. The
+ * reference strings start "Ap2C" so no endpoint inherits a name Windows cached for an older table's rows.
  *
  * X(sym, reference string, pin name, kind, render, channels, bridge, NeverSetAsDefault, in the default
  *   set, model, id0, id1, fallback slot 0, fallback slot 1)
@@ -996,7 +996,7 @@ typedef struct _APOLLO_AGG_EP_ROW {
     unsigned char   Kind;           /* APOLLO_AGG_EP_* */
     unsigned char   Render;
     unsigned char   Channels;
-    unsigned char   Bridge;         /* [Endpoints] APOLLO_AGG_BRIDGE_* (was Mic: 1 = MICROPHONE) */
+    unsigned char   Bridge;         /* [Endpoints] APOLLO_AGG_BRIDGE_* */
     unsigned char   NeverDefault;   /* INF Apollo_NeverDefault_AddReg */
     unsigned char   Default;        /* [Endpoints] in the default set (APOLLO_AGG_EP_DEFAULT) */
     unsigned long   Model;          /* INPUT / OUTPUT rows: APOLLO_INFO_MODEL_* */
@@ -1028,7 +1028,7 @@ static __inline const APOLLO_AGG_EP_ROW *ApolloAggEpRow(unsigned long I)
 
 /* Device add: which table a unit gets. AddModel: apollo_unit.h ApolloAddTimeModel (APOLLO_MODEL_*). */
 #define APOLLO_AGG_EPTABLE_NONE         0   /* no circuits at all (the other unit hosts the combined set) */
-#define APOLLO_AGG_EPTABLE_STANDALONE   1   /* its own model table, exactly as before G7 */
+#define APOLLO_AGG_EPTABLE_STANDALONE   1   /* its own model table (standalone endpoints) */
 #define APOLLO_AGG_EPTABLE_COMBINED     2   /* the combined table above */
 
 static __inline int ApolloAggEpTableFor(unsigned long EndpointSet, int AddModel)
@@ -1168,7 +1168,7 @@ static __inline void ApolloAggEpResolve(const APOLLO_AGG_CONFIG *C, unsigned lon
 }
 
 /* ------------------------------------------------------------------ */
-/* [G7] The tick's windows and the timeline takeover (agg.c)           */
+/* The tick's windows and the timeline takeover (agg.c)               */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -1194,7 +1194,7 @@ static __inline unsigned long long ApolloAggStreamFrom(unsigned long long RenHea
                                                        unsigned long FrameCfg, unsigned long long To)
 {
     if (RenHead == 0 || RenHead > To) {
-        return To;                  /* [G7 review] a head beyond To is another run's: start over at the lead */
+        return To;                  /* a head beyond To is another run's: start over at the lead */
     }
     if (RenHead < Pm + FrameCfg) {
         return Pm + FrameCfg;
@@ -1203,14 +1203,7 @@ static __inline unsigned long long ApolloAggStreamFrom(unsigned long long RenHea
 }
 
 /*
- * A member's tick while another unit holds the timeline (spec 6.3.4): 1 = the timeline stopped, the
- * caller becomes acting master; 2 = [G7 review] the caller is the configured master and has run for
- * ReclaimTicks of its own ticks (an engine recovered, a transport started by hand): it takes its
- * timeline back; 0 = nothing. *Reclaim counts the master's ticks and restarts at 0 whenever the
- * caller is not the master or does not run, and after a takeover.
- */
-/*
- * [G7 review] The timeline unit started a new run under the aggregate without a takeover (its own
+ * The timeline unit started a new run under the aggregate without a takeover (its own
  * transport restarted, e.g. ApolloEngineRecover's transport-restart branch, while no other unit ran):
  * its 64-bit position went back (a transport start seeds it from the 13-bit counter), or its engine
  * was started again (EngStarts moved). Every frame number the clients hold is then another run's,
@@ -1227,6 +1220,13 @@ static __inline int ApolloAggTimelineRestarted(int Valid, unsigned long LastUnit
     return Pm < LastPm || Starts != LastStarts;
 }
 
+/*
+ * A member's tick while another unit holds the timeline (spec 6.3.4): 1 = the timeline stopped, the
+ * caller becomes acting master; 2 = the caller is the configured master and has run for
+ * ReclaimTicks of its own ticks (an engine recovered, a transport started by hand): it takes its
+ * timeline back; 0 = nothing. *Reclaim counts the master's ticks and restarts at 0 whenever the
+ * caller is not the master or does not run, and after a takeover.
+ */
 static __inline unsigned long ApolloAggTakeOverWhy(int TimelineRuns, int CallerIsMaster, int CallerRuns,
                                                    unsigned long ReclaimTicks, unsigned long *Reclaim)
 {
@@ -1246,7 +1246,7 @@ static __inline unsigned long ApolloAggTakeOverWhy(int TimelineRuns, int CallerI
 }
 
 /* ------------------------------------------------------------------ */
-/* [G7] Persisted start ratios (spec 6.3.2 "Persisted")                */
+/* Persisted start ratios (spec 6.3.2 "Persisted")                    */
 /* ------------------------------------------------------------------ */
 
 /*

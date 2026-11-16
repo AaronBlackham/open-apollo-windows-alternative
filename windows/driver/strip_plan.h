@@ -17,10 +17,10 @@
  * 538-563 (header, captured 48 kHz parameters), 579-601 (start words), 610-705 (words),
  * ua_plugin_upload.c:114-160 (memspec).
  *
- * [Virtual] (Nov 16 2026, docs/STRIPS.md 13) The plain Input Strip (pluginId 0x83E) on the Virtual inputs,
- * after the "Virtual Input Strips" section below: a pass is then every Mic PREPARE, every Virtual PREPARE,
+ * [Virtual] (docs/STRIPS.md 13) The plain Input Strip (pluginId 0x83E) on the Virtual inputs, after
+ * the "Virtual Input Strips" section below: a pass is then every Mic PREPARE, every Virtual PREPARE,
  * and ONE START for all of them (the "plan mask" Pm: bits 0-7 Mic, 8-15 VIRTUAL 1-8). Every function
- * above that section is unchanged (strip-plan-test's golden digests).
+ * above that section is pinned by strip-plan-test's golden digests.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -506,7 +506,7 @@ static __inline ULONG StripPassStep(ULONG Mask, ULONG Steps, ULONG K, ULONG *Inp
 }
 
 /*
- * ---- [Virtual] Virtual Input Strips (Nov 16 2026, docs/STRIPS.md 13) ----
+ * ---- [Virtual] Virtual Input Strips (docs/STRIPS.md 13) ----
  *
  * A DAW (or Windows) plays into VIRTUAL 1-8; on the DSP those are inputs (synch) 0x18-0x1F, and "without a
  * strip on their DSP input the Console's Virtual channels mix nothing and record silence"
@@ -923,7 +923,7 @@ static __inline ULONG StripPlanSpans(STRIP_PLAN *P)
 }
 
 /*
- * ---- [Twin X G5] The strip plan per model (docs/spec-twinx.md 5.2) ----
+ * ---- The strip plan per model (docs/spec-twinx.md 5.2) ----
  *
  * Everything above is the same for every model that builds strips: strip i sits on DSP input
  * (synch) i and in slot i of the pools, with the same rows, words and 48 kHz parameters. That is
@@ -934,9 +934,9 @@ static __inline ULONG StripPlanSpans(STRIP_PLAN *P)
  * which record slot each strip feeds. A model whose first synch is not 0 would need the planner
  * changed, so StripModelFor never returns one (strip-plan-test checks it).
  *
- * The x8p row reproduces what strips.c did before G5 value for value: StripMask & 0xFF, StripDsp
- * 0-3 below the DSP count else 1 (open-apollo's clamp, STRIP_MAX_DSP), room for 8 strips, routes
- * to every other DSP (strip-plan-test compares it with the pre-G5 code).
+ * The x8p row: StripMask & 0xFF, StripDsp 0-3 below the DSP count else 1 (open-apollo clamps
+ * input_strips_dsp below 4), room for 8 strips, routes to every other DSP (strip-plan-test
+ * compares it with the original x8p-only code).
  */
 #define STRIP_MODEL_X8P         1u      /* = apollo_model.h APOLLO_MODEL_X8P (strips.c asserts) */
 #define STRIP_MODEL_TWINX       2u      /* = APOLLO_MODEL_TWINX, Twin X Gen 1 (0x99) */
@@ -976,8 +976,8 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
              * docs/spec-twinx.md 5.2: 2 preamps (Hi-Z on input 1 is the same strip: it sits on the
              * DSP input, not on the jack), DSP 1 (a Duo has DSPs 0-1; 0 = record only, no monitor
              * mix, oa:HARDWARE-SESSIONS.md:327-328), the Mic Input Strip modules unchanged, room
-             * for its 2 strips (its DSP 1 pools fit 8 at G3: tops 0x9D1B8 / 0xC6FFE / 0x08FFE000);
-             * record slots 0/1 = 0x0001/0x0002 MIC/LINE/HIZ 1-2 (the G3 descriptor). No talkback
+             * for its 2 strips (its DSP 1 pools, measured, fit 8: tops 0x9D1B8 / 0xC6FFE / 0x08FFE000);
+             * record slots 0/1 = 0x0001/0x0002 MIC/LINE/HIZ 1-2 (its IO descriptor). No talkback
              * strip (module 0xC9, no captured recipe): TALKBACK 1-2 stay silent.
              * [Virtual] VIRTUAL 1-4 (oa:devices/apollo-twin-x.json virtual_max 4; VIRTUAL 1-4 play and record).
              */
@@ -1023,8 +1023,8 @@ static __inline ULONG StripModelDsp(const STRIP_MODEL *M, ULONG Dsp, ULONG NumDs
 /*
  * Ownership (docs/STRIPS.md 2.3, oa:driver/ua_plugin_place.c:110-118): the strip DSP is ours only
  * if its boot word, read at a cold bring-up before anything connects its rings, is 3 apart from
- * the model byte [15:8] (no host since power-up). Twin X G3: 00002703 00000003 cold, 0008270b
- * 0008000b after UA's driver.
+ * the model byte [15:8] (no host since power-up). Twin X Gen 1 measured: 00002703 00000003 cold,
+ * 0008270b 0008000b after UA's driver.
  */
 static __inline int StripOwned(ULONG BootWord)
 {
@@ -1042,8 +1042,8 @@ static __inline ULONG StripRouteDsps(ULONG NumDsps, ULONG Dsp)
 }
 
 /*
- * The pool check (port of oa:driver/ua_strips.c:440-483, docs/STRIPS.md 2.4; it was strips.c's
- * ApolloStripLayoutCheck): the strip DSP's 11 pool registers against the layout the recipe was
+ * The pool check (port of oa:driver/ua_strips.c:440-483, docs/STRIPS.md 2.4; strips.c
+ * StripsReadLayout runs it): the strip DSP's 11 pool registers against the layout the recipe was
  * validated on, with room for Strips strips above each pool's scratch. 0 = fits; 1 gone (a read
  * all ones); 2 code pool not at 0xE0000; 3 code pool too small; 4+p pool p's top is not the
  * recipe's (or wraps); 8+p no room in pool p. Size/Base/Scr are the raw registers (Scr[0] unused).

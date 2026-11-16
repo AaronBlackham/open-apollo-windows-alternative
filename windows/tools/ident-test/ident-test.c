@@ -124,7 +124,7 @@ static void TestUpstream(void)
 #define X8P_FPGA    0xA241C5ACul        /* Aaron's x8p, apollo-diag info Nov 14 2026 */
 #define X8P_EXT     0x81110611ul
 #define X8P_FW      0x0B0FD613ul
-#define X8P_SERIAL  "22532017106180"
+#define X8P_SERIAL  "20000000000001"
 #define TWX_FPGA    0x9A0F1234ul        /* synthetic: Gen 1 values are unknown until G2 */
 #define TWX_EXT4    0x81300410ul        /* bit 31, family 19, 4 DSPs, ready cap 1 */
 #define TWX_EXT2    0x81300210ul        /* Duo */
@@ -318,9 +318,9 @@ static void TestSerialAndKey(void)
         const char   *Want;
         int           DigitsOk;
     } s[] = {
-        { "22532017106180\0", "22532017106180", 1 },
-        { { '2','2','5','3','2','0','1','7','1','0','6','1','8','0',0xC2,0xA0 }, "22532017106180", 1 },
-        { { '2','2','5','3','2','0','1','7','1','0','6','1','8','0','1','2' }, "2253201710618012", 1 },
+        { "20000000000001\0", "20000000000001", 1 },
+        { { '2','2','5','3','2','0','1','7','1','0','6','1','8','0',0xC2,0xA0 }, "20000000000001", 1 },
+        { { '2','2','5','3','2','0','1','7','1','0','6','1','8','0','1','2' }, "2000000000000112", 1 },
         { { '2','2','5','3','2','0','1','7','1','0',0x01,'1','8','0','1','2' }, "2253201710", 1 },
         { { ' ','2','5','3','2','0','1','7','1','0','6','1','8','0','1','2' }, "", 1 },
         { { 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF }, "", 0 },
@@ -348,8 +348,8 @@ static void TestSerialAndKey(void)
           strcmp(key, "SN" X8P_SERIAL) == 0, "key serial: '%s'", key);
     CHECK(ApolloUnitKeyName(0xFFFFFFFFul, 0xFFFFFFFFul, X8P_SERIAL, 14, key) == APOLLO_UNIT_KEY_SERIAL &&
           strcmp(key, "SN" X8P_SERIAL) == 0, "key all-ones uid: '%s'", key);
-    CHECK(ApolloUnitKeyName(0, 0, "2253201710618012", 16, key) == APOLLO_UNIT_KEY_SERIAL &&
-          strcmp(key, "SN2253201710618012") == 0, "key serial 16: '%s'", key);
+    CHECK(ApolloUnitKeyName(0, 0, "2000000000000112", 16, key) == APOLLO_UNIT_KEY_SERIAL &&
+          strcmp(key, "SN2000000000000112") == 0, "key serial 16: '%s'", key);
     CHECK(ApolloUnitKeyName(0, 0, "1234567", 7, key) == APOLLO_UNIT_KEY_NONE && key[0] == 0,
           "key short serial: '%s'", key);
     CHECK(ApolloUnitKeyName(0, 0, "2253-2017-1061", 14, key) == APOLLO_UNIT_KEY_NONE && key[0] == 0,
@@ -457,8 +457,14 @@ static void TestParams(void)
           ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_VIRTUAL_MASK) == 0 &&
           wcscmp(ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->NameW, L"StripVirtualMask") == 0 &&
           strcmp(ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->Name, "StripVirtualMask") == 0 &&
-          ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->Hex && APOLLO_PARAM_STRIP_VIRTUAL_MASK == 19 &&
-          APOLLO_PARAM_COUNT == 20, "[Virtual] StripVirtualMask: id 19, 0 on every model, logged in hex");
+          ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->Hex && APOLLO_PARAM_STRIP_VIRTUAL_MASK == 19,
+          "[Virtual] StripVirtualMask: id 19, 0 on every model, logged in hex");
+    CHECK(ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_BUS_ENABLE) == 0 &&
+          ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_BUS_ENABLE) == 0 &&
+          ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_BUS_ENABLE) == 0 &&
+          wcscmp(ApolloParamDef(APOLLO_PARAM_BUS_ENABLE)->NameW, L"BusEnable") == 0 &&
+          ApolloParamDef(APOLLO_PARAM_BUS_ENABLE)->Hex && APOLLO_PARAM_BUS_ENABLE == 20 && APOLLO_PARAM_COUNT == 21,
+          "BusEnable: id 20, 0 (nothing sent) on every model, logged in hex");
     CHECK(u.Value[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == 0 && u.Source[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == APOLLO_SRC_DEFAULT,
           "[Virtual] x8p default StripVirtualMask 0 (built-in)");
     {

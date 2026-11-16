@@ -10,7 +10,7 @@
 #define STRIP_REC_MAGIC         0x52537641u     /* "AvSR" */
 #define STRIP_REC_VERSION       1u
 /*
- * [Virtual] (Nov 16 2026, docs/STRIPS.md 13) The same 50 words; Mask holds the plan mask (StripMask | StripVirtualMask
+ * [Virtual] (docs/STRIPS.md 13) The same 50 words; Mask holds the plan mask (StripMask | StripVirtualMask
  * << 8). A record whose Mask names Virtual strips is sealed as version 2, so a build without Virtual strips (which
  * trusts version 1 only) never adopts, rebuilds over or keeps strips it does not know: it asks for a power cycle.
  * Every other record is version 1, byte for byte what the builds before wrote.

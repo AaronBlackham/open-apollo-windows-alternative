@@ -155,25 +155,6 @@ static inline std::string Label(const std::string &name)
     return (name.size() > 4 && name.compare(0, 4, "UAD ") == 0) ? name.substr(4) : name;
 }
 
-/* oa_offline.slug: lower-case, "uad " dropped, runs of anything else -> "-" */
-static inline std::string Slug(const std::string &name)
-{
-    std::string n = Lower(name), o;
-    if (n.compare(0, 4, "uad ") == 0) n = n.substr(4);
-    bool dash = false;
-    for (char c : n) {
-        bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
-        if (ok) {
-            if (dash && !o.empty()) o += '-';
-            dash = false;
-            o += c;
-        } else {
-            dash = true;
-        }
-    }
-    return o;
-}
-
 /* ------------------------------------------------------------------ bundle */
 
 struct Bundle {
@@ -1515,14 +1496,7 @@ static inline bool DiffFromJson(const aggjson::Value *v, std::map<ULONG, ULONG> 
 
 static inline std::string JsonEsc(const std::string &s)
 {
-    std::string o = "\"";
-    for (unsigned char c : s) {
-        if (c == '"') o += "\\\"";
-        else if (c == '\\') o += "\\\\";
-        else if (c < 0x20) { char b[8]; snprintf(b, sizeof(b), "\\u%04x", c); o += b; }
-        else o += (char)c;
-    }
-    return o + "\"";
+    return aggjson::Quote(s);
 }
 
 static inline std::string DiffToJson(const std::map<ULONG, ULONG> &d)

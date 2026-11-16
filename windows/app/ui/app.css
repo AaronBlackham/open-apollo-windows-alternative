@@ -425,7 +425,6 @@ body[data-live="0"] .monitor { opacity: 0.5; }
 .mon-units button { flex: none; padding: 0 8px; height: 20px; font-size: 10px; }
 .mon-card .seg button { white-space: nowrap; letter-spacing: 0.02em; font-size: 10px; padding: 0 2px; }
 .mon-which { font-size: 11px; color: var(--text-dim); margin-top: -4px; }
-.row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .field { display: grid; grid-template-columns: 66px 1fr; align-items: center; gap: 6px; }
 .field > label, .field > span.lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-label); }
 .field-stack { grid-template-columns: 1fr; gap: 4px; }
@@ -777,7 +776,7 @@ kbd {
 .strip-extra .lbl { display: none; }
 .strip-extra .select { padding: 0 0 0 3px; font-size: 11px; }
 
-/* ===== [Themes] step 4, the signature features (signatures.js, cmd.js): hidden unless their theme's composition shows them ===== */
+/* ===== [Themes] the signature features (signatures.js, cmd.js): hidden unless their theme's composition shows them ===== */
 .desk { position: relative; }
 .st-guide, .sig-flow-btn, .cmd-line { display: none; }
 .flow-canvas { position: absolute; pointer-events: none; z-index: 3; }

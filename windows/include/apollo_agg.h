@@ -38,7 +38,7 @@
 
 /* APOLLO_AGG_CONFIG.Flags */
 #define APOLLO_AGG_CFG_ENABLED      0x0001  /* the combined device exists (ASIO "Apollo (Avium)") */
-#define APOLLO_AGG_CFG_ALIGN        0x0002  /* every channel delayed to the slowest unit (6.3.5); [G7] clear =
+#define APOLLO_AGG_CFG_ALIGN        0x0002  /* every channel delayed to the slowest unit (6.3.5); clear =
                                                "lowest latency, unaligned": no capture padding, followers read
                                                as fresh as the resampler allows, latency = the timeline's */
 #define APOLLO_AGG_CFG_EXPLICIT     0x0004  /* In[]/Out[] give the logical order ("advanced"); else whole blocks */
@@ -55,8 +55,8 @@ typedef struct _APOLLO_AGG_UNIT_CFG {
     ULONG       Model;              /* APOLLO_INFO_MODEL_*, 0 = not known yet */
     UCHAR       InCount;            /* driver: the unit's record descriptor as last seen (0 = never) */
     UCHAR       OutCount;           /* driver: its playback descriptor as last seen */
-    CHAR        CaptureTrim;        /* driver: [G7] its capture channels later (+) or earlier (-), frames */
-    CHAR        RenderTrim;         /* driver: [G7] its playback later (+) or earlier (-), frames */
+    CHAR        CaptureTrim;        /* driver: its capture channels later (+) or earlier (-), frames */
+    CHAR        RenderTrim;         /* driver: its playback later (+) or earlier (-), frames */
     USHORT      InIds[APOLLO_AGG_UNIT_SLOTS];   /* driver: channel IDs in slot order */
     USHORT      OutIds[APOLLO_AGG_UNIT_SLOTS];
 } APOLLO_AGG_UNIT_CFG;
@@ -71,7 +71,7 @@ typedef struct _APOLLO_AGG_CHAN_CFG {
 
 /* One stereo route (spec 6.8): a source pair to a destination pair. */
 #define APOLLO_AGG_SRC_DAW          1       /* logical outputs 1-2 */
-#define APOLLO_AGG_SRC_WINDOWS      2       /* [G7] the combined Windows "Monitor" endpoint (none: the master's MON) */
+#define APOLLO_AGG_SRC_WINDOWS      2       /* the combined Windows "Monitor" endpoint (none: the master's MON) */
 #define APOLLO_AGG_SRC_PORT         3       /* the logical outputs carrying SrcUnit's SrcId[] */
 typedef struct _APOLLO_AGG_ROUTE_CFG {
     UCHAR       SrcKind;            /* APOLLO_AGG_SRC_* */
@@ -102,7 +102,7 @@ typedef struct _APOLLO_AGG_CONFIG {
 } APOLLO_AGG_CONFIG;
 
 /*
- * AGG_SET_CONFIG output. [G7 review] A configuration the driver refuses completes with SUCCESS and
+ * AGG_SET_CONFIG output. A configuration the driver refuses completes with SUCCESS and
  * Error = APOLLO_AGG_ERR_* (nothing stored; LayoutVersion = the one in force): with METHOD_BUFFERED an
  * error status would bring no output back, so the reason never reached the caller. Callers must test
  * Error. A short input or output buffer still fails (STATUS_BUFFER_TOO_SMALL).
@@ -187,19 +187,19 @@ typedef struct _APOLLO_AGG_UNIT_STATE {
 } APOLLO_AGG_UNIT_STATE;
 
 #define APOLLO_AGG_STATE_ENABLED    0x01
-#define APOLLO_AGG_STATE_ACTIVE     0x02    /* a timeline runs (enabled, or [G7] the combined endpoints need it) */
+#define APOLLO_AGG_STATE_ACTIVE     0x02    /* a timeline runs (enabled, or the combined endpoints need it) */
 #define APOLLO_AGG_STATE_STORED     0x04    /* a configuration is stored (else the default) */
-#define APOLLO_AGG_STATE_ALIGNED    0x08    /* [G7] APOLLO_AGG_CFG_ALIGN in force */
-#define APOLLO_AGG_STATE_RATIOS     0x10    /* [G7] start ratios were loaded from Parameters\Aggregate\Ratios */
+#define APOLLO_AGG_STATE_ALIGNED    0x08    /* APOLLO_AGG_CFG_ALIGN in force */
+#define APOLLO_AGG_STATE_RATIOS     0x10    /* start ratios were loaded from Parameters\Aggregate\Ratios */
 
 /*
- * [G7] The Windows endpoint set (spec 6.7). Admin registry values under Parameters\Aggregate, read at
+ * The Windows endpoint set (spec 6.7). Admin registry values under Parameters\Aggregate, read at
  * device add (a change needs both units restarted):
  *   EndpointSet   REG_DWORD  0 (absent) = standalone: each unit its own table, exactly as before G7;
  *                            1 = combined: the host unit (the x8p) creates the combined table below and
  *                            every other unit creates none
  *   Endpoints     REG_DWORD  [Endpoints] which rows of the combined table exist (default APOLLO_AGG_EP_DEFAULT).
- *                            Before Nov 15 the value was EndpointMask, over the 12-row G7 table; the rows were
+ *                            Older builds read EndpointMask instead, over a 12-row table; the rows were
  *                            renumbered, so this build ignores EndpointMask (an older build still reads it).
  * AGG_GET_STATE.EndpointSet reports what runs: APOLLO_AGG_EPSET_*.
  */

@@ -9,7 +9,7 @@ const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
 const check = (c, l) => console.log(`${c ? 'PASS' : 'FAIL'}  ${l}`);
 
-const X8P = { id: 'SN22532017106180', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '22532017106180', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
+const X8P = { id: 'SN20000000000001', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '20000000000001', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const TWX = { id: '7C1E40A2D3F09B61', index: 1, model: 'Apollo Twin X (Gen 1)', deviceType: 153, serial: '2253202500117', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const FLAGS = 0x40 | 0x80 | 0x100 | 0x200 | 0x400;
 const INFO = { version: 6, failedStage: 0, lastStatus: 0, fpgaRev: 0xA241C5AC, extCaps: 0x81110611, fwRelease: 0x0B0FD613, subsystemId: 0x14,

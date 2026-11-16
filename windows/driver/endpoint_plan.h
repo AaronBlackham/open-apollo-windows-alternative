@@ -9,10 +9,9 @@
  * X(sym, reference string, pin name, render, channels, bridge, NeverSetAsDefault, in the default set,
  *   channel id 0, channel id 1, fallback slot 0, fallback slot 1)
  *
- *   reference string  the ACX circuit name = the INF reference string. "Ap2..." since this table (Nov 15):
- *                     new strings give new Windows endpoint IDs, so names Windows cached for the old rows
- *                     ("MON L/R", "Speakers") never stick to these (tools\phase1\clean-endpoints.ps1 removes
- *                     the old ones).
+ *   reference string  the ACX circuit name = the INF reference string. "Ap2...": strings new with this
+ *                     table give new Windows endpoint IDs, so names Windows cached for older rows ("MON L/R",
+ *                     "Speakers") never stick to these (tools\phase1\clean-endpoints.ps1 removes the old ones).
  *   pin name          what Sound settings shows, "<pin> (<device>)": "LINE 1-2 (Apollo x8p)".
  *   bridge            LINE_CONNECTOR (line and monitor outputs, the loopback, VIRTUAL/S/PDIF inputs: Windows
  *                     keeps the pin name; a Speaker form factor would be renamed "Speakers"), HEADPHONES (the

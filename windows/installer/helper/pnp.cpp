@@ -18,6 +18,7 @@
 #include <tlhelp32.h>
 #include <stddef.h>
 #include <string.h>
+#include <algorithm>
 #include "apollo_ioctl_min.h"
 
 /* ------------------------------------------------------------------ */
@@ -55,7 +56,7 @@ static std::vector<std::wstring> PropStringList(DEVINST dn, const DEVPROPKEY &ke
     return r;
 }
 
-bool ProblemNeedsRestart(ULONG problem)
+static bool ProblemNeedsRestart(ULONG problem)
 {
     /* NEED_RESTART, WILL_BE_REMOVED, DRIVER_FAILED_PRIOR_UNLOAD, HELD_FOR_EJECT */
     return problem == 14 || problem == 21 || problem == 38 || problem == 47;
@@ -127,7 +128,6 @@ std::vector<Device> FindUaDevices(bool includePhantoms)
         ULONG status = 0, problem = 0;
         if (CM_Get_DevNode_Status(&status, &problem, dn, 0) == CR_SUCCESS) {
             d.Present = true;
-            d.Status = status;
             d.HasProblem = (status & DN_HAS_PROBLEM) != 0;
             d.Problem = d.HasProblem ? problem : 0;
         }
@@ -136,7 +136,8 @@ std::vector<Device> FindUaDevices(bool includePhantoms)
     return out;
 }
 
-std::wstring DeviceLabel(const Device &d)
+/* "Apollo Twin X (PCI\...\...)" */
+static std::wstring DeviceLabel(const Device &d)
 {
     return Fmt(L"%s (%s)", UnitKindName(d.Kind), d.InstanceId.c_str());
 }
@@ -162,12 +163,12 @@ static void PrintDevice(const Device &d)
         Out(L"    started");
 }
 
-/* Every connected unit other than skip, as it is now (bind/unbind --unit compare them afterwards). */
-static std::vector<Device> OtherUnits(const std::vector<Device> &present, const std::wstring &skip)
+/* Every connected unit not in skip (instance IDs), as it is now (bind/unbind --unit compare them afterwards). */
+static std::vector<Device> OtherUnits(const std::vector<Device> &present, const std::vector<std::wstring> &skip)
 {
     std::vector<Device> r;
     for (auto &d : present)
-        if (!EqualsI(d.InstanceId, skip))
+        if (!InListI(skip, d.InstanceId))
             r.push_back(d);
     return r;
 }
@@ -301,7 +302,7 @@ static std::wstring InfSigner(const std::wstring &path)
 
 /* One pass over %windir%\INF\oem*.inf: our packages (original name apollo.inf, provider Avium)
    and UA's (original name uad2pcie.inf, provider Universal Audio). Either list may be null. */
-static void ScanDriverStore(std::vector<Package> *apollo, std::vector<Package> *ua)
+void ScanDriverStore(std::vector<Package> *apollo, std::vector<Package> *ua)
 {
     wchar_t win[MAX_PATH];
     UINT n = GetWindowsDirectoryW(win, MAX_PATH);
@@ -357,13 +358,6 @@ static void ScanDriverStore(std::vector<Package> *apollo, std::vector<Package> *
         }
     } while (FindNextFileW(f, &fd));
     FindClose(f);
-}
-
-std::vector<Package> FindApolloPackages()
-{
-    std::vector<Package> out;
-    ScanDriverStore(&out, nullptr);
-    return out;
 }
 
 std::vector<Package> FindUaPackages()
@@ -431,8 +425,6 @@ static bool MoveToUa(const Device &d, const Package &ua, bool &reboot)
 /* the loaded driver image                                             */
 /* ------------------------------------------------------------------ */
 
-typedef LONG (WINAPI *NtQuerySystemInformationFn)(ULONG, PVOID, ULONG, PULONG);
-
 /* SYSTEM_MODULE_INFORMATION (class 11) entries; only the names are read (the kernel may zero the
    addresses for callers without SeDebugPrivilege). */
 struct HelperModuleInfo {
@@ -455,9 +447,7 @@ struct HelperModules {
 /* "\SystemRoot\System32\DriverStore\FileRepository\apollo.inf_amd64_...\apollo.sys", or "". */
 std::wstring LoadedApolloImage()
 {
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    NtQuerySystemInformationFn q = ntdll ? (NtQuerySystemInformationFn)(void *)GetProcAddress(ntdll,
-                                           "NtQuerySystemInformation") : nullptr;
+    NtQuerySystemInformationFn q = (NtQuerySystemInformationFn)NtdllProc("NtQuerySystemInformation");
     if (q == nullptr)
         return std::wstring();
     std::vector<BYTE> buf(256 * 1024);
@@ -543,11 +533,8 @@ static void NoteUnitsOurInfCouldTake(const std::wstring &inf, const std::vector<
         if (KindIn(targets, d.Kind) || d.OnApollo() || d.Owner() == OWNER_UA || d.Hwid.empty() ||
             !TextListsHwid(text, d.Hwid))
             continue;
-        bool dup = false;
-        for (auto &h : said)
-            dup = dup || EqualsI(h, d.Hwid);
         Package p;
-        if (dup || FindUaPackageFor(ua, d.Hwid, p))
+        if (InListI(said, d.Hwid) || FindUaPackageFor(ua, d.Hwid, p))
             continue;
         said.push_back(d.Hwid);
         /* One line: Setup copies "Note:" lines into its Results page. */
@@ -640,14 +627,7 @@ int CmdBind(const std::wstring &infArg, const std::vector<UnitKind> &units, bool
     std::vector<std::wstring> targetIds;
     for (auto &t : targets)
         targetIds.push_back(t.Before.InstanceId);
-    std::vector<Device> others;
-    for (auto &d : present) {
-        bool isTarget = false;
-        for (auto &id : targetIds)
-            isTarget = isTarget || EqualsI(id, d.InstanceId);
-        if (!isTarget)
-            others.push_back(d);
-    }
+    std::vector<Device> others = OtherUnits(present, targetIds);
 
     /* install.ps1: one service, one loaded image. A unit on our driver that is not being switched
        keeps apollo.sys loaded, and a unit switched now would join that image, not this package's. */
@@ -765,10 +745,13 @@ int CmdBind(const std::wstring &infArg, const std::vector<UnitKind> &units, bool
     /* Older copies of our package nobody uses any more: not this one, and not one another unit
        (connected or remembered) is installed from. Not while a restart is pending: the old driver
        may still be loaded from its driver-store folder. Without SUOI_FORCEDELETE Windows refuses
-       to delete a package a device is installed with. */
+       to delete a package a device is installed with. One driver-store pass for these and the
+       note below. */
+    std::vector<Package> ours, ua;
+    ScanDriverStore(&ours, &ua);
     if (!restart && anyRunning) {
         std::vector<Device> all = FindUaDevices(true);
-        for (auto &p : FindApolloPackages()) {
+        for (auto &p : ours) {
             if (EqualsI(p.Published, publishedName))
                 continue;
             if (PackageInUse(all, p.Published)) {
@@ -779,7 +762,7 @@ int CmdBind(const std::wstring &infArg, const std::vector<UnitKind> &units, bool
                 Out(L"Removed an older, unused Apollo package: %s (%s)", p.Published.c_str(), p.DriverVer.c_str());
         }
     }
-    NoteUnitsOurInfCouldTake(full, FindUaDevices(true), FindUaPackages(), units);
+    NoteUnitsOurInfCouldTake(full, FindUaDevices(true), ua, units);
 
     /* One line per unit: Setup copies "Unit:" lines into its Results page. */
     int failed = 0;
@@ -902,10 +885,7 @@ static std::wstring UnitNames(const std::vector<Device> &devs)
     std::vector<std::wstring> names;
     for (auto &d : devs) {
         std::wstring n = d.IsX8p() ? L"the x8p" : (L"the " + std::wstring(UnitKindName(d.Kind)));
-        bool dup = false;
-        for (auto &x : names)
-            dup = dup || x == n;
-        if (!dup)
+        if (std::find(names.begin(), names.end(), n) == names.end())
             names.push_back(n);
     }
     std::wstring s;
@@ -978,9 +958,7 @@ static int UnbindAll()
                 DeviceLabel(d).c_str(), uaFor[k].Published.c_str());
             continue;
         }
-        bool dup = false;
-        for (auto &h : movedIds)
-            dup = dup || EqualsI(h, d.Hwid);
+        bool dup = InListI(movedIds, d.Hwid);
         if (dup || MoveToUa(d, uaFor[k], reboot)) {
             if (!dup)
                 movedIds.push_back(d.Hwid);
@@ -1093,7 +1071,7 @@ static int UnbindOne(const std::wstring &hwid)
         return EXIT_BLOCKED;
     }
     const Device d = present[same[0]];
-    std::vector<Device> others = OtherUnits(present, d.InstanceId);
+    std::vector<Device> others = OtherUnits(present, { d.InstanceId });
     PrintDevice(d);
     PrintOthers(others);
     if (!d.OnApollo()) {
@@ -1172,20 +1150,6 @@ static BOOL CALLBACK PostCloseToWindow(HWND hwnd, LPARAM lp)
     return TRUE;
 }
 
-static std::wstring ProcessPath(DWORD pid)
-{
-    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (h == nullptr)
-        return std::wstring();
-    wchar_t buf[MAX_PATH * 2];
-    DWORD n = MAX_PATH * 2;
-    std::wstring r;
-    if (QueryFullProcessImageNameW(h, 0, buf, &n))
-        r.assign(buf, n);
-    CloseHandle(h);
-    return r;
-}
-
 /* install.ps1: UA's apps talk to every unit on UA's driver. They are closed only when a unit being
    switched is leaving UA's driver and no connected unit that stays is still on it (units.cpp
    DecideQuitUa). */
@@ -1216,7 +1180,7 @@ int CmdQuitUa(const std::vector<UnitKind> &units)
         Err(L"Cannot list processes: %s", ErrText(GetLastError()).c_str());
         return EXIT_ERROR;
     }
-    struct Target { DWORD Pid; std::wstring Name; std::wstring Path; };
+    struct Target { DWORD Pid; std::wstring Name; std::wstring Path; HANDLE Process = nullptr; DWORD OpenError = 0; };
     std::vector<Target> targets;
     PROCESSENTRY32W pe = {};
     pe.dwSize = sizeof(pe);
@@ -1240,19 +1204,20 @@ int CmdQuitUa(const std::vector<UnitKind> &units)
     }
     Out(L"The units being switched are on UA's driver and no unit that stays needs UA's apps: closing them.");
 
-    std::vector<HANDLE> handles;
     for (auto &t : targets) {
         Out(L"Closing %s (PID %lu, %s)", t.Name.c_str(), t.Pid, t.Path.c_str());
         CloseCtx c = { t.Pid, 0 };
         EnumWindows(PostCloseToWindow, (LPARAM)&c);
-        handles.push_back(OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, t.Pid));
+        t.Process = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, t.Pid);
+        if (t.Process == nullptr)
+            t.OpenError = GetLastError();
     }
     ULONGLONG deadline = GetTickCount64() + 5000;
     int rc = EXIT_OK;
-    for (size_t i = 0; i < targets.size(); i++) {
-        HANDLE h = handles[i];
+    for (auto &t : targets) {
+        HANDLE h = t.Process;
         if (h == nullptr) {
-            Err(L"  could not open %s to close it: %s", targets[i].Name.c_str(), ErrText(GetLastError()).c_str());
+            Err(L"  could not open %s to close it: %s", t.Name.c_str(), ErrText(t.OpenError).c_str());
             rc = EXIT_ERROR;
             continue;
         }
@@ -1260,13 +1225,13 @@ int CmdQuitUa(const std::vector<UnitKind> &units)
         DWORD wait = now < deadline ? (DWORD)(deadline - now) : 0;
         if (WaitForSingleObject(h, wait) != WAIT_OBJECT_0) {
             if (TerminateProcess(h, 1) && WaitForSingleObject(h, 3000) == WAIT_OBJECT_0)
-                Out(L"  %s did not close on request: ended it", targets[i].Name.c_str());
+                Out(L"  %s did not close on request: ended it", t.Name.c_str());
             else {
-                Err(L"  could not end %s: %s", targets[i].Name.c_str(), ErrText(GetLastError()).c_str());
+                Err(L"  could not end %s: %s", t.Name.c_str(), ErrText(GetLastError()).c_str());
                 rc = EXIT_ERROR;
             }
         } else {
-            Out(L"  %s closed", targets[i].Name.c_str());
+            Out(L"  %s closed", t.Name.c_str());
         }
         CloseHandle(h);
     }

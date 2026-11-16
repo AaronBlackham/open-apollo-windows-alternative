@@ -785,7 +785,7 @@ Code: `driver/apollo_model.h` (identification, shared with apollo-diag and `tool
 
 **Unit key name** (`ApolloUnitKeyName`): HW_UID read at identify, BAR0 0x34 then 0x30, as 16 upper-case
 hex digits (`Units\0123ABCD89EF4567`). If the HW_UID reads 0 or all ones: `SN` + the serial when it has
-8-16 characters, all letters or digits (`Units\SN22532017106180`). Otherwise no unit key (model, legacy
+8-16 characters, all letters or digits (`Units\SN20000000000001`). Otherwise no unit key (model, legacy
 and built-in values only). The driver log names it at every start:
 `unit: Units\<key> (HW_UID|serial) present|absent; Models\22 present|absent; legacy globals apply (x8p)`.
 
@@ -824,7 +824,7 @@ types, never an accepted model's. Firmware/FPGA outside the tested table (x8p: 1
 no Twin X row until G3) sets `APOLLO_FLAG_FW_UNTESTED` and a log warning only.
 
 **Serial:** GET_INFO `Serial` and the log carry only the valid part: the text up to the first byte that
-is not printable ASCII, without trailing punctuation (the x8p: `22532017106180`, was `22532017106180??`).
+is not printable ASCII, without trailing punctuation (the x8p: `20000000000001`, was `20000000000001??`).
 Digits 5-8 must be four ASCII digits for a Twin X to be accepted (else a Gen 2 cannot be ruled out); on
 the x8p a bad serial is logged and the subsystem fallback still applies, as upstream.
 
@@ -1505,7 +1505,7 @@ what `step-g3.ps1` pass 2 checks (6.9.3).
 |---|---|---|---|
 | `info` ExtCaps | 0x813004?? with [15:8] = 0x02 or 0x04 | **0x81310211**: audio ext, family 19, **2 DSPs (Duo)**, ready cap 1 | same |
 | PublicType / DeviceType | 0x19 / 0x99 | 0x19 / 0x99 ("Apollo Twin X (Gen 1)") | same |
-| Serial, HW_UID, unit key | | 20232024023592 (digits 5-8 "2024": retyped to 0x99, 1.2), HW_UID 0x000000002F00BEEF, `Units\000000002F00BEEF` | same |
+| Serial, HW_UID, unit key | | 20000000000002 (digits 5-8 "2024": retyped to 0x99, 1.2), HW_UID 0x000000002F00BEEF, `Units\000000002F00BEEF` | same |
 | BAR0, FPGA, firmware | | 64 KiB, FPGA 0xA70EA929, FW 0x0B0FC9B3 = 11.15.51635 (untested pair: flagged, FW_UNTESTED) | same; add the tested row after G3 passes |
 | Previous owner 0x01A4 / 0x01AC | | 0x0008270B / 0x03220065 | (logged at every start) |
 | Stage after G3 | 5 Connected; `WarmStart` 0 after a power cycle | 1 Mapped (observe) | 5 Connected, not WARM_START |

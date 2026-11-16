@@ -49,8 +49,7 @@
 #define DIAG_DEFAULT_RING   8192u
 #define DIAG_WAV_HEADER     68u
 #define DIAG_WAV_MAX_DATA   0xFFFFFF00ull
-#define DIAG_IO_DESC_IN     0xC1A4u /* firmware IO descriptors, 72 words each (driver regs.h) */
-#define DIAG_IO_DESC_OUT    0xC2C4u
+#define DIAG_IO_DESC_OUT    0xC2C4u /* the firmware's playback IO descriptor, 72 words (driver regs.h) */
 #define DIAG_MODE1_TONE_MAX 10.0    /* [Twin X G3] seconds of tone on a Mode 1 unit (its speakers) */
 
 static HANDLE g_dev = INVALID_HANDLE_VALUE;
@@ -209,6 +208,31 @@ static BOOL HasFlag(int n, char **a, int from, const char *name)
             return TRUE;
     }
     return FALSE;
+}
+
+/* "0" or "1" exactly. */
+static BOOL IsBit(const char *s)
+{
+    return strcmp(s, "0") == 0 || strcmp(s, "1") == 0;
+}
+
+typedef struct _DIAG_FLAG {
+    ULONG bit;
+    const char *name;
+} DIAG_FLAG;
+
+/* " NAME" for every bit of v that t[] names; returns every bit t[] names. */
+static ULONG PrintFlagNames(ULONG v, const DIAG_FLAG *t, size_t n)
+{
+    ULONG known = 0;
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        known |= t[i].bit;
+        if (v & t[i].bit)
+            printf(" %s", t[i].name);
+    }
+    return known;
 }
 
 static void PrintDb(double v)
@@ -464,6 +488,21 @@ static BOOL GetPosition(APOLLO_POSITION *p)
     return TRUE;
 }
 
+/* A versioned GET_* (rate, clock, panel, params): FALSE, after saying why, when short or of another version. */
+static BOOL GetVersioned(DWORD code, const char *name, void *out, DWORD size, const ULONG *version, ULONG want)
+{
+    DWORD ret = 0;
+
+    ZeroMemory(out, size);
+    if (!Ioctl(code, name, NULL, 0, out, size, &ret))
+        return FALSE;
+    if (ret < size || *version != want) {
+        fprintf(stderr, "%s returned %lu bytes (version %lu): driver and tool are out of step.\n", name, ret, *version);
+        return FALSE;
+    }
+    return TRUE;
+}
+
 /* Quiet: leaves GetLastError for the caller. */
 static BOOL ReadReg(ULONG off, ULONG *val)
 {
@@ -502,15 +541,7 @@ static const char *StageName(ULONG s)
     }
 }
 
-static const char *ModelName(ULONG t)
-{
-    return ApolloModelName(t);      /* driver\apollo_model.h: the names the driver logs */
-}
-
-static const struct {
-    ULONG bit;
-    const char *name;
-} kFlags[] = {
+static const DIAG_FLAG kFlags[] = {
     { APOLLO_FLAG_FW_V2,           "FW_V2" },
     { APOLLO_FLAG_IRQ64,           "IRQ64" },
     { APOLLO_FLAG_WARM_START,      "WARM_START" },
@@ -543,8 +574,7 @@ static void PrintSafeString(const CHAR *s, size_t max)
 static int CmdInfo(void)
 {
     APOLLO_INFO in;
-    size_t i;
-    ULONG known = 0;
+    ULONG known;
 
     if (!GetInfo(&in))
         return 1;
@@ -554,11 +584,7 @@ static int CmdInfo(void)
     printf("FailedStage      %lu  %s\n", in.FailedStage, StageName(in.FailedStage));
     printf("LastStatus       0x%08lX\n", (ULONG)in.LastStatus);
     printf("Flags            0x%08lX ", in.Flags);
-    for (i = 0; i < sizeof(kFlags) / sizeof(kFlags[0]); i++) {
-        known |= kFlags[i].bit;
-        if (in.Flags & kFlags[i].bit)
-            printf(" %s", kFlags[i].name);
-    }
+    known = PrintFlagNames(in.Flags, kFlags, RTL_NUMBER_OF(kFlags));
     if (in.Flags & ~known)
         printf(" (unknown bits 0x%08lX)", in.Flags & ~known);
     printf("\n");
@@ -570,7 +596,7 @@ static int CmdInfo(void)
     printf("FwRelease        0x%08lX  (%lu.%lu.%lu)\n", in.FwRelease, (in.FwRelease >> 24) & 0xFFul,
            (in.FwRelease >> 16) & 0xFFul, in.FwRelease & 0xFFFFul);
     printf("SubsystemId      0x%04lX\n", in.SubsystemId);
-    printf("DeviceType       0x%02lX  %s\n", in.DeviceType, ModelName(in.DeviceType));
+    printf("DeviceType       0x%02lX  %s\n", in.DeviceType, ApolloModelName(in.DeviceType));   /* driver\apollo_model.h */
     printf("PublicType       0x%02lX\n", in.PublicType);
     printf("NumDsps          %lu\n", in.NumDsps);
     printf("PlayChannels     %lu\n", in.PlayChannels);
@@ -1648,32 +1674,63 @@ static BOOL ParseVirtualBus(const char *s, ULONG *Bus)
     return TRUE;
 }
 
+/* A mixer source: input 1-8 (bus 0-7), tb|talkback, or vN (ParseVirtualBus); FALSE for anything else. */
+static BOOL ParseBus(const char *s, ULONG *Bus)
+{
+    ULONG in = 0;
+
+    if (_stricmp(s, "tb") == 0 || _stricmp(s, "talkback") == 0) {
+        *Bus = APOLLO_MON_BUS_TALKBACK;
+        return TRUE;
+    }
+    if (ParseVirtualBus(s, Bus))
+        return TRUE;
+    if (!ParseU32(s, &in) || in < 1 || in > 8)
+        return FALSE;
+    *Bus = in - 1;
+    return TRUE;
+}
+
+/* A send or return level: off, or -60..+12 dB as 2 * dB (0.5 dB steps). FALSE after "<What>: ..." on stderr. */
+static BOOL ParseSendLevel(const char *s, const char *What, long *v)
+{
+    char *end = NULL;
+    double d;
+
+    if (_stricmp(s, "off") == 0) {
+        *v = APOLLO_MON_SEND_OFF;
+        return TRUE;
+    }
+    d = strtod(s, &end);
+    if (end == s || *end != '\0' || d < -60.0 || d > 12.0) {
+        fprintf(stderr, "%s: -60..+12 dB (0.5 dB steps) or off\n", What);
+        return FALSE;
+    }
+    *v = (long)floor(2.0 * d + 0.5);
+    return TRUE;
+}
+
 /* [Monitor] cue <n> send|pan|mute ... (driver\monitor_plan.h APOLLO_MON_CUE_*) */
 static int CmdCue(int n, char **a)
 {
-    ULONG cue = 0, in = 0, bus;
+    ULONG cue = 0, bus = 0;
     char *end = NULL, what[96];
+    const char *who, *num;
     long pan = 0, level;
-    BOOL hasPan = FALSE;
 
     if (n < 4 || !ParseU32(a[1], &cue) || cue < 1 || cue > 4)
         return CueUsage();
     if (_stricmp(a[2], "mute") == 0) {
-        if (strcmp(a[3], "0") != 0 && strcmp(a[3], "1") != 0)
+        if (!IsBit(a[3]))
             return CueUsage();
         sprintf_s(what, sizeof(what), "cue %lu mute %s", cue, a[3]);
         return SendMon(APOLLO_MON_CUE_MUTE(cue - 1), a[3][0] == '1' ? 1 : 0, what) ? 0 : 1;
     }
-    if (_stricmp(a[3], "tb") == 0 || _stricmp(a[3], "talkback") == 0)
-        bus = APOLLO_MON_BUS_TALKBACK;
-    else if (ParseVirtualBus(a[3], &bus)) {
-        /* [Virtual] VIRTUAL n: bus set */
-    } else if (ParseU32(a[3], &in) && in >= 1 && in <= 8)
-        bus = in - 1;
-    else
+    if (!ParseBus(a[3], &bus) || n < 5)
         return CueUsage();
-    if (n < 5)
-        return CueUsage();
+    /* "talkback", "VIRTUAL 3" or "input 3", as typed */
+    who = bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? "VIRTUAL " : "input ";
+    num = bus == APOLLO_MON_BUS_TALKBACK ? "" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? a[3] + 1 : a[3];
     if (_stricmp(a[2], "pan") == 0 || (_stricmp(a[2], "send") == 0 && n >= 6)) {
         const char *ps = _stricmp(a[2], "pan") == 0 ? a[4] : a[5];
         pan = strtol(ps, &end, 10);
@@ -1681,12 +1738,7 @@ static int CmdCue(int n, char **a)
             fprintf(stderr, "pan: -100 (left) .. 100 (right)\n");
             return 1;
         }
-        hasPan = TRUE;
-    }
-    if (hasPan) {
-        sprintf_s(what, sizeof(what), "cue %lu pan of %s%s %ld", cue,
-                  bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? "VIRTUAL " : "input ",
-                  bus == APOLLO_MON_BUS_TALKBACK ? "" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? a[3] + 1 : a[3], pan);
+        sprintf_s(what, sizeof(what), "cue %lu pan of %s%s %ld", cue, who, num, pan);
         if (!SendMon(APOLLO_MON_CUE_PAN(cue - 1, bus), pan, what))
             return 1;
     }
@@ -1694,27 +1746,17 @@ static int CmdCue(int n, char **a)
         return 0;
     if (_stricmp(a[2], "send") != 0)
         return CueUsage();
-    if (_stricmp(a[4], "off") == 0) {
-        level = APOLLO_MON_SEND_OFF;
-    } else {
-        double d = strtod(a[4], &end);
-        if (end == a[4] || *end != '\0' || d < -60.0 || d > 12.0) {
-            fprintf(stderr, "send level: -60..+12 dB (0.5 dB steps) or off\n");
-            return 1;
-        }
-        level = (long)floor(2.0 * d + 0.5);
-    }
-    sprintf_s(what, sizeof(what), "cue %lu send of %s%s %s dB", cue,
-              bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? "VIRTUAL " : "input ",
-              bus == APOLLO_MON_BUS_TALKBACK ? "" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? a[3] + 1 : a[3], a[4]);
+    if (!ParseSendLevel(a[4], "send level", &level))
+        return 1;
+    sprintf_s(what, sizeof(what), "cue %lu send of %s%s %s dB", cue, who, num, a[4]);
     return SendMon(APOLLO_MON_CUE_SEND(cue - 1, bus), level, what) ? 0 : 1;
 }
 
 /* [Virtual] aux <1-2> send <input|tb|vN> <dB|off> | return <dB|off> | mute 0|1 (driver\monitor_plan.h "[Aux]") */
 static int CmdAux(int n, char **a)
 {
-    ULONG aux = 0, in = 0, bus;
-    char *end = NULL, what[96];
+    ULONG aux = 0, bus = 0;
+    char what[96];
     long v;
 
     if (n < 4 || !ParseU32(a[1], &aux) || aux < 1 || aux > 2) {
@@ -1727,7 +1769,7 @@ static int CmdAux(int n, char **a)
         return 1;
     }
     if (_stricmp(a[2], "mute") == 0) {
-        if (strcmp(a[3], "0") != 0 && strcmp(a[3], "1") != 0)
+        if (!IsBit(a[3]))
             return CmdAux(0, a);
         sprintf_s(what, sizeof(what), "AUX %lu return mute %s", aux, a[3]);
         return SendMon(APOLLO_MON_AUX_MUTE(aux - 1), a[3][0] == '1' ? 1 : 0, what) ? 0 : 1;
@@ -1736,29 +1778,10 @@ static int CmdAux(int n, char **a)
         BOOL send = _stricmp(a[2], "send") == 0;
         const char *lv = send ? (n >= 5 ? a[4] : NULL) : a[3];
 
-        bus = 0;
-        if (send) {
-            if (_stricmp(a[3], "tb") == 0 || _stricmp(a[3], "talkback") == 0)
-                bus = APOLLO_MON_BUS_TALKBACK;
-            else if (ParseVirtualBus(a[3], &bus)) {
-                /* VIRTUAL n */
-            } else if (ParseU32(a[3], &in) && in >= 1 && in <= 8)
-                bus = in - 1;
-            else
-                return CmdAux(0, a);
-        }
-        if (lv == NULL)
+        if ((send && !ParseBus(a[3], &bus)) || lv == NULL)
             return CmdAux(0, a);
-        if (_stricmp(lv, "off") == 0) {
-            v = APOLLO_MON_SEND_OFF;
-        } else {
-            double d = strtod(lv, &end);
-            if (end == lv || *end != '\0' || d < -60.0 || d > 12.0) {
-                fprintf(stderr, "aux level: -60..+12 dB (0.5 dB steps) or off\n");
-                return 1;
-            }
-            v = (long)floor(2.0 * d + 0.5);
-        }
+        if (!ParseSendLevel(lv, "aux level", &v))
+            return 1;
         if (send) {
             sprintf_s(what, sizeof(what), "AUX %lu send of bus 0x%02lX %s dB", aux, bus, lv);
             return SendMon(APOLLO_MON_AUX_SEND(aux - 1, bus), v, what) ? 0 : 1;
@@ -1788,40 +1811,29 @@ static int MixUsage(void)
 /* [Mix] mix <input|tb|all> level|pan|mute|solo ... (driver\monitor_plan.h APOLLO_MON_MIX_*) */
 static int CmdMix(int n, char **a)
 {
-    ULONG in = 0, bus;
+    ULONG bus = 0;
     char *end = NULL, what[96], who[24];
     long v;
 
     if (n < 4)
         return MixUsage();
     if (_stricmp(a[1], "all") == 0) {
-        if (_stricmp(a[2], "mute") != 0 || (strcmp(a[3], "0") != 0 && strcmp(a[3], "1") != 0))
+        if (_stricmp(a[2], "mute") != 0 || !IsBit(a[3]))
             return MixUsage();
         sprintf_s(what, sizeof(what), "monitor mix: all inputs %s", a[3][0] == '1' ? "muted" : "unmuted");
         return SendMon(APOLLO_MON_MIX_MUTE_ALL, a[3][0] == '1' ? 1 : 0, what) ? 0 : 1;
     }
-    if (_stricmp(a[1], "tb") == 0 || _stricmp(a[1], "talkback") == 0) {
-        bus = APOLLO_MON_BUS_TALKBACK;
-        strcpy_s(who, sizeof(who), "talkback");
-    } else if (ParseVirtualBus(a[1], &bus)) {
-        sprintf_s(who, sizeof(who), "VIRTUAL %lu", bus - APOLLO_STRIP_VIRTUAL_BUS0 + 1);   /* [Virtual] */
-    } else if (ParseU32(a[1], &in) && in >= 1 && in <= 8) {
-        bus = in - 1;
-        sprintf_s(who, sizeof(who), "input %lu", in);
-    } else {
+    if (!ParseBus(a[1], &bus))
         return MixUsage();
-    }
+    if (bus == APOLLO_MON_BUS_TALKBACK)
+        strcpy_s(who, sizeof(who), "talkback");
+    else if (bus >= APOLLO_STRIP_VIRTUAL_BUS0)
+        sprintf_s(who, sizeof(who), "VIRTUAL %lu", bus - APOLLO_STRIP_VIRTUAL_BUS0 + 1);   /* [Virtual] */
+    else
+        sprintf_s(who, sizeof(who), "input %lu", bus + 1);
     if (_stricmp(a[2], "level") == 0) {
-        if (_stricmp(a[3], "off") == 0) {
-            v = APOLLO_MON_SEND_OFF;
-        } else {
-            double d = strtod(a[3], &end);
-            if (end == a[3] || *end != '\0' || d < -60.0 || d > 12.0) {
-                fprintf(stderr, "mix level: -60..+12 dB (0.5 dB steps) or off\n");
-                return 1;
-            }
-            v = (long)floor(2.0 * d + 0.5);
-        }
+        if (!ParseSendLevel(a[3], "mix level", &v))
+            return 1;
         sprintf_s(what, sizeof(what), "monitor mix: %s level %s dB", who, a[3]);
         return SendMon(APOLLO_MON_MIX_LEVEL(bus), v, what) ? 0 : 1;
     }
@@ -1837,7 +1849,7 @@ static int CmdMix(int n, char **a)
     if (_stricmp(a[2], "mute") == 0 || _stricmp(a[2], "solo") == 0) {
         BOOL mute = _stricmp(a[2], "mute") == 0;
 
-        if (strcmp(a[3], "0") != 0 && strcmp(a[3], "1") != 0)
+        if (!IsBit(a[3]))
             return MixUsage();
         sprintf_s(what, sizeof(what), "monitor mix: %s %s %s", who, mute ? "mute" : "solo", a[3]);
         return SendMon(mute ? APOLLO_MON_MIX_MUTE(bus) : APOLLO_MON_MIX_SOLO(bus), a[3][0] == '1' ? 1 : 0, what) ? 0 : 1;
@@ -2656,7 +2668,7 @@ static void StripDateText(ULONG d, char *out, size_t cap)
 
 static int CmdStrips(void)
 {
-    static const struct { ULONG bit; const char *name; } flags[] = {
+    static const DIAG_FLAG flags[] = {
         { APOLLO_STRIPS_FLAG_OWNED,       "OWNED" },
         { APOLLO_STRIPS_FLAG_QUARANTINED, "QUARANTINED" },
         { APOLLO_STRIPS_FLAG_TAINTED,     "TAINTED" },
@@ -2693,10 +2705,7 @@ static int CmdStrips(void)
     printf("Registry     StripsEnable=%lu StripSteps=%lu StripMask=0x%02lX StripDsp=%lu\n",
            s.Enable, s.Steps, s.Mask, s.Dsp);
     printf("Flags        0x%02lX ", s.Flags);
-    for (i = 0; i < sizeof(flags) / sizeof(flags[0]); i++) {
-        if (s.Flags & flags[i].bit)
-            printf(" %s", flags[i].name);
-    }
+    PrintFlagNames(s.Flags, flags, RTL_NUMBER_OF(flags));
     printf("\n");
     printf("Boot words  ");
     for (i = 0; i < 8; i++)
@@ -2749,7 +2758,7 @@ static int CmdStrips(void)
     }
     printf("Routes       %lu route word(s) sent to the other DSPs\n", s.RoutesSent);
     if (s.Version >= 3) {
-        static const struct { ULONG bit; const char *name; } af[] = {
+        static const DIAG_FLAG af[] = {
             { APOLLO_STRIPS_AF_ADOPTED,      "ADOPTED" },
             { APOLLO_STRIPS_AF_REBUILT_WARM, "REBUILT_WARM" },
             { APOLLO_STRIPS_AF_RECORD,       "RECORD" },
@@ -2766,10 +2775,7 @@ static int CmdStrips(void)
         printf("Warm start   %s\n", StripAdoptName(s.Adopt));
         printf("Anchor       %lu: %s\n", s.Anchor, StripAnchorName(s.Anchor));
         printf("Adoption     0x%02lX", s.AdoptFlags);
-        for (i = 0; i < sizeof(af) / sizeof(af[0]); i++) {
-            if (s.AdoptFlags & af[i].bit)
-                printf(" %s", af[i].name);
-        }
+        PrintFlagNames(s.AdoptFlags, af, RTL_NUMBER_OF(af));
         printf("\n");
         if (s.RecordState == APOLLO_STRIPS_REC_ABSENT) {
             printf("Record       none kept (status 0x%08lX)\n", (ULONG)s.RecordStatus);
@@ -3017,14 +3023,8 @@ static int CmdRate(int n, char **a)
         PrintRate(&r);
         return r.Result == APOLLO_RATE_ERR_NONE ? 0 : 1;
     }
-    ZeroMemory(&r, sizeof(r));
-    if (!Ioctl(IOCTL_APOLLO_GET_RATE, "GET_RATE", NULL, 0, &r, (DWORD)sizeof(r), &ret))
+    if (!GetVersioned(IOCTL_APOLLO_GET_RATE, "GET_RATE", &r, (DWORD)sizeof(r), &r.Version, APOLLO_RATE_VERSION))
         return 1;
-    if (ret < sizeof(r) || r.Version != APOLLO_RATE_VERSION) {
-        fprintf(stderr, "GET_RATE returned %lu bytes (version %lu): driver and tool are out of step.\n", ret,
-                r.Version);
-        return 1;
-    }
     PrintRate(&r);
     return 0;
 }
@@ -3201,19 +3201,13 @@ static void ClockSourceList(char *Out, size_t Len, ULONG Mask)
     }
 }
 
+/* " 44.1 48 kHz", or " none" (RateMaskText with a leading space). */
 static void RateList(char *Out, size_t Len, ULONG Mask)
 {
-    static const char *const r[7] = { "", "44.1", "48", "88.2", "96", "176.4", "192" };
-    ULONG i;
-
-    Out[0] = 0;
-    for (i = 1; i < 7; i++) {
-        if (Mask & (1ul << i)) {
-            strcat_s(Out, Len, " ");
-            strcat_s(Out, Len, r[i]);
-        }
-    }
-    strcat_s(Out, Len, Out[0] ? " kHz" : " none");
+    Out[0] = ' ';
+    RateMaskText(Mask, Out + 1, Len - 1);
+    if (Mask & 0x7Eul)
+        strcat_s(Out, Len, " kHz");
 }
 
 static void PrintClock(const APOLLO_CLOCK_INFO *c)
@@ -3270,16 +3264,7 @@ static void PrintClock(const APOLLO_CLOCK_INFO *c)
 
 static BOOL GetClock(APOLLO_CLOCK_INFO *c)
 {
-    DWORD ret = 0;
-
-    ZeroMemory(c, sizeof(*c));
-    if (!Ioctl(IOCTL_APOLLO_GET_CLOCK, "GET_CLOCK", NULL, 0, c, (DWORD)sizeof(*c), &ret))
-        return FALSE;
-    if (ret < sizeof(*c) || c->Version != APOLLO_CLOCK_VERSION) {
-        fprintf(stderr, "GET_CLOCK returned %lu bytes (version %lu): driver and tool are out of step.\n", ret, c->Version);
-        return FALSE;
-    }
-    return TRUE;
+    return GetVersioned(IOCTL_APOLLO_GET_CLOCK, "GET_CLOCK", c, (DWORD)sizeof(*c), &c->Version, APOLLO_CLOCK_VERSION);
 }
 
 static int ClockSet(ULONG What, ULONG Value, ULONG Flags, const char *Text)
@@ -3327,7 +3312,7 @@ static const char *EventKindName(ULONG k)
    handle, so the wait ends on time; the driver parks the request between events. */
 static int CmdEvents(int n, char **a)
 {
-    double secs = (n >= 1) ? atof(a[0]) : 60.0;
+    double secs = (n >= 2) ? atof(a[1]) : 60.0;     /* a[0] is "events" itself */
     HANDLE h = CreateFileW(g_units[g_unitIndex].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
                            FILE_FLAG_OVERLAPPED, NULL);
     HANDLE ev = CreateEventW(NULL, TRUE, FALSE, NULL);
@@ -3337,6 +3322,10 @@ static int CmdEvents(int n, char **a)
 
     if (h == INVALID_HANDLE_VALUE || ev == NULL) {
         fprintf(stderr, "could not open the unit for events: %lu\n", GetLastError());
+        if (h != INVALID_HANDLE_VALUE)
+            CloseHandle(h);
+        if (ev != NULL)
+            CloseHandle(ev);
         return 1;
     }
     printf("Events of this unit%s (oldest first; Ctrl+C stops):\n", secs > 0 ? "" : " (the ring now)");
@@ -3429,15 +3418,9 @@ static void PrintParams(const APOLLO_PARAMS_INFO *I)
 static int CmdParams(void)
 {
     APOLLO_PARAMS_INFO I;
-    DWORD ret = 0;
 
-    ZeroMemory(&I, sizeof(I));
-    if (!Ioctl(IOCTL_APOLLO_GET_PARAMS, "GET_PARAMS", NULL, 0, &I, (DWORD)sizeof(I), &ret))
+    if (!GetVersioned(IOCTL_APOLLO_GET_PARAMS, "GET_PARAMS", &I, (DWORD)sizeof(I), &I.Version, APOLLO_PARAMS_VERSION))
         return 1;
-    if (ret < sizeof(I) || I.Version != APOLLO_PARAMS_VERSION) {
-        fprintf(stderr, "GET_PARAMS returned %lu bytes (version %lu): driver and tool are out of step.\n", ret, I.Version);
-        return 1;
-    }
     PrintParams(&I);
     return 0;
 }
@@ -3522,10 +3505,8 @@ static int CmdDigital(int n, char **a)
         }
         if (_stricmp(a[1], "src") == 0 && ParseU32(a[2], &v) && v <= 1)
             return ClockSet(APOLLO_CLOCK_WHAT_SRC, v, flags, v ? "SR Convert on" : "SR Convert off");
-        fprintf(stderr, "usage: digital [optin adat|spdif | optout adat|spdif | src 0|1] [--try]\n");
-        return 1;
     }
-    if (n == 2) {
+    if (n >= 2) {
         fprintf(stderr, "usage: digital [optin adat|spdif | optout adat|spdif | src 0|1] [--try]\n");
         return 1;
     }
@@ -3621,16 +3602,7 @@ static void PrintPanel(const APOLLO_PANEL_INFO *p, BOOL Events)
 
 static BOOL GetPanel(APOLLO_PANEL_INFO *p)
 {
-    DWORD ret = 0;
-
-    ZeroMemory(p, sizeof(*p));
-    if (!Ioctl(IOCTL_APOLLO_GET_PANEL, "GET_PANEL", NULL, 0, p, (DWORD)sizeof(*p), &ret))
-        return FALSE;
-    if (ret < sizeof(*p) || p->Version != APOLLO_CLOCK_VERSION) {
-        fprintf(stderr, "GET_PANEL returned %lu bytes (version %lu): driver and tool are out of step.\n", ret, p->Version);
-        return FALSE;
-    }
-    return TRUE;
+    return GetVersioned(IOCTL_APOLLO_GET_PANEL, "GET_PANEL", p, (DWORD)sizeof(*p), &p->Version, APOLLO_CLOCK_VERSION);
 }
 
 static int CmdPanel(int n, char **a)
@@ -3789,11 +3761,11 @@ static void Usage(void)
 "  engine [seconds] [--reset]    1 ms copy engine: tick timing, late ticks, ASIO client\n"
 "                                (with seconds: rates over that window)\n"
 "  endpoints [seconds]           Windows audio endpoints (ACX): state, packets, underruns\n"
+"                                (with seconds: refresh every 2 s for that long)\n"
 "  rate                          the unit's sample rate: offered, allowed, stored, the combined device\n"
 "  rate <Hz> [--combined] [--no-store]\n"
 "                                change it: 44100 48000 88200 96000 176400 192000 (no elevation;\n"
 "                                --combined: every unit of the combined device, master first)\n"
-"                                (with seconds: refresh every 2 s for that long)\n"
 "  clock                         [Clock] the clock source: lock, sources (jacks, offered, usable, proven),\n"
 "                                0xC074/0xC07C/0xC084, the measured rate, the digital formats (no elevation)\n"
 "  clock internal|spdif|adat|wordclock [--try] [--hold]\n"

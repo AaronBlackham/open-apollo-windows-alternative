@@ -81,18 +81,23 @@ static bool g_verdictFail;                      /* MON loopback did not match wh
 static bool g_dc;                               /* --dc <hex>: a constant sample instead of the tone */
 static LONG g_dcValue;
 
+/* The 1 kHz tone (or with dc, --dc's constant) into the outputs g_bufs[2..last-1]: the same samples in each. */
+static void PlayTone(long index, int last, bool dc)
+{
+    const double step = 2.0 * 3.14159265358979 * 1000.0 / (double)g_rate;
+    double ph = g_phase;
+    for (long i = 0; last > 2 && i < g_frames; i++) {
+        LONG v = dc ? g_dcValue : (LONG)(g_amp * sin(ph) * 2147483647.0);
+        for (int c = 2; c < last; c++) ((LONG *)g_bufs[c].buffers[index])[i] = v;
+        ph += step;
+    }
+    g_phase = fmod(g_phase + step * g_frames, 2.0 * 3.14159265358979);
+}
+
 /* [G6] buffers: 0, 1 = inputs TwinX MON L, x8p MON L; 2-5 = outputs */
 static void FillAgg(long index)
 {
-    for (int c = 2; c < 6; c++) {
-        LONG *o = (LONG *)g_bufs[c].buffers[index];
-        double ph = g_phase;
-        for (long i = 0; i < g_frames; i++) {
-            o[i] = (LONG)(g_amp * sin(ph) * 2147483647.0);
-            ph += 2.0 * 3.14159265358979 * 1000.0 / (double)g_rate;
-        }
-    }
-    g_phase = fmod(g_phase + 2.0 * 3.14159265358979 * 1000.0 / (double)g_rate * g_frames, 2.0 * 3.14159265358979);
+    PlayTone(index, 6, false);
     for (long i = 0; i < g_frames; i++) {
         if (g_capSeen >= g_aggSettle && g_aggCapN < AGG_CAP_MAX) {
             g_aggCap[0][g_aggCapN] = ((LONG *)g_bufs[0].buffers[index])[i];
@@ -189,15 +194,7 @@ static void Fill(long index)
         return;
     }
     /* outputs: g_bufs[2], g_bufs[3] (MON L/R); inputs: g_bufs[0], g_bufs[1] */
-    for (int c = 2; c < (g_inOnly ? 2 : 4); c++) {
-        LONG *o = (LONG *)g_bufs[c].buffers[index];
-        double ph = g_phase;
-        for (long i = 0; i < g_frames; i++) {
-            o[i] = g_dc ? g_dcValue : (LONG)(g_amp * sin(ph) * 2147483647.0);
-            ph += 2.0 * 3.14159265358979 * 1000.0 / (double)g_rate;
-        }
-    }
-    g_phase = fmod(g_phase + 2.0 * 3.14159265358979 * 1000.0 / (double)g_rate * g_frames, 2.0 * 3.14159265358979);
+    PlayTone(index, g_inOnly ? 2 : 4, g_dc);
     for (int c = 0; c < 2; c++) {
         LONG *in = (LONG *)g_bufs[c].buffers[index];
         for (long i = 0; i < g_frames; i++) {
@@ -229,12 +226,10 @@ static void Analyse(const char *wav)
         int shown = 0;
         for (long i = 1; i <= n && shown < 8; i++) {
             if (i == n || g_cap[i] != g_cap[start]) {
-                if (i - start >= 4 || shown < 8) {
-                    printf("  MON L samples %ld..%ld (%.2f ms from capture start): %08lx%s\n", start + CAP_SKIP,
-                           i - 1 + CAP_SKIP, (start + CAP_SKIP) / (g_rate / 1000.0), (unsigned long)g_cap[start],
-                           i - start > 1 ? "" : " (single)");
-                    shown++;
-                }
+                printf("  MON L samples %ld..%ld (%.2f ms from capture start): %08lx%s\n", start + CAP_SKIP,
+                       i - 1 + CAP_SKIP, (start + CAP_SKIP) / (g_rate / 1000.0), (unsigned long)g_cap[start],
+                       i - start > 1 ? "" : " (single)");
+                shown++;
                 start = i;
             }
         }
@@ -298,24 +293,28 @@ static long asioMessage(long selector, long value, void *, double *)
     return 0;
 }
 
-/* The driver's view of the ASIO client (GET_ENGINE_STATS on a read-only handle). */
-/* [Twin X G2] The x8p's counters only (DeviceType 0x22), never another unit's. */
-static void PrintDriverCounters(void)
+/* A read-only handle on the x8p ([Twin X G2] DeviceType 0x22, never another unit), or on the first unit listed. */
+static HANDLE OpenUnit(bool x8p)
 {
     static APOLLO_UNIT_ENTRY units[APOLLO_SELECT_MAX];
+    int n = ApolloListUnits(units, APOLLO_SELECT_MAX, nullptr, 0);
+    int pick = n <= 0 ? -1 : x8p ? ApolloPickUnit(units, n, APOLLO_PICK_X8P) : 0;
+
+    if (pick < 0) {
+        if (x8p) printf("driver: no Apollo x8p on apollo.sys\n");
+        return INVALID_HANDLE_VALUE;
+    }
+    return CreateFileW(units[pick].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0,
+                       nullptr);
+}
+
+/* The driver's view of the ASIO client (GET_ENGINE_STATS): the x8p's counters only. */
+static void PrintDriverCounters(void)
+{
     ULONG flags = 0;
     APOLLO_ENGINE_STATS s = {};
     DWORD r = 0;
-    HANDLE h = INVALID_HANDLE_VALUE;
-    int n = ApolloListUnits(units, APOLLO_SELECT_MAX, nullptr, 0);
-    int pick = n > 0 ? ApolloPickUnit(units, n, APOLLO_PICK_X8P) : -1;
-
-    if (pick < 0) {
-        printf("driver: no Apollo x8p on apollo.sys\n");
-        return;
-    }
-    h = CreateFileW(units[pick].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0,
-                    nullptr);
+    HANDLE h = OpenUnit(true);
     if (h == INVALID_HANDLE_VALUE) return;
     if (DeviceIoControl(h, IOCTL_APOLLO_GET_ENGINE_STATS, &flags, sizeof(flags), &s, sizeof(s), &r, nullptr) &&
         r >= sizeof(s)) {
@@ -329,13 +328,10 @@ static void PrintDriverCounters(void)
 /* [G6] The combined client's counters and the clock loop (AGG_GET_STATE on any unit's handle). */
 static void PrintAggCounters(void)
 {
-    static APOLLO_UNIT_ENTRY units[APOLLO_SELECT_MAX];
     APOLLO_AGG_STATE s = {};
     ULONG flags = 0;
     DWORD r = 0;
-    int n = ApolloListUnits(units, APOLLO_SELECT_MAX, nullptr, 0);
-    if (n <= 0) return;
-    HANDLE h = CreateFileW(units[0].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE h = OpenUnit(false);
     if (h == INVALID_HANDLE_VALUE) return;
     if (DeviceIoControl(h, IOCTL_APOLLO_AGG_GET_STATE, &flags, sizeof(flags), &s, sizeof(s), &r, nullptr) && r >= sizeof(s)) {
         printf("driver (combined): %lu switches, %lu underruns, %lu overruns, %lu resyncs; aggregate work max %lu us\n",
@@ -446,12 +442,17 @@ int main(int argc, char **argv)
             ci.isInput = dir;
             g_asio->getChannelInfo(&ci);
             printf(" [%ld %s]", c + 1, ci.name);
-            if (g_agg && dir == 1 && strcmp(ci.name, "TwinX MON L") == 0) g_aggIn[0] = c;
-            if (g_agg && dir == 1 && strcmp(ci.name, "x8p MON L") == 0) g_aggIn[1] = c;
-            if (g_agg && dir == 0 && strcmp(ci.name, "TwinX MON L") == 0) g_aggOut[0] = c;
-            if (g_agg && dir == 0 && strcmp(ci.name, "TwinX MON R") == 0) g_aggOut[1] = c;
-            if (g_agg && dir == 0 && strcmp(ci.name, "x8p MON L") == 0) g_aggOut[2] = c;
-            if (g_agg && dir == 0 && strcmp(ci.name, "x8p MON R") == 0) g_aggOut[3] = c;
+            /* a routed channel's name carries where it goes ("x8p MON L > x8p+TwinX"): match the name before it */
+            auto is = [&](const char *want) {
+                size_t k = strlen(want);
+                return strncmp(ci.name, want, k) == 0 && (ci.name[k] == 0 || strncmp(ci.name + k, " > ", 3) == 0);
+            };
+            if (g_agg && dir == 1 && is("TwinX MON L")) g_aggIn[0] = c;
+            if (g_agg && dir == 1 && is("x8p MON L")) g_aggIn[1] = c;
+            if (g_agg && dir == 0 && is("TwinX MON L")) g_aggOut[0] = c;
+            if (g_agg && dir == 0 && is("TwinX MON R")) g_aggOut[1] = c;
+            if (g_agg && dir == 0 && is("x8p MON L")) g_aggOut[2] = c;
+            if (g_agg && dir == 0 && is("x8p MON R")) g_aggOut[3] = c;
         }
         printf("\n");
     }

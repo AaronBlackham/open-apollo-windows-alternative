@@ -1255,7 +1255,19 @@ static void CheckAdopt(void)
     r.Plugins = 0;
     n.Adopt = 0;
     Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_DISABLED && !td, "decide: StripAdopt 0: DISABLED, nothing sent");
+    /* Nov 16 2026: adopted x8p strips recorded exact zero after a warm restart; a rebuild wins whenever allowed */
+    n.WarmRebuild = 1;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td,
+          "decide: StripAdopt 0 with rebuilds: REBUILD after a teardown");
     n.Adopt = 1;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td,
+          "decide: the same plan, kept, with rebuilds (the default): REBUILD after a teardown, never adopted");
+    Check(StripWarmPluginsOk(STRIP_ADOPT_REBUILD, r.Plugins, 1), "plug-ins: that rebuild, none left: allowed");
+    r.Plugins = 1;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td && !StripWarmPluginsOk(STRIP_ADOPT_REBUILD, r.Plugins, 1),
+          "decide: a chain was there, with rebuilds: REBUILD after a teardown, plug-ins wait for a power cycle");
+    r.Plugins = 0;
+    n.WarmRebuild = 0;
     r.Keep = 0;
     Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_TORN_DOWN && !td, "decide: not kept at exit: TORN_DOWN");
     n.WarmRebuild = 1;

@@ -1,5 +1,6 @@
 @echo off
-rem Builds apollo.sys, apollo-diag.exe and apollo-control.exe from a plain prompt.
+rem Builds and checks everything from a plain prompt: the offline test suites, apollo.sys (and infverif on its INF),
+rem the tools, the ASIO DLL, dsp, Apollo Control, the plug-in setup's self-test, then tools\bin\tools-manifest.txt.
 rem Needs the EWDK ISO mounted (default D:). Usage: build-all.cmd [EWDK drive letter]
 setlocal
 set EWDK=%~1

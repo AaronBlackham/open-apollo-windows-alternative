@@ -17,38 +17,12 @@
 .hp > [hidden] + .hp-side { grid-column: 1 / -1; }
 .talk-cues { align-self: flex-start; padding: 2px 8px; font-size: 12px; }
 
-/* ---------- [Mix] monitor mix (monitor column): a row per input and the talkback ---------- */
+/* ---------- [Mix] the monitor mix's switches (M, S, MUTE ALL) ---------- */
 
-/* sized for the narrow column: 270 px less a scrollbar leaves about 229 px inside the card */
-.mix-head { display: flex; align-items: center; gap: 6px; }
-.mix-head .sect-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mix-out { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
-.mix-all { flex: none; height: 24px; padding: 0 6px; font-size: 10px; }
-.mix-rows { display: flex; flex-direction: column; gap: 2px; }
-.mix-row {
-  display: grid; grid-template-columns: 22px minmax(0, 1fr) 50px 22px 22px; align-items: center; gap: 4px;
-  min-height: 28px;
-}
-.mix-row[data-bus="10"] { border-top: var(--border-w) solid var(--line); padding-top: 3px; margin-top: 2px; }
-.mix-num {
-  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-dim);
-  white-space: nowrap; overflow: hidden;
-}
-.mix-level { display: flex; align-items: center; min-width: 0; }
-.mix-row .knob { flex-direction: row; gap: 3px; }
-.mix-row .k-readout { font-size: 10px; text-align: left; white-space: nowrap; }
-.mix-level .k-readout { min-width: 48px; }
-.mix-row .knob + .mix-linked { display: none; }
 .mix-sw { height: 22px; font-size: 10px; padding: 0; }
-/* the row's switches and MUTE ALL are role="switch": lit like the hardware-style buttons */
+/* role="switch": lit like the hardware-style buttons */
 .sw[role="switch"][aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .sw.sw-red[role="switch"][aria-checked="true"] { background: var(--red); border-color: var(--red); color: var(--red-ink); }
-/* muted, or silenced by another input's solo: the level stays set, the arc goes grey */
-.mix-row.silent .knob .k-value { stroke: var(--text-faint); }
-.mix-row.silent .mix-num { color: var(--text-faint); }
-/* the second input of a linked pair: only its pan; the first row's level, M and S drive both */
-.mix-row.follower .mix-level .knob, .mix-row.follower .mix-sw { display: none; }
-.mix-row.follower .knob + .mix-linked { display: inline; font-size: 11px; color: var(--text-faint); }
 
 /* ---------- Cues page ---------- */
 

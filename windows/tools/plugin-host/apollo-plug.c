@@ -21,7 +21,7 @@
  * or a crash closes the handle, and the driver does the same. Pages are cut as upstream's
  * chunks(blocks()) cuts them and compared with the recipe's own cut (apollo-plug check).
  *
- * Readback (Nov 15 2026): the recipe's "dsp_owned <row> <word> <source>" words (meters, envelopes:
+ * Readback: the recipe's "dsp_owned <row> <word> <source>" words (meters, envelopes:
  * the running DSP writes them) are never compared. A word that differs is read once more; one whose
  * value moved between the two reads is the DSP's own too (upstream learns them per instance,
  * oa:mixer-engine/plugin_native.py:214-223), the same wrong value twice is a difference. After a
@@ -51,10 +51,6 @@
 #include "..\..\include\apollo_strip_pins.h"
 #include "..\..\driver\strip_plan.h"
 #include "..\..\driver\plugin_plan.h"
-
-#ifndef APOLLO_PLUGIN_FEAT_STEREO
-#define APOLLO_PLUGIN_FEAT_STEREO   0x20u   /* CREATE START / STAGE of a stereo chain (in2 = in1 + 1), Nov 15 2026 builds */
-#endif
 
 #define FULL_SCALE          2147483648.0
 #define MEAS_FRAMES         24000u      /* 0.5 s at 48 kHz */
@@ -527,8 +523,8 @@ static BOOL PagesMatchUpstream(const RECIPE *r, const ULONG *At, const ULONG *Le
 
 /*
  * Observation runs I.. that one SERVICE read covers: one row, ascending, the whole span at most
- * 64 words (inside the row, as each run is). Returns the index after the group; *Word and *Count
- * the span to read (may be NULL).
+ * 64 words (inside the row, as each run is). Returns the index after the group (ReadGroupSpan: the
+ * words to read).
  */
 static ULONG ReadGroupEnd(const RECIPE *r, ULONG I)
 {
@@ -562,7 +558,7 @@ static ULONG ReadGroupSpan(const RECIPE *r, ULONG I, ULONG J)
     return end - r->Obs[I].Word;
 }
 
-/* ---- the recipe's inputs: mono, or a stereo pair (Nov 15 2026) ---- */
+/* ---- the recipe's inputs: mono, or a stereo pair ---- */
 
 /* Mono on one of the unit's strip inputs (in2 0x20), or a linked pair in1 / in1 + 1 there (x8p 1-8, Twin X 1-2). */
 static BOOL InputsOk(const RECIPE *r)
@@ -871,15 +867,13 @@ static UCHAR *ReadFileBytes(const WCHAR *path, DWORD *size)
 
 static BOOL Sha256(const UCHAR *data, DWORD len, UCHAR out[32])
 {
-    BCRYPT_ALG_HANDLE alg = NULL;
-    BOOL ok;
+    static BCRYPT_ALG_HANDLE alg;       /* opened once: a provider open costs more than hashing a record */
 
-    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) {
+    if (alg == NULL && BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) {
+        alg = NULL;
         return FALSE;
     }
-    ok = BCryptHash(alg, NULL, 0, (PUCHAR)data, len, out, 32) == 0;
-    BCryptCloseAlgorithmProvider(alg, 0);
-    return ok;
+    return BCryptHash(alg, NULL, 0, (PUCHAR)data, len, out, 32) == 0;
 }
 
 /* A record: read, its SHA-256 = Sha, a Bill record UAD2System would register. */
@@ -1655,8 +1649,8 @@ static void FreeMeas(MEAS *m)
 /* Lag of slot index A against B (positive: A later), normalized correlation in *Corr; -9999 = none. */
 static int Lag(const MEAS *m, ULONG A, ULONG B, double *Corr)
 {
-    double best = 0.0, ea = 0.0, eb = 0.0, *xa, *xb;
-    int L, bestL = -9999;
+    double best = 0.0, ea = 0.0, eb = 0.0, norm, *xa, *xb;
+    int L, k, nl = 4, bestL = -9999;
     ULONG t, n = m->Frames;
 
     *Corr = 0.0;
@@ -1679,15 +1673,43 @@ static int Lag(const MEAS *m, ULONG A, ULONG B, double *Corr)
         eb += xb[t] * xb[t];
     }
     if (ea > 0.0 && eb > 0.0) {
-        for (L = -MAX_LAG; L <= MAX_LAG; L++) {
-            double s = 0.0;
-            for (t = MAX_LAG; t < n - MAX_LAG; t++) {
-                s += xa[t] * xb[t - L];
+        norm = sqrt(ea * eb);
+        /* four lags per pass: independent sums, each added in the same order as one lag alone (the same
+           result to the bit), so the adds do not wait on one another */
+        for (L = -MAX_LAG; L <= MAX_LAG; L += nl) {
+            double s[4] = { 0.0, 0.0, 0.0, 0.0 };
+
+            nl = (MAX_LAG - L + 1 < 4) ? MAX_LAG - L + 1 : 4;
+            if (nl == 4) {
+                double s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0;
+
+                for (t = MAX_LAG; t < n - MAX_LAG; t++) {
+                    double x = xa[t];
+                    ULONG u = t - L;
+
+                    s0 += x * xb[u];
+                    s1 += x * xb[u - 1];
+                    s2 += x * xb[u - 2];
+                    s3 += x * xb[u - 3];
+                }
+                s[0] = s0;
+                s[1] = s1;
+                s[2] = s2;
+                s[3] = s3;
+            } else {
+                for (k = 0; k < nl; k++) {
+                    for (t = MAX_LAG; t < n - MAX_LAG; t++) {
+                        s[k] += xa[t] * xb[t - L - k];
+                    }
+                }
             }
-            s /= sqrt(ea * eb);
-            if (fabs(s) > fabs(best)) {
-                best = s;
-                bestL = L;
+            for (k = 0; k < nl; k++) {
+                double c = s[k] / norm;
+
+                if (fabs(c) > fabs(best)) {
+                    best = c;
+                    bestL = L + k;
+                }
             }
         }
     }
@@ -2802,7 +2824,7 @@ static BOOL SynthMeas(MEAS *m, const double *In1, const double *In2, ULONG Frame
 
 /*
  * The ledger baseline, the readback's DSP-owned words and second-read rule, the recipe's inputs
- * (Nov 15 2026 gate findings): pure functions on synthetic values (no recipe, no UA data).
+ * (gate P1 findings): pure functions on synthetic values (no recipe, no UA data).
  */
 static void SelfTestState(void)
 {

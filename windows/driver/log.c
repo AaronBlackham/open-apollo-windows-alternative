@@ -3,7 +3,7 @@
  * in memory so apollo-diag can show it without one. Callable at
  * IRQL <= DISPATCH_LEVEL (not from the ISR).
  *
- * [Twin X G2] One ring for every device on the driver (two units interleave, which keeps a
+ * One ring for every device on the driver (two units interleave, which keeps a
  * combined start-up readable). A line about one unit carries its tag right after the time:
  * "[  12.345] [twx] text" (ApolloLogU, apollo.h); driver-wide lines have none.
  *
@@ -55,7 +55,7 @@ VOID ApolloLogPrint(_In_opt_z_ PCSTR Tag, _In_z_ _Printf_format_string_ PCSTR Fm
 
     DbgPrintEx(DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "apollo: %s", line);
 
-    /* [G2 review] Two block copies at most (the ring wraps once), not a byte loop under the lock. */
+    /* Two block copies at most (the ring wraps once), not a byte loop under the lock. */
     KeAcquireSpinLock(&g_LogLock, &irql);
     off = g_LogTotal % APOLLO_LOG_BYTES;
     first = min(len, (size_t)(APOLLO_LOG_BYTES - off));
@@ -68,10 +68,10 @@ VOID ApolloLogPrint(_In_opt_z_ PCSTR Tag, _In_z_ _Printf_format_string_ PCSTR Fm
 }
 
 /*
- * Copy the most recent text, oldest first. Returns bytes copied. [G2 review] Two RtlCopyMemory
- * instead of a byte loop: up to 256 KiB under a spin lock at DISPATCH_LEVEL was ~1 ms of byte
- * copies with modulo; the block copies take a few tens of microseconds. APOLLO_LOG_BYTES is a
- * power of two, so the offsets stay right when the 32-bit total wraps.
+ * Copy the most recent text, oldest first. Returns bytes copied. Two RtlCopyMemory, not a byte
+ * loop: up to 256 KiB under a spin lock at DISPATCH_LEVEL took ~1 ms as byte copies with modulo;
+ * the block copies take a few tens of microseconds. APOLLO_LOG_BYTES is a power of two, so the
+ * offsets stay right when the 32-bit total wraps.
  */
 ULONG ApolloLogSnapshot(_Out_writes_bytes_(OutLen) PCHAR Out, _In_ ULONG OutLen,
                         _Out_ PULONG TotalWritten)

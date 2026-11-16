@@ -1,38 +1,15 @@
 /*
  * defaults.json parsing and validation (defaults_plan.h). No registry access: test_units.cpp
- * links this file alone.
+ * links it with units.cpp only.
  */
 #include "defaults_plan.h"
+#include "units.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <wchar.h>
 #include <wctype.h>
-
-static std::string Utf8(const std::wstring &s)
-{
-    if (s.empty())
-        return std::string();
-    int n = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0, nullptr, nullptr);
-    std::string r((size_t)(n > 0 ? n : 0), '\0');
-    if (n > 0)
-        WideCharToMultiByte(CP_UTF8, 0, s.c_str(), (int)s.size(), &r[0], n, nullptr, nullptr);
-    return r;
-}
-
-static std::wstring Wide(const std::string &s)
-{
-    if (s.empty())
-        return std::wstring();
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
-    std::wstring r((size_t)(n > 0 ? n : 0), L'\0');
-    if (n > 0)
-        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &r[0], n);
-    return r;
-}
-
-static bool UnitNameEq(const std::wstring &a, const std::wstring &b);
 
 static std::wstring Fmt1(const wchar_t *fmt, const std::wstring &a)
 {
@@ -134,8 +111,7 @@ private:
                     else if (h >= 'A' && h <= 'F') cp |= (unsigned)(h - 'A' + 10);
                     else return false;
                 }
-                std::wstring w(1, (wchar_t)cp);
-                u += Utf8(w);
+                u += ToUtf8(std::wstring(1, (wchar_t)cp));
                 break;
             }
             default:
@@ -145,7 +121,7 @@ private:
         if (P >= E)
             return false;
         P++;
-        out = Wide(u);
+        out = FromUtf8(u);
         return true;
     }
     bool Number(JVal &v)
@@ -337,7 +313,7 @@ static bool ParseValues(const JVal &values, const std::wstring &sub, bool overwr
             return false;
         }
         for (auto &it : items) {
-            if (UnitNameEq(it.SubKey, sub) && UnitNameEq(it.Name, kv.first)) {
+            if (UnitIEq(it.SubKey, sub) && UnitIEq(it.Name, kv.first)) {
                 error = Fmt1(L"'%s' is given twice", Where(sub, kv.first));
                 return false;
             }
@@ -448,7 +424,7 @@ bool ParseDefaults(const std::vector<BYTE> &data, std::vector<DefaultItem> &out,
                 return false;
             }
             for (auto &it : items) {
-                if (UnitNameEq(it.SubKey, kv.first)) {
+                if (UnitIEq(it.SubKey, kv.first)) {
                     error = Fmt1(L"subkey '%s' is given twice", kv.first);
                     return false;
                 }
@@ -487,22 +463,5 @@ bool ParseDefaults(const std::vector<BYTE> &data, std::vector<DefaultItem> &out,
         }
     }
     out = items;
-    return true;
-}
-
-/* ASCII case-insensitive (value names and subkeys are ASCII by the checks above). */
-static bool UnitNameEq(const std::wstring &a, const std::wstring &b)
-{
-    if (a.size() != b.size())
-        return false;
-    for (size_t i = 0; i < a.size(); i++) {
-        wchar_t x = a[i], y = b[i];
-        if (x >= L'a' && x <= L'z')
-            x = (wchar_t)(x - L'a' + L'A');
-        if (y >= L'a' && y <= L'z')
-            y = (wchar_t)(y - L'a' + L'A');
-        if (x != y)
-            return false;
-    }
     return true;
 }

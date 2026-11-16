@@ -1,6 +1,6 @@
 'use strict';
 /*
- * The themes' signature features (docs/THEMES.md 3, build step 4): one way of working that only that theme has.
+ * The themes' signature features (docs/THEMES.md 3): one way of working that only that theme has.
  * Studio's meter bridge lives in app.js (MB); Mono's command line and the Ctrl+K palette in cmd.js. Here:
  *   Day       guided gain: "speak or play normally for 5 seconds", then a suggested (or set) preamp gain per input.
  *   Arcade    HI-SCORE: every input's highest peak since reset, with the time it happened.
@@ -167,7 +167,7 @@ const Sig = (() => {
   function renderHi(force) {
     if (!HI.root) return;
     const show = onControl('cards');
-    HI.root.hidden = !show;
+    setHidden(HI.root, !show);
     if (!show) return;
     const rows = [...HI.best.values()].filter(b => segs.has(b.idx)).sort((a, b) => b.db - a.db).slice(0, 8);
     const key = rows.map(b => `${b.idx}:${b.ch}:${b.db.toFixed(1)}`).join(',');
@@ -309,7 +309,7 @@ const Sig = (() => {
   function renderLab(t) {
     if (!LAB.root) return;
     const show = onControl('panels');
-    LAB.root.hidden = !show;
+    setHidden(LAB.root, !show);
     if (!show) return;
     const list = cells();
     const opts = list.map(c => `${c.key}=${c.label}${c.name ? ` ${c.name}` : ''}`).join('|');
@@ -379,10 +379,11 @@ const Sig = (() => {
 
   /* ================================================================== Cyberpunk: the signal-flow overlay */
 
-  const FLOW = { on: true, canvas: null, dirty: true, geo: [], w: 0, h: 0, at: 0, colors: null, btns: [], lastStatic: 0 };
+  const FLOW = { on: true, canvas: null, dirty: true, geo: [], w: 0, h: 0, at: 0, colors: null, btns: [], lastStatic: 0, geoKey: '', drawn: '' };
 
   function buildFlow(desk) {
     FLOW.canvas = el('canvas', { class: 'flow-canvas', 'aria-hidden': 'true', hidden: true });
+    FLOW.canvas.addEventListener('contextrestored', () => { FLOW.drawn = ''; });   /* a GPU reset blanks it: draw again */
     desk.append(FLOW.canvas);
     const inputs = document.getElementById('inputs');
     inputs.addEventListener('scroll', () => { FLOW.dirty = true; }, { passive: true });
@@ -437,6 +438,7 @@ const Sig = (() => {
     }
     const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
     FLOW.colors = { line: v('--line-strong') || '#444', ok: v('--ok') || '#0ff', acc: v('--accent') || '#f0f', hot: v('--red') || '#f33' };
+    FLOW.geoKey = JSON.stringify([cv.width, cv.height, dpr, FLOW.colors, FLOW.geo.map(g => g.pts)]);
     FLOW.dirty = false;
     FLOW.at = performance.now();
   }
@@ -461,12 +463,16 @@ const Sig = (() => {
     const cv = FLOW.canvas;
     if (!cv) return;
     const show = FLOW.on && onControl('hud');
-    cv.hidden = !show;
+    setHidden(cv, !show);
     if (!show) return;
     const still = Skin.R.reduced();
     if (still && t - FLOW.lastStatic < 250) return;      /* reduced motion: a still picture, 4 times a second */
     FLOW.lastStatic = t;
     if (FLOW.dirty || t - FLOW.at > 1000) flowGeometry();
+    /* silence everywhere: only the routes, which are on the canvas already unless the geometry moved */
+    const quiet = FLOW.geo.every(p => !(peakOf(p.idx, p.ch) > -60));
+    if (quiet && FLOW.drawn === FLOW.geoKey) return;
+    FLOW.drawn = quiet ? FLOW.geoKey : '';
     const g = cv.getContext('2d'), dpr = window.devicePixelRatio || 1, C = FLOW.colors;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, FLOW.w, FLOW.h);

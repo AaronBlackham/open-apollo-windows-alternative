@@ -1,5 +1,5 @@
 /*
- * agg.c - the combined device (gate G6, docs/spec-twinx.md 6.2-6.9).
+ * agg.c - the combined device (docs/spec-twinx.md 6.2-6.9).
  *
  * One aggregate for the whole driver over every unit that runs in Mode 2. Each unit keeps
  * everything it had: its bring-up, transport, 1 ms engine (engine.c), its own Windows endpoints and
@@ -26,7 +26,7 @@
  *   Member contexts are protected by a rundown reference per member: Leave (D0 exit) unlinks the
  *   member under Agg.Lock and waits for the tick to drop the rundown before the rings can go.
  *
- * [G7] The combined Windows endpoints (spec 6.7): ACX circuits on the host unit (the x8p) whose
+ * The combined Windows endpoints (spec 6.7): ACX circuits on the host unit (the x8p) whose
  * streams run here, on the timeline, like the combined ASIO client: render streams ADD into the
  * destinations of the "windows" routes (timeline slots directly, follower slots through the staging
  * rings and the resampler), capture streams read timeline slots directly and follower slots through
@@ -36,7 +36,7 @@
  * the ASIO client and these streams (several writers ADD into one ring); they are zeroed once per
  * tick, ahead of every writer (AggStageUpdate), and mapped incrementally so a client starting or
  * stopping never disturbs another's follower outputs.
- * Also G7: Align=0, Render/CaptureTrim, start ratios kept in Parameters\Aggregate\Ratios, and a
+ * Also: Align=0, Render/CaptureTrim, start ratios kept in Parameters\Aggregate\Ratios, and a
  * configuration generation Apollo Control polls.
  *
  * [Rate] Every unit runs at the timeline's rate or it is not used (muted, AGG_GET_STATE Reserved[1]
@@ -49,7 +49,7 @@
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #include <ntifs.h>
-#include "apollo_stream.h"      /* [G7] APOLLO_STREAM (combined streams), includes apollo.h */
+#include "apollo_stream.h"      /* APOLLO_STREAM (combined streams), includes apollo.h */
 #include "apollo_agg.h"
 #include <ntstrsafe.h>
 
@@ -58,23 +58,22 @@
 #define AGG_STAGE_CH            32u         /* follower destination channels with a staging ring */
 #define AGG_FADE_FRAMES         480.0       /* 10 ms fade-in after a lock (spec 6.3.4) */
 #define AGG_STALE_MS            20          /* a follower snapshot older than this is not used */
-#define AGG_MAX_LAG             APOLLO_AGG_MAX_LAG  /* [G7 review] capture lag that forces a re-origination (was 4096) */
+#define AGG_MAX_LAG             APOLLO_AGG_MAX_LAG  /* capture lag that forces a re-origination (apollo_agg.h) */
 #define AGG_NO_PERIOD           (~0ULL)
 #define AGG_LOCK_TIMEOUT_MS     3000
 #define AGG_TAG                 "agg"
 #define AGG_STAGE_NONE          0xFF        /* StageUnit[] of a free staging ring */
-#define AGG_STREAM_MAX_LAG      APOLLO_AGG_MAX_LAG  /* [G7] combined capture lag that forces a resync */
-#define AGG_RECLAIM_TICKS       1000u       /* [G7 review] the configured master runs this long, then takes the timeline back */
-#define AGG_RATIO_CHECK_TICKS   600000ull   /* [G7] a kept ratio is re-checked every 10 minutes at most */
-#define AGG_FADE_S              0.010       /* [G7] combined capture: fade-in after a lock, seconds */
+#define AGG_RECLAIM_TICKS       1000u       /* the configured master runs this long, then takes the timeline back */
+#define AGG_RATIO_CHECK_TICKS   600000ull   /* a kept ratio is re-checked every 10 minutes at most */
+#define AGG_FADE_S              0.010       /* combined capture: fade-in after a lock, seconds */
 
 static const UNICODE_STRING g_AggRateName = RTL_CONSTANT_STRING(L"SampleRate");             /* [Rate] */
 
 static const UNICODE_STRING g_AggKeyName = RTL_CONSTANT_STRING(L"Aggregate");
 static const UNICODE_STRING g_AggValueName = RTL_CONSTANT_STRING(L"Config");
-static const UNICODE_STRING g_AggRatiosName = RTL_CONSTANT_STRING(L"Ratios");           /* [G7] */
-static const UNICODE_STRING g_AggEpSetName = RTL_CONSTANT_STRING(L"EndpointSet");       /* [G7] */
-static const UNICODE_STRING g_AggEpMaskName = RTL_CONSTANT_STRING(L"Endpoints");   /* [G7]; [Endpoints] was EndpointMask */
+static const UNICODE_STRING g_AggRatiosName = RTL_CONSTANT_STRING(L"Ratios");
+static const UNICODE_STRING g_AggEpSetName = RTL_CONSTANT_STRING(L"EndpointSet");
+static const UNICODE_STRING g_AggEpMaskName = RTL_CONSTANT_STRING(L"Endpoints");
 
 typedef struct _AGG_JOINED {
     PDEVICE_CONTEXT Ctx;                    /* NULL = free slot */
@@ -102,12 +101,12 @@ typedef struct _AGG_UNIT {
     LONGLONG        RenderHead;             /* follower frames written up to here (exclusive) */
     ULONG           RenderLate, CaptureShort;
     SHORT           StageOf[APOLLO_AGG_UNIT_SLOTS];
-    LONG            CapOff;                 /* [G7] capture read offset (ApolloAggCapOffset; G6's DAdc when aligned) */
-    LONG            RenOff;                 /* [G7] playback offset in timeline frames (ApolloAggRenOffset) */
-    BOOLEAN         LastRValid;             /* [G7] LastR was measured in this load ... */
+    LONG            CapOff;                 /* capture read offset (ApolloAggCapOffset) */
+    LONG            RenOff;                 /* playback offset in timeline frames (ApolloAggRenOffset) */
+    BOOLEAN         LastRValid;             /* LastR was measured in this load ... */
     ULONGLONG       LastRTl;                /* ... against this timeline unit (HW_UID) */
-    ULONGLONG       RatioCheckTick;         /* [G7] g_Agg.Ticks of the last keep check, 0 = none yet */
-    ULONG           Reclaim;                /* [G7 review] own ticks run as configured master off the timeline */
+    ULONGLONG       RatioCheckTick;         /* g_Agg.Ticks of the last keep check, 0 = none yet */
+    ULONG           Reclaim;                /* own ticks run as configured master off the timeline */
     ULONG           LastRRate;              /* [Rate] the rate LastR was measured at */
 } AGG_UNIT;
 
@@ -118,7 +117,6 @@ typedef struct _AGG_MAP {
     PMDL            Mdl;
     PUCHAR          SysVa;
     PVOID           UserVa;
-    ULONG           Bytes;
     PKEVENT         Event;                  /* referenced */
 } AGG_MAP;
 
@@ -143,7 +141,6 @@ typedef struct _AGG_ASIO {
     PLONG           In;
     PLONG           Out;
     ULONG           N, Shift, InCount, OutCount;
-    ULONG           LayoutVersion;
     AGG_IREF        InRef[APOLLO_AGG_MAX_CH];
     AGG_OREF        OutRef[APOLLO_AGG_MAX_CH];
     USHORT          OutL[APOLLO_AGG_MAX_CH];    /* the client's logical outputs (routing re-resolved from them) */
@@ -189,31 +186,30 @@ typedef struct _APOLLO_AGG {
     ULONG           StageCount;             /* rings 0..StageCount-1 may be in use (StageUnit AGG_STAGE_NONE = free) */
     UCHAR           StageUnit[AGG_STAGE_CH];
     USHORT          StageSlot[AGG_STAGE_CH];
-    UCHAR           StageNeed[APOLLO_AGG_MAX_UNITS][APOLLO_AGG_UNIT_SLOTS];    /* [G7] AggStageMap scratch */
-    ULONG           StageRings[APOLLO_AGG_MAX_UNITS];   /* [G7] rings per unit (follower render skips units with none) */
-    BOOLEAN         StageValid;             /* [G7] the map and RenHead belong to StageEpoch */
-    BOOLEAN         StageDirty;             /* [G7] a client started/stopped/re-routed: map again (not fresh) */
+    UCHAR           StageNeed[APOLLO_AGG_MAX_UNITS][APOLLO_AGG_UNIT_SLOTS];    /* AggStageMap scratch */
+    ULONG           StageRings[APOLLO_AGG_MAX_UNITS];   /* rings per unit (follower render skips units with none) */
+    BOOLEAN         StageValid;             /* the map and RenHead belong to StageEpoch */
+    BOOLEAN         StageDirty;             /* a client started/stopped/re-routed: map again (not fresh) */
     ULONG           StageEpoch;
-    ULONGLONG       RenHead;                /* [G7] timeline frames staged (zeroed, then written) up to here */
+    ULONGLONG       RenHead;                /* timeline frames staged (zeroed, then written) up to here */
     ULONGLONG       Ticks;
     ULONG           LastUs, MaxUs;
     AGG_ASIO        Asio;
-    /* [G7] combined Windows streams (Agg.Lock) */
+    /* combined Windows streams (Agg.Lock) */
     LIST_ENTRY      Streams;                /* APOLLO_STREAM.Link of the running combined streams */
     ULONG           StreamCount;
     BOOLEAN         TlValid;                /* the timeline snapshot below is from a tick that ran */
-    BOOLEAN         TlRunValid;             /* [G7 review] TlRunUnit/TlLastPm/TlLastStarts: the last tick's record */
+    BOOLEAN         TlRunValid;             /* TlRunUnit/TlLastPm/TlLastStarts: the last tick's record */
     ULONG           TlRunUnit;
     ULONG           TlLastStarts;           /* the timeline unit's EngStarts at the last tick */
     ULONGLONG       TlLastPm;               /* its position at the last tick */
     ULONGLONG       TlPos;
     LONGLONG        TlQpc, TlFreq;
-    /* [G7] the endpoint set the host created (device add), and whether its circuits are added */
-    ULONG           EpSet;
+    /* the host unit's combined circuits are added (AGG_GET_STATE.EndpointSet) */
     BOOLEAN         EpHosted;
-    /* [G7] configuration generation (AGG_GET_STATE.ConfigGeneration) */
+    /* configuration generation (AGG_GET_STATE.ConfigGeneration) */
     volatile LONG   Generation;
-    /* [G7] start ratios (Agg.Lock; written to the registry under Mutex) */
+    /* start ratios (Agg.Lock; written to the registry under Mutex) */
     APOLLO_AGG_RATIO Ratio[APOLLO_AGG_RATIOS];
     ULONG           RatioSeq;
     BOOLEAN         RatiosLoaded;
@@ -241,7 +237,8 @@ int _fltused = 0;
 
 static VOID AggStageMap(_In_ BOOLEAN Fresh);   /* Agg.Lock */
 static VOID AggAsioResolveOutputs(VOID);    /* Agg.Lock */
-static VOID AggStreamsResolve(VOID);        /* [G7] Agg.Lock */
+static VOID AggStreamsResolve(VOID);        /* Agg.Lock */
+static VOID AggNewEpoch(VOID);              /* Agg.Lock */
 
 /* [Lat] Agg.Lock held: InExtra / OutExtra from the joined units; into the combined ASIO block when they moved. */
 static VOID AggLatencyExtras(VOID)
@@ -274,15 +271,10 @@ static ULONGLONG AggUidOf(_In_ PDEVICE_CONTEXT Ctx)
     return ((ULONGLONG)Ctx->HwUidHi << 32) | Ctx->HwUidLo;
 }
 
-static LONG AggSat(_In_ LONG A, _In_ LONG B)
-{
-    return ApolloSatAdd32(A, B);
-}
-
 /* The member's engine is running on a live device: its snapshot and rings may be used. */
 static BOOLEAN AggCtxRunning(_In_ PDEVICE_CONTEXT Ctx)
 {
-    /* [Rate] at any of the six rates (was 48 kHz only); the tick also wants the timeline's rate */
+    /* [Rate] at any of the six rates; the tick also wants the timeline's rate */
     return !ApolloGateClosed(Ctx) && Ctx->TransportRunning && ApolloEngineRunning(Ctx) &&
            !ApolloEngineLost(Ctx) && Ctx->Play.Va != NULL && Ctx->Rec.Va != NULL && Ctx->RingFrames != 0 &&
            (Ctx->RingFrames & (Ctx->RingFrames - 1)) == 0 && Ctx->EngQpcFreq > 0 &&
@@ -337,14 +329,14 @@ NTSTATUS ApolloAggInit(WDFDRIVER Driver)
         g_Agg.U[i].Joined = -1;
         g_Agg.U[i].LastR = 1.0;
         for (s = 0; s < APOLLO_AGG_UNIT_SLOTS; s++) {
-            g_Agg.U[i].StageOf[s] = -1;     /* [G7] the staging map is incremental: nothing mapped yet */
+            g_Agg.U[i].StageOf[s] = -1;     /* the staging map is incremental: nothing mapped yet */
         }
     }
     for (i = 0; i < AGG_STAGE_CH; i++) {
         g_Agg.StageUnit[i] = AGG_STAGE_NONE;
     }
     InitializeListHead(&g_Agg.Streams);
-    /* [G7] different after every load, so a host that polls it notices a reload too */
+    /* different after every load, so a host that polls it notices a reload too */
     g_Agg.Generation = (LONG)((KeQueryInterruptTime() / 10000ULL) & 0x3FFFFFFF) | 1;
     g_Agg.Ready = TRUE;
     ApolloLogPrint(AGG_TAG, "combined device ready (ASRC h 16, %d phases; spec-twinx 6.9.7: G7 combined Windows "
@@ -408,7 +400,7 @@ static VOID AggLoad(VOID)
         APOLLO_AGG_RATIO r[APOLLO_AGG_RATIOS];
         ULONG rgot = 0, rtype = 0, i, n = 0;
 
-        /* [G7] the start ratios (spec 6.3.2): only usable entries, the newest Seq continues */
+        /* the start ratios (spec 6.3.2): only usable entries, the newest Seq continues */
         RtlZeroMemory(r, sizeof(r));
         if (NT_SUCCESS(WdfRegistryQueryValue(key, &g_AggRatiosName, sizeof(r), r, &rgot, &rtype)) &&
             rtype == REG_BINARY && rgot == sizeof(r)) {
@@ -464,7 +456,7 @@ static NTSTATUS AggSave(VOID)
     return status;
 }
 
-/* [G7] Parameters\Aggregate\Ratios from the table in memory (Mutex held). */
+/* Parameters\Aggregate\Ratios from the table in memory (Mutex held). */
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID AggSaveRatios(VOID)
 {
@@ -491,9 +483,9 @@ static VOID AggSaveRatios(VOID)
 }
 
 /*
- * [G7] The endpoint set (device add, PASSIVE, no lock): Parameters\Aggregate\EndpointSet and
- * Endpoints ([Endpoints] Nov 15; EndpointMask before, over the old 12-row table: ignored). Absent, unreadable
- * or unknown set = standalone (exactly as before G7).
+ * The endpoint set (device add, PASSIVE, no lock): Parameters\Aggregate\EndpointSet and Endpoints
+ * (an old EndpointMask value, over a 12-row table, is ignored). Absent, unreadable or unknown set =
+ * standalone.
  */
 _Use_decl_annotations_
 ULONG ApolloAggReadEndpointSet(PULONG Mask)
@@ -518,7 +510,7 @@ ULONG ApolloAggReadEndpointSet(PULONG Mask)
     return set;
 }
 
-/* [G7] Try-lock from a unit's service thread (PASSIVE, no lock held): write the ratios when they changed. */
+/* Try-lock from a unit's service thread (PASSIVE, no lock held): write the ratios when they changed. */
 _Use_decl_annotations_
 VOID ApolloAggServicePoll(VOID)
 {
@@ -615,7 +607,7 @@ static BOOLEAN AggFillCaches(_Inout_ APOLLO_AGG_CONFIG *C, _In_opt_ const APOLLO
             uc->Model = m->Model;
             uc->InCount = (UCHAR)m->InCount;
             uc->OutCount = (UCHAR)m->OutCount;
-            uc->CaptureTrim = (CHAR)m->Rt.CapTrim;  /* [G7] cached like the descriptor (-64..64 fits) */
+            uc->CaptureTrim = (CHAR)m->Rt.CapTrim;  /* cached like the descriptor (-64..64 fits) */
             uc->RenderTrim = (CHAR)m->Rt.RenTrim;
             RtlCopyMemory(uc->InIds, m->InIds, sizeof(uc->InIds));
             RtlCopyMemory(uc->OutIds, m->OutIds, sizeof(uc->OutIds));
@@ -653,8 +645,8 @@ static VOID AggFillRt(_In_ const APOLLO_AGG_CONFIG *C, _Out_writes_(APOLLO_AGG_M
             Rt[u].Lead = ApolloRateLead(APOLLO_DEF_RENDER_LEAD, ApolloRateHz(idx));
             Rt[u].FrameCfg = ApolloRateFrameCfg(X8P_SAFETY_FRAMES_48K, idx);
             Rt[u].Adc = ApolloRateAdc((u < C->UnitCount) ? ApolloAggModelAdc(C->Unit[u].Model) : APOLLO_X8P_ADC_FRAMES, idx);
-            Rt[u].Rate = (Rate == 0 || Rate == APOLLO_RATE_DEFAULT_HZ) ? 0 : Rate;   /* 0: 48 kHz, as before */
-            /* [G7] an absent unit keeps its cached trims, so it coming and going does not move the latency */
+            Rt[u].Rate = (Rate == 0 || Rate == APOLLO_RATE_DEFAULT_HZ) ? 0 : Rate;   /* 0: 48 kHz */
+            /* an absent unit keeps its cached trims, so it coming and going does not move the latency */
             Rt[u].CapTrim = (u < C->UnitCount) ? ApolloAggTrimOf((ULONG)(LONG)C->Unit[u].CaptureTrim) : 0;
             Rt[u].RenTrim = (u < C->UnitCount) ? ApolloAggTrimOf((ULONG)(LONG)C->Unit[u].RenderTrim) : 0;
         }
@@ -699,7 +691,7 @@ static BOOLEAN AggRebuild(_In_z_ PCSTR Why)
         cachesChanged = AggFillCaches(nc, NULL);
     }
     /*
-     * [G7] The combined Windows endpoints run on the timeline too: while the host has them added, a
+     * The combined Windows endpoints run on the timeline too: while the host has them added, a
      * timeline runs even with Combined switched off in the configuration (they are then the only
      * Windows endpoints the units have). The combined ASIO driver still needs ENABLED (AggAsioOpen).
      */
@@ -785,28 +777,20 @@ static BOOLEAN AggRebuild(_In_z_ PCSTR Why)
     RtlCopyMemory(g_Agg.LockOrder, order, sizeof(order));
     g_Agg.LockCount = lockCount;
     if (tl == NULL) {
-        g_Agg.TlValid = FALSE;              /* [G7] no timeline: combined stream positions stand still */
+        g_Agg.TlValid = FALSE;              /* no timeline: combined stream positions stand still */
     }
     if (g_Agg.Timeline != tl || g_Agg.TimelineUnit != tlUnit) {
         g_Agg.Timeline = tl;
         g_Agg.TimelineUnit = tlUnit;
-        g_Agg.TimelineEpoch++;
-        g_Agg.TlRunValid = FALSE;           /* [G7 review] the new timeline's first tick only records its run */
-        for (u = 0; u < APOLLO_AGG_MAX_UNITS; u++) {
-            g_Agg.U[u].Formed = FALSE;
-        }
-        g_Agg.Asio.NeedSync = TRUE;
-        if (g_Agg.Asio.Open) {
-            g_Agg.Asio.Shared->Reserved[1] = g_Agg.TimelineEpoch;
-        }
+        AggNewEpoch();
     }
-    /* [G7] the combined Windows streams follow the configuration (routes, master) from the next tick */
+    /* the combined Windows streams follow the configuration (routes, master) from the next tick */
     AggStreamsResolve();
     g_Agg.StageDirty = TRUE;
     InterlockedExchange(&g_Agg.Active, (enabled && tl != NULL) ? 1 : 0);
     KeReleaseSpinLock(&g_Agg.Lock, irql);
 
-    /* [G7 review] a follower told to play earlier than the lead allows plays at the most it allows */
+    /* a follower told to play earlier than the lead allows plays at the most it allows */
     for (u = 0; tlUnit >= 0 && u < nc->UnitCount && u < APOLLO_AGG_MAX_UNITS; u++) {
         LONG raw, max;
 
@@ -838,12 +822,36 @@ static BOOLEAN AggRebuild(_In_z_ PCSTR Why)
 /* Join / leave (PASSIVE, no unit lock held)                           */
 /* ------------------------------------------------------------------ */
 
+/* A member's runtime values and descriptor caches from its context (Mutex held): join, rate change. */
+static VOID AggMemberFill(_Inout_ AGG_JOINED *M, _In_ PDEVICE_CONTEXT Ctx)
+{
+    ULONG i, cin = ApolloIoDescCount(Ctx->IoDescIn, 1), cout = ApolloIoDescCount(Ctx->IoDescOut, 0);
+
+    /* [Rate] at the unit's rate (plan->AdcFrames and FrameCfg48k at 48 kHz) */
+    M->Rt.Guard = Ctx->EngGuard;
+    M->Rt.Lead = Ctx->EngLead;
+    M->Rt.Adc = Ctx->AdcFrames;
+    M->Rt.FrameCfg = Ctx->FrameCfg;
+    M->Rt.Rate = (Ctx->SampleRate == APOLLO_RATE_DEFAULT_HZ) ? 0 : Ctx->SampleRate;
+    M->Rt.Dig = Ctx->DigState;              /* [Clock] the digital formats chosen (0 = none); a change re-compiles the layout */
+    M->InCount = min(cin != 0 ? cin : Ctx->RecChannels, min(Ctx->RecChannels, (ULONG)APOLLO_AGG_UNIT_SLOTS));
+    M->OutCount = min(cout != 0 ? cout : Ctx->PlayChannels, min(Ctx->PlayChannels, (ULONG)APOLLO_AGG_UNIT_SLOTS));
+    RtlZeroMemory(M->InIds, sizeof(M->InIds));
+    RtlZeroMemory(M->OutIds, sizeof(M->OutIds));
+    for (i = 0; i < M->InCount; i++) {
+        M->InIds[i] = (cin != 0) ? ApolloIoDescId(Ctx->IoDescIn, i) : 0;
+    }
+    for (i = 0; i < M->OutCount; i++) {
+        M->OutIds[i] = (cout != 0) ? ApolloIoDescId(Ctx->IoDescOut, i) : 0;
+    }
+}
+
 _Use_decl_annotations_
 VOID ApolloAggJoin(PDEVICE_CONTEXT Ctx)
 {
     const APOLLO_BRINGUP_PLAN *plan = ApolloPlanOf(Ctx);
     ULONGLONG uid = AggUidOf(Ctx);
-    ULONG j, i, free = MAXULONG, cin, cout;
+    ULONG j, i, free = MAXULONG;
     AGG_JOINED *m;
 
     if (!g_Agg.Ready || plan == NULL || !Ctx->Unit.Active || Ctx->Unit.Value[APOLLO_PARAM_MODE] < 2 ||
@@ -877,28 +885,12 @@ VOID ApolloAggJoin(PDEVICE_CONTEXT Ctx)
     m->Uid = uid;
     m->Model = (ULONG)Ctx->Ident.Model;
     m->Rt.Present = 1;
-    /* [Rate] at the unit's rate: plan->AdcFrames and FrameCfg48k at 48 kHz, as before */
-    m->Rt.Guard = Ctx->EngGuard;
-    m->Rt.Lead = Ctx->EngLead;
-    m->Rt.Adc = Ctx->AdcFrames;
-    m->Rt.FrameCfg = Ctx->FrameCfg;
-    m->Rt.Rate = (Ctx->SampleRate == APOLLO_RATE_DEFAULT_HZ) ? 0 : Ctx->SampleRate;
-    m->Rt.Dig = Ctx->DigState;              /* [Clock] the digital formats chosen (0 = none: the layout as before) */
-    /* [G7] Units\<key>\CaptureTrimFrames / RenderTrimFrames (signed DWORDs, spec 6.3.5); 0 = as G6 */
+    AggMemberFill(m, Ctx);
+    /* Units\<key>\CaptureTrimFrames / RenderTrimFrames (signed DWORDs, spec 6.3.5) */
     m->Rt.CapTrim = ApolloAggTrimOf(ApolloUnitParam(Ctx, APOLLO_PARAM_CAPTURE_TRIM));
     m->Rt.RenTrim = ApolloAggTrimOf(ApolloUnitParam(Ctx, APOLLO_PARAM_RENDER_TRIM));
     m->LatInPath = Ctx->LatInPath;          /* [Lat] the service pass keeps them current from here */
     m->LatDac = Ctx->DacFrames;
-    cin = ApolloIoDescCount(Ctx->IoDescIn, 1);
-    cout = ApolloIoDescCount(Ctx->IoDescOut, 0);
-    m->InCount = min(cin != 0 ? cin : Ctx->RecChannels, min(Ctx->RecChannels, (ULONG)APOLLO_AGG_UNIT_SLOTS));
-    m->OutCount = min(cout != 0 ? cout : Ctx->PlayChannels, min(Ctx->PlayChannels, (ULONG)APOLLO_AGG_UNIT_SLOTS));
-    for (i = 0; i < m->InCount; i++) {
-        m->InIds[i] = (cin != 0) ? ApolloIoDescId(Ctx->IoDescIn, i) : 0;
-    }
-    for (i = 0; i < m->OutCount; i++) {
-        m->OutIds[i] = (cout != 0) ? ApolloIoDescId(Ctx->IoDescOut, i) : 0;
-    }
     m->Ctx = Ctx;                           /* last: AggJoinedByUid finds it from here on */
     for (i = 0; i < g_Agg.SeenCount; i++) {
         if (g_Agg.SeenUid[i] == uid) {
@@ -953,7 +945,7 @@ VOID ApolloAggLeave(PDEVICE_CONTEXT Ctx)
     if (g_Agg.Timeline == Ctx) {
         g_Agg.Timeline = NULL;
         g_Agg.TimelineUnit = -1;
-        g_Agg.TlValid = FALSE;              /* [G7] its snapshot is not a timeline any more */
+        g_Agg.TlValid = FALSE;              /* its snapshot is not a timeline any more */
         InterlockedExchange(&g_Agg.Active, 0);
     }
     KeReleaseSpinLock(&g_Agg.Lock, irql);
@@ -962,7 +954,7 @@ VOID ApolloAggLeave(PDEVICE_CONTEXT Ctx)
     m->Ctx = NULL;
     ApolloLogU(Ctx, "agg: left (member %lu)", j);
     (VOID)AggRebuild("unit left");
-    /* [G7] a start ratio the tick kept since the last service pass: write it now (sleep, shutdown) */
+    /* a start ratio the tick kept since the last service pass: write it now (sleep, shutdown) */
     if (InterlockedExchange(&g_Agg.RatioDirty, 0) != 0) {
         AggSaveRatios();
     }
@@ -970,7 +962,7 @@ VOID ApolloAggLeave(PDEVICE_CONTEXT Ctx)
 }
 
 /*
- * [G7] The host unit added (On) or removed its combined circuits (circuit.c, PASSIVE, no unit lock
+ * The host unit added (On) or removed its combined circuits (circuit.c, PASSIVE, no unit lock
  * held). While they are added the aggregate runs a timeline even with Combined off (AggRebuild).
  */
 _Use_decl_annotations_
@@ -982,7 +974,6 @@ VOID ApolloAggEndpointsHosted(PDEVICE_CONTEXT Ctx, BOOLEAN On)
     WdfWaitLockAcquire(g_Agg.Mutex, NULL);
     if (g_Agg.EpHosted != On) {
         g_Agg.EpHosted = On;
-        g_Agg.EpSet = On ? APOLLO_AGG_EPSET_COMBINED : APOLLO_AGG_EPSET_STANDALONE;
         ApolloLogU(Ctx, "agg: combined Windows endpoints %s on this unit", On ? "added" : "removed");
         if (g_Agg.Loaded) {
             (VOID)AggRebuild(On ? "combined endpoints added" : "combined endpoints removed");
@@ -1035,11 +1026,11 @@ static VOID AggStageNeed(_In_ ULONG U, _In_ ULONG S, _In_ LONG T)
 
 /*
  * The staging rings for follower destinations (Agg.Lock): every destination of the combined ASIO
- * client's outputs and [G7] of the running combined render streams that is not on the timeline.
+ * client's outputs and of the running combined render streams that is not on the timeline.
  * Fresh (the timeline changed: the content is another clock's): every ring zeroed and mapped anew.
  * Otherwise incremental: a destination keeps its ring and content, a new one takes a free zeroed
  * ring, a dropped one frees its ring; so one client starting or stopping never touches another's
- * follower outputs. More destinations than rings: the extra ones stay silent (as in G6).
+ * follower outputs. More destinations than rings: the extra ones stay silent.
  */
 static VOID AggStageMap(_In_ BOOLEAN Fresh)
 {
@@ -1138,7 +1129,7 @@ static VOID AggAsioResolveOutputs(VOID)
             a->OutRef[i].Slot[d] = g_Agg.Lay.Dest[lo][d].Slot;
         }
     }
-    g_Agg.StageDirty = TRUE;                /* [G7] mapped at the next tick, before any writer */
+    g_Agg.StageDirty = TRUE;                /* mapped at the next tick, before any writer */
 }
 
 static LONGLONG AggQpcAt(_In_ PDEVICE_CONTEXT Tl, _In_ ULONGLONG Frame)
@@ -1173,7 +1164,7 @@ static VOID AggAsioSync(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONGLONG He
     a->Shared->OutputLatencyFrames = g_Agg.Lay.OutLatency + g_Agg.OutExtra;
     a->Shared->Reserved[1] = g_Agg.TimelineEpoch;
     /*
-     * [G7] Incremental, at the next tick: the combined Windows streams may share the staging rings,
+     * Incremental, at the next tick: the combined Windows streams may share the staging rings,
      * and the timeline is the same (an epoch change maps fresh in AggStageUpdate).
      */
     g_Agg.StageDirty = TRUE;
@@ -1224,7 +1215,7 @@ static BOOLEAN AggAsioCapture(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONGL
                 continue;
             }
             {
-                double z = ApolloAggMap(&U->Clock, (LONGLONG)x) + (double)U->CapOff;   /* [G7] = G6 DAdc when aligned */
+                double z = ApolloAggMap(&U->Clock, (LONGLONG)x) + (double)U->CapOff;
                 LONGLONG n = ApolloAggFloor(z);
                 LONGLONG pf = ApolloAggFloor(U->PfAtTm);
 
@@ -1255,7 +1246,7 @@ static BOOLEAN AggAsioCapture(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONGL
             if (r->Valid && !a->Stale) {
                 u = r->Unit;
                 if (!ApolloAggResampled(u, T)) {
-                    /* [polish Nov 15] the timeline's channels: an integer copy (apollo_agg.h ApolloAggRingSample) */
+                    /* the timeline's channels: an integer copy (apollo_agg.h ApolloAggRingSample) */
                     v = ApolloAggRingSample((const LONG *)Tl->Rec.Va, Tl->RingFrames, Tl->RecChannels, r->Slot, x);
                 } else if (u < APOLLO_AGG_MAX_UNITS && live[u] && r->Slot < fc[u]->RecChannels) {
                     v = ApolloAggAsrcSample((const LONG *)fc[u]->Rec.Va, fc[u]->RingFrames, fc[u]->RecChannels, r->Slot,
@@ -1300,7 +1291,7 @@ static VOID AggAsioRender(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONGLONG 
     if (To - from > AGG_STAGE_FRAMES / 2) {
         from = To - AGG_STAGE_FRAMES / 2;
     }
-    /* [G7] staging was zeroed up to To by AggStageUpdate, before any writer: the client's samples ADD */
+    /* staging was zeroed up to To by AggStageUpdate, before any writer: the client's samples ADD */
     for (h = max(from, start); h < To; h++) {
         ULONGLONG f = h - start;
         ULONGLONG period = f >> a->Shift;
@@ -1331,12 +1322,12 @@ static VOID AggAsioRender(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONGLONG 
 
                 if (!ApolloAggResampled(u, T)) {
                     if (slot < Tl->PlayChannels) {
-                        tframe[slot] = AggSat(tframe[slot], v);     /* the timeline's ring, directly */
+                        tframe[slot] = ApolloSatAdd32(tframe[slot], v);     /* the timeline's ring, directly */
                     }
                 } else if (u < APOLLO_AGG_MAX_UNITS && slot < APOLLO_AGG_UNIT_SLOTS && g_Agg.U[u].StageOf[slot] >= 0) {
                     PLONG p = g_Agg.Stage + (SIZE_T)g_Agg.U[u].StageOf[slot] * AGG_STAGE_FRAMES + (h & AGG_STAGE_MASK);
 
-                    *p = AggSat(*p, v);
+                    *p = ApolloSatAdd32(*p, v);
                 }
             }
         }
@@ -1352,7 +1343,7 @@ static VOID AggFollowerRender(_In_ ULONG U)
     const APOLLO_ASRC_TABLE *tab = g_Agg.Asrc;
     const APOLLO_AGG_UNIT_RT *rt = &g_Agg.Rt[U];
     ULONG h = tab->Half, fmask, fstride, s;
-    LONGLONG pf, target, k, oldest, newest = (LONGLONG)g_Agg.RenHead;   /* [G7] every writer's frames, not ASIO's only */
+    LONGLONG pf, target, k, oldest, newest = (LONGLONG)g_Agg.RenHead;   /* every writer's frames, not ASIO's only */
     LONG lead;
     float w[2 * APOLLO_ASRC_MAX_HALF];
 
@@ -1380,7 +1371,7 @@ static VOID AggFollowerRender(_In_ ULONG U)
     un->RenderHead = (LONGLONG)ApolloCorrWriteFloor(f8, (ULONGLONG)un->RenderHead);
     oldest = newest - (LONGLONG)AGG_STAGE_FRAMES + 64;
     for (k = un->RenderHead; k < target; k++) {
-        double y = ApolloAggUnmap(&un->Clock, (double)k) + (double)un->RenOff;     /* [G7] RenderTrim; 0 = G6 */
+        double y = ApolloAggUnmap(&un->Clock, (double)k) + (double)un->RenOff;     /* RenderTrim */
         LONGLONG n = ApolloAggFloor(y), b = n - (LONGLONG)h + 1;
         LONG *frame;
 
@@ -1410,28 +1401,19 @@ static VOID AggFollowerRender(_In_ ULONG U)
                 continue;
             }
             /* one staging ring = one channel of AGG_STAGE_FRAMES frames */
-            frame[slot] = AggSat(frame[slot], ApolloAggAsrcSample(g_Agg.Stage + (SIZE_T)s * AGG_STAGE_FRAMES, AGG_STAGE_FRAMES,
-                                                                  1, 0, b, w, 2 * h, (float)un->GainRen));
+            frame[slot] = ApolloSatAdd32(frame[slot], ApolloAggAsrcSample(g_Agg.Stage + (SIZE_T)s * AGG_STAGE_FRAMES,
+                                                                          AGG_STAGE_FRAMES, 1, 0, b, w, 2 * h,
+                                                                          (float)un->GainRen));
         }
     }
     un->RenderHead = k;
 }
 
 /*
- * The calling unit (a member) takes the timeline (Agg.Lock, DISPATCH). Returns:
- *   1  the timeline stopped running: the caller becomes acting master (spec 6.3.4);
- *   2  [G7 review] the caller is the configured master, it runs again (an engine recovered with
- *      TRANSPORT_START, a transport started by hand) and has done so for AGG_RECLAIM_TICKS of its own
- *      ticks while another unit held the timeline: it takes its timeline back;
- *   0  nothing changes.
- * 1 and 2 bump the epoch: the ASIO host gets kAsioResetRequest (the DLL watches Reserved[1]), the
- * combined Windows streams continue with their positions rebased (AggStageUpdate).
- */
-/*
  * A new timeline epoch (Agg.Lock): every follower re-forms, the ASIO client re-originates and its
  * host is asked to reset (the DLL watches Reserved[1]); AggStageUpdate maps staging fresh and
- * re-anchors the combined streams (their positions continue). [G7 review] Shared by the takeover and
- * the timeline unit's own restart.
+ * re-anchors the combined streams (their positions continue). On a takeover, a new timeline from a
+ * rebuild, the timeline unit's own restart and a rate change.
  */
 static VOID AggNewEpoch(VOID)
 {
@@ -1448,6 +1430,16 @@ static VOID AggNewEpoch(VOID)
     }
 }
 
+/*
+ * The calling unit (a member) takes the timeline (Agg.Lock, DISPATCH). Returns:
+ *   1  the timeline stopped running: the caller becomes acting master (spec 6.3.4);
+ *   2  the caller is the configured master, it runs again (an engine recovered with
+ *      TRANSPORT_START, a transport started by hand) and has done so for AGG_RECLAIM_TICKS of its own
+ *      ticks while another unit held the timeline: it takes its timeline back;
+ *   0  nothing changes.
+ * 1 and 2 bump the epoch: the ASIO host gets kAsioResetRequest (the DLL watches Reserved[1]), the
+ * combined Windows streams continue with their positions rebased (AggStageUpdate).
+ */
 static ULONG AggTakeOver(_In_ PDEVICE_CONTEXT Ctx)
 {
     ULONG u, why;
@@ -1475,7 +1467,7 @@ static ULONG AggTakeOver(_In_ PDEVICE_CONTEXT Ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* [G7] Combined Windows streams in the tick (Agg.Lock + EngineLocks)  */
+/* Combined Windows streams in the tick (Agg.Lock + EngineLocks)      */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -1488,7 +1480,7 @@ static VOID AggStageUpdate(_In_ ULONGLONG To)
     ULONGLONG from, f;
     ULONG s;
 
-    /* [G7 review] a head beyond To is another run's frames (the epoch normally says so first) */
+    /* a head beyond To is another run's frames (the epoch normally says so first) */
     if (!g_Agg.StageValid || g_Agg.StageEpoch != g_Agg.TimelineEpoch || g_Agg.RenHead > To) {
         PLIST_ENTRY e;
 
@@ -1518,15 +1510,6 @@ static VOID AggStageUpdate(_In_ ULONGLONG To)
     }
 }
 
-/* Render packets the stream has fully played out are complete (stream.c StreamComplete). */
-static VOID AggStreamComplete(_Inout_ PAPOLLO_STREAM S)
-{
-    while (S->Frames >= (S->Completed + 1) * S->FramesPerPacket) {
-        S->Completed++;
-        S->Ep->Packets++;
-    }
-}
-
 /*
  * One combined render stream for timeline frames [From, To): stream.c StreamRenderOne with the
  * routing: each channel ADDs (saturating) into every destination of its windows route, the
@@ -1537,7 +1520,7 @@ static VOID AggStreamRender(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPOL
 {
     ULONG tmask = Tl->RingFrames - 1, tstride = Tl->PlayChannels * 4, idx, c, d;
     LONGLONG next;
-    ULONGLONG h, frame, packet = MAXULONGLONG;
+    ULONGLONG h, frame, packetEnd = 0;      /* the next packet's first frame: one division per packet */
     BOOLEAN play = FALSE;
     BOOLEAN stale = (S->Rate != Tl->SampleRate) ? TRUE : FALSE;    /* [Rate] another rate: silent until reopened */
 
@@ -1561,10 +1544,10 @@ static VOID AggStreamRender(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPOL
     frame = S->Frames;
     idx = (ULONG)(frame % S->BufferFrames);
     for (h = (ULONGLONG)next; h < To; h++, frame++) {
-        ULONGLONG q = frame / S->FramesPerPacket;
+        if (frame >= packetEnd) {
+            ULONGLONG q = frame / S->FramesPerPacket;
 
-        if (q != packet) {
-            packet = q;
+            packetEnd = (q + 1) * S->FramesPerPacket;
             play = !S->UsesWritePacket || (LONGLONG)q <= S->WrittenPacket;
             if (!play && S->UnderrunPacket != q + 1) {
                 S->UnderrunPacket = q + 1;      /* count each late packet once */
@@ -1581,12 +1564,12 @@ static VOID AggStreamRender(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPOL
 
                     if (!ApolloAggResampled(u, T)) {
                         if (slot < Tl->PlayChannels) {
-                            tframe[slot] = AggSat(tframe[slot], src[c]);    /* the timeline's ring, directly */
+                            tframe[slot] = ApolloSatAdd32(tframe[slot], src[c]);    /* the timeline's ring, directly */
                         }
                     } else if (u < APOLLO_AGG_MAX_UNITS && slot < APOLLO_AGG_UNIT_SLOTS && g_Agg.U[u].StageOf[slot] >= 0) {
                         PLONG p = g_Agg.Stage + (SIZE_T)g_Agg.U[u].StageOf[slot] * AGG_STAGE_FRAMES + (h & AGG_STAGE_MASK);
 
-                        *p = AggSat(*p, src[c]);
+                        *p = ApolloSatAdd32(*p, src[c]);
                     }
                 }
             }
@@ -1596,7 +1579,7 @@ static VOID AggStreamRender(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPOL
         }
     }
     S->Frames = frame;
-    AggStreamComplete(S);
+    ApolloStreamComplete(S);                    /* apollo_stream.h */
 }
 
 /* The resampler's weights for one (unit, timeline frame), shared by the channels of a frame. */
@@ -1623,7 +1606,7 @@ static LONG AggSampleAt(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONG U, _In
     ULONG h;
 
     if (!ApolloAggResampled(U, T)) {
-        /* [polish Nov 15] the timeline's channels: an integer copy (apollo_agg.h ApolloAggRingSample) */
+        /* the timeline's channels: an integer copy (apollo_agg.h ApolloAggRingSample) */
         return ApolloAggRingSample((const LONG *)Tl->Rec.Va, Tl->RingFrames, Tl->RecChannels, Slot, X);
     }
     if (U >= APOLLO_AGG_MAX_UNITS || !g_Agg.U[U].Usable) {
@@ -1663,21 +1646,6 @@ static LONG AggSampleAt(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _In_ ULONG U, _In
                                Wc->Gain);
 }
 
-/* Capture: the lowest packet whose memory is still intact (stream.c StreamOldestIntact). */
-static ULONGLONG AggOldestIntact(_In_ const APOLLO_STREAM *S)
-{
-    ULONGLONG oldest;
-
-    if (S->Completed < S->PacketCount) {
-        return 0;
-    }
-    oldest = S->Completed - S->PacketCount;
-    if (S->Frames > S->Completed * S->FramesPerPacket) {
-        oldest++;
-    }
-    return oldest;
-}
-
 /* One combined capture stream up to Head (timeline frames, already aligned like the ASIO client's). */
 static VOID AggStreamCapture(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPOLLO_STREAM S, _In_ ULONGLONG Head)
 {
@@ -1696,8 +1664,8 @@ static VOID AggStreamCapture(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPO
         return;
     }
     next = S->HwBase + (LONGLONG)S->Frames;
-    if ((LONGLONG)Head < next || (ULONGLONG)((LONGLONG)Head - next) > AGG_STREAM_MAX_LAG) {
-        /* [G7 review] a stall longer than APOLLO_AGG_MAX_LAG: skip to now, never a long catch-up here */
+    if ((LONGLONG)Head < next || (ULONGLONG)((LONGLONG)Head - next) > AGG_MAX_LAG) {
+        /* a stall longer than APOLLO_AGG_MAX_LAG: skip to now, never a long catch-up here */
         S->Ep->Overruns++;
         S->HwBase = (LONGLONG)Head - (LONGLONG)S->Frames;
         return;
@@ -1727,7 +1695,7 @@ static VOID AggStreamCapture(_In_ PDEVICE_CONTEXT Tl, _In_ ULONG T, _Inout_ PAPO
         S->Ep->Packets++;
     }
     if (S->ReadStarted && S->PacketCount > 1) {
-        ULONGLONG oldest = AggOldestIntact(S);
+        ULONGLONG oldest = ApolloStreamOldestIntact(S);    /* apollo_stream.h */
 
         if (S->ReadNext < oldest) {
             S->Ep->Overruns += (ULONG)min(oldest - S->ReadNext, (ULONGLONG)MAXULONG);
@@ -1785,11 +1753,11 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
     BOOLEAN held[APOLLO_AGG_MAX_UNITS], signal = FALSE;
     ULONG i, u, t, take = 0, notes = 0, formedSrc = 0;
     LONG formedU = -1, formedPpb = 0, takeU = -1;
-    BOOLEAN restarted = FALSE;              /* [G7 review] the timeline unit's own new run: new epoch */
+    BOOLEAN restarted = FALSE;              /* the timeline unit's own new run: new epoch */
     PDEVICE_CONTEXT tl;
     LONGLONG freq, nqpc = 0;
     PKEVENT event = NULL;
-    APOLLO_NOTIFY note[APOLLO_NOTIFY_MAX];  /* [G7] combined stream completions, sent after the locks */
+    APOLLO_NOTIFY note[APOLLO_NOTIFY_MAX];  /* combined stream completions, sent after the locks */
 
     if (!g_Agg.Ready || ReadNoFence(&g_Agg.Active) == 0) {
         return;
@@ -1855,7 +1823,7 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
         const APOLLO_AGG_UNIT_RT *trt = &g_Agg.Rt[t];
 
         /*
-         * [G7 review] The timeline unit began a new run without a takeover (its transport restarted while no
+         * The timeline unit began a new run without a takeover (its transport restarted while no
          * other unit ran): every frame number the clients hold is another run's. A new epoch, as on a
          * takeover: fresh staging, combined streams re-anchored, followers re-formed, ASIO reset request.
          */
@@ -1868,7 +1836,7 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
         g_Agg.TlRunUnit = t;
         g_Agg.TlLastPm = (ULONGLONG)pm;
         g_Agg.TlLastStarts = tl->EngStarts;
-        /* [G7] the timeline as the combined streams' position queries see it (stream.c, Agg.Lock) */
+        /* the timeline as the combined streams' position queries see it (stream.c, Agg.Lock) */
         g_Agg.TlValid = TRUE;
         g_Agg.TlPos = (ULONGLONG)pm;
         g_Agg.TlQpc = tm;
@@ -1892,9 +1860,9 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
                 continue;
             }
             un->PfAtTm = (double)un->Pos + (double)age * (double)tl->SampleRate / (double)freq;   /* [Rate] */
-            /* [G7] Align / trims (apollo_agg.h; aligned with every trim 0 = G6's DAdc and no render offset) */
+            /* Align / trims (apollo_agg.h ApolloAggCapOffset, ApolloAggRenOffset) */
             un->CapOff = ApolloAggCapOffset(&g_Agg.Cfg, g_Agg.Rt, t, u);
-            un->RenOff = ApolloAggRenOffset(g_Agg.Rt, t, u, g_Agg.Cfg.AsrcHalf);  /* [G7 review] "earlier" clamped */
+            un->RenOff = ApolloAggRenOffset(g_Agg.Rt, t, u, g_Agg.Cfg.AsrcHalf);  /* "earlier" clamped */
             if (!un->Formed) {
                 ULONG src = 0;
                 double r0 = AggStartRatio(u, t, tl->SampleRate, &src);
@@ -1920,7 +1888,7 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
                     un->LastRValid = TRUE;
                     un->LastRTl = g_Agg.Cfg.Unit[t].Uid;
                     un->LastRRate = tl->SampleRate;
-                    /* [G7] keep it for the next load once it has held for 30 s (written by a service pass) */
+                    /* keep it for the next load once it has held for 30 s (written by a service pass) */
                     /* [Rate] in the 48 kHz family only: the kept ratios are that family's */
                     if (un->Clock.Locked >= APOLLO_AGG_RATIO_SAVE_S && ApolloRateFamily48(tl->SampleRate) &&
                         (un->RatioCheckTick == 0 || g_Agg.Ticks - un->RatioCheckTick >= AGG_RATIO_CHECK_TICKS)) {
@@ -1934,7 +1902,7 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
                 }
             }
         }
-        /* the clients: the combined ASIO client and [G7] the combined Windows streams */
+        /* the clients: the combined ASIO client and the combined Windows streams */
         if ((g_Agg.Asio.Open && g_Agg.Asio.Active) || g_Agg.StreamCount != 0) {
             ULONGLONG to = (ULONGLONG)pm + trt->Lead, from;
             ULONGLONG head = (ULONGLONG)pm > trt->Guard + g_Agg.Lay.Pad ? (ULONGLONG)pm - trt->Guard - g_Agg.Lay.Pad : 0;
@@ -2024,7 +1992,7 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
     }
     KeReleaseSpinLockFromDpcLevel(&g_Agg.Lock);
 
-    /* [G7] combined stream completions, every lock dropped (rundown protection held per entry) */
+    /* combined stream completions, every lock dropped (rundown protection held per entry) */
     if (notes != 0) {
         ApolloStreamsNotify(note, notes, nqpc);
     }
@@ -2044,7 +2012,7 @@ VOID ApolloAggAfterTick(PDEVICE_CONTEXT Ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* [G7] Combined Windows streams: the calls stream.c makes             */
+/* Combined Windows streams: the calls stream.c makes                 */
 /* ------------------------------------------------------------------ */
 
 /* The row of the combined table a stream's circuit is (endpoints.c sets AggRow1 = row + 1). */
@@ -2286,7 +2254,6 @@ static NTSTATUS AggMapCreate(_In_ ULONG Total, _In_ ULONGLONG EventHandle, _Out_
     ZwClose(sectionHandle);
     M->OwnerProcess = PsGetCurrentProcess();
     ObReferenceObject(M->OwnerProcess);
-    M->Bytes = Total;
     return STATUS_SUCCESS;
 
 fail:
@@ -2307,7 +2274,7 @@ static VOID AggAsioRelease(VOID)
     KeAcquireSpinLock(&g_Agg.Lock, &irql);
     a->Active = FALSE;
     a->Open = FALSE;
-    g_Agg.StageDirty = TRUE;                /* [G7] its staging rings go back (the streams keep theirs) */
+    g_Agg.StageDirty = TRUE;                /* its staging rings go back (the streams keep theirs) */
     KeReleaseSpinLock(&g_Agg.Lock, irql);
     ApolloLogPrint(AGG_TAG, "asio: closed (%ld switches, %ld underruns, %ld overruns, %lu resyncs)", a->Switches,
                    a->Underruns, a->Overruns, a->Resyncs);
@@ -2368,7 +2335,7 @@ static NTSTATUS AggAsioOpen(_In_ WDFREQUEST Request, _In_ WDFFILEOBJECT File, _O
         goto done;
     }
     if (ReadNoFence(&g_Agg.Active) == 0 || (g_Agg.Cfg.Flags & APOLLO_AGG_CFG_ENABLED) == 0) {
-        /* off, or no unit runs; [G7] a timeline kept only for the combined Windows endpoints is not ASIO */
+        /* off, or no unit runs; a timeline kept only for the combined Windows endpoints is not ASIO */
         status = STATUS_DEVICE_NOT_READY;
         goto done;
     }
@@ -2437,7 +2404,6 @@ static NTSTATUS AggAsioOpen(_In_ WDFREQUEST Request, _In_ WDFFILEOBJECT File, _O
     a->Shift = AggLog2(n);
     a->InCount = in->InCount;
     a->OutCount = in->OutCount;
-    a->LayoutVersion = g_Agg.LayoutVersion;
     for (i = 0; i < in->InCount; i++) {
         const APOLLO_AGG_LCHAN *l = &g_Agg.Lay.In[in->In[i]];
 
@@ -2579,7 +2545,7 @@ static VOID AggFillState(_Out_ APOLLO_AGG_STATE *S, _In_ BOOLEAN Reset)
                (g_Agg.Active ? APOLLO_AGG_STATE_ACTIVE : 0) | (g_Agg.Stored ? APOLLO_AGG_STATE_STORED : 0) |
                ((g_Agg.Cfg.Flags & APOLLO_AGG_CFG_ALIGN) ? APOLLO_AGG_STATE_ALIGNED : 0) |
                (g_Agg.RatiosLoaded ? APOLLO_AGG_STATE_RATIOS : 0);
-    S->ConfigGeneration = (ULONG)ReadNoFence(&g_Agg.Generation);   /* [G7] */
+    S->ConfigGeneration = (ULONG)ReadNoFence(&g_Agg.Generation);
     S->EndpointSet = g_Agg.EpHosted ? APOLLO_AGG_EPSET_COMBINED : APOLLO_AGG_EPSET_STANDALONE;
     S->EndpointStreams = g_Agg.StreamCount;
     S->Reserved[0] = g_Agg.TlValid ? g_Agg.TlRate : 0;      /* [Rate] the timeline's rate, 0 = none runs */
@@ -2689,7 +2655,7 @@ static NTSTATUS AggSetConfig(_In_ const APOLLO_AGG_CONFIG *In, _Out_ APOLLO_AGG_
         (VOID)AggRebuild("configuration set");
         status = AggSave();
         Res->LayoutVersion = g_Agg.LayoutVersion;
-        /* [G7] whoever set it (Apollo Control, agg-test, the ASIO clock menu): pollers re-read the config */
+        /* whoever set it (Apollo Control, agg-test, the ASIO clock menu): pollers re-read the config */
         InterlockedIncrement(&g_Agg.Generation);
         WdfWaitLockRelease(g_Agg.Mutex);
     }
@@ -2815,7 +2781,7 @@ NTSTATUS ApolloAggIoctl(PDEVICE_CONTEXT Ctx, ULONG Code, PVOID In, size_t InLen,
         l->Version = APOLLO_AGG_VERSION;
         KeAcquireSpinLock(&g_Agg.Lock, &irql);
         l->LayoutVersion = g_Agg.LayoutVersion;
-        /* [G7] "the combined ASIO device exists": not for a timeline kept only for the Windows endpoints */
+        /* "the combined ASIO device exists": not for a timeline kept only for the Windows endpoints */
         l->Flags = (g_Agg.Active && (g_Agg.Cfg.Flags & APOLLO_AGG_CFG_ENABLED)) ? APOLLO_AGG_LAYOUT_ACTIVE : 0;
         l->InCount = g_Agg.Lay.InCount;
         l->OutCount = g_Agg.Lay.OutCount;
@@ -2870,7 +2836,7 @@ NTSTATUS ApolloAggIoctl(PDEVICE_CONTEXT Ctx, ULONG Code, PVOID In, size_t InLen,
         status = AggSetConfig((const APOLLO_AGG_CONFIG *)In, &res);   /* copies the input first */
         if (status == STATUS_INVALID_PARAMETER && res.Error != 0) {
             /*
-             * [G7 review] METHOD_BUFFERED copies nothing back under an error status, so the reason never
+             * METHOD_BUFFERED copies nothing back under an error status, so the reason never
              * reached the caller ("check 0"). A refused configuration completes with success and the
              * reason in Error (nothing was stored, LayoutVersion is the one in force); callers test
              * Error (apollo_agg.h APOLLO_AGG_SET_RESULT).
@@ -2909,35 +2875,13 @@ NTSTATUS ApolloAggIoctl(PDEVICE_CONTEXT Ctx, ULONG Code, PVOID In, size_t InLen,
 /* A joined member's runtime values and descriptor caches from its context again (Mutex held). */
 static VOID AggMemberRefresh(_In_ PDEVICE_CONTEXT Ctx)
 {
-    ULONG j, i, cin, cout;
-    AGG_JOINED *m = NULL;
+    ULONG j;
 
     for (j = 0; j < APOLLO_AGG_MAX_UNITS; j++) {
         if (g_Agg.Joined[j].Ctx == Ctx) {
-            m = &g_Agg.Joined[j];
-            break;
+            AggMemberFill(&g_Agg.Joined[j], Ctx);
+            return;
         }
-    }
-    if (m == NULL) {
-        return;
-    }
-    m->Rt.Guard = Ctx->EngGuard;
-    m->Rt.Lead = Ctx->EngLead;
-    m->Rt.Adc = Ctx->AdcFrames;
-    m->Rt.FrameCfg = Ctx->FrameCfg;
-    m->Rt.Rate = (Ctx->SampleRate == APOLLO_RATE_DEFAULT_HZ) ? 0 : Ctx->SampleRate;
-    m->Rt.Dig = Ctx->DigState;              /* [Clock] a format change re-compiles the layout through here */
-    cin = ApolloIoDescCount(Ctx->IoDescIn, 1);
-    cout = ApolloIoDescCount(Ctx->IoDescOut, 0);
-    m->InCount = min(cin != 0 ? cin : Ctx->RecChannels, min(Ctx->RecChannels, (ULONG)APOLLO_AGG_UNIT_SLOTS));
-    m->OutCount = min(cout != 0 ? cout : Ctx->PlayChannels, min(Ctx->PlayChannels, (ULONG)APOLLO_AGG_UNIT_SLOTS));
-    RtlZeroMemory(m->InIds, sizeof(m->InIds));
-    RtlZeroMemory(m->OutIds, sizeof(m->OutIds));
-    for (i = 0; i < m->InCount; i++) {
-        m->InIds[i] = (cin != 0) ? ApolloIoDescId(Ctx->IoDescIn, i) : 0;
-    }
-    for (i = 0; i < m->OutCount; i++) {
-        m->OutIds[i] = (cout != 0) ? ApolloIoDescId(Ctx->IoDescOut, i) : 0;
     }
 }
 
