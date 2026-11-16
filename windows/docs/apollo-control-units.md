@@ -598,7 +598,7 @@ the send's pan law) and Mic 1's noise sent at +12 dB, while 0x11 without a strip
 **`StripAuxMask`** (bit 0 AUX 1, bit 2 AUX 2: one strip on each return's L input, 0x10 / 0x12; a strip on an R input
 covered input 1's record slot, so the models refuse bits 1 and 3) builds them in the strip pass. **The x8p's default is
 0x5: AUX 1 and AUX 2 work out of the box** (proven on the x8p Nov 16 2026: sends reach the buses, `auxret` reaches both
-MON sides at its level, `auxmute` silences it); the Twin X's is 0 (not run there). The aux buses are mono: `auxret` goes
+MON sides at its level, `auxmute` silences it), and so is the Twin X's (the same checks passed there). The aux buses are mono: `auxret` goes
 to the L input's left and right entries, `auxcue` / `auxcuepan` to its one cell with the pan law, and the input sends
 into a strip-backed aux take the left entry at the centre value (an aux send's pan does nothing there). The moment the
 strip starts every return and cue cell is written, the UI's value or 0.0, so a new strip never joins MON at the DSP's own

@@ -1835,8 +1835,8 @@ This supersedes the stereo pair described in 14.1 and 14.3 below.
 - A mono Input Strip on a RIGHT return (0x11 or 0x13) put its output over **input 1's record slot** (slot 0 exact zero
   with either one built; live with no aux strip, with 0x10 alone, with 0x12 alone) and never reached slots 29/31. The
   SYNCH word names two inputs (`in2 << 16 | in1`, in2 0x20 = none): a stereo strip with in2 = the R input is unproven.
-  So the models allow 0x05 (`AuxAllowed`), and the x8p's default is **0x5** (AUX 1 and AUX 2, L inputs); the Twin X
-  stays 0 (not run there).
+  So the models allow 0x05 (`AuxAllowed`), and the default is **0x5** (AUX 1 and AUX 2, L inputs) on the x8p and,
+  after the same checks passed there (AUX 1/2 -43.0, return on both MON sides, mute, no leaks), on the Twin X.
 - Cells with the L strip running: the return {L input, param 0, weight, weight} (both monitor sides); the aux-to-cue
   sends {L input, cue param, L, R} with the pan law; sends INTO the aux the left entry only at the centre value whatever
   their pan (upstream's default send write, `_write_send` without `--stereo-sends`). Never set or muted: 0.0.

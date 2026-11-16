@@ -468,12 +468,13 @@ static void TestParams(void)
     /* [AuxStrips] docs/STRIPS.md 14: StripAuxMask, the x8p's default one constant: 0x5, the L returns of AUX 1 and AUX 2 (proven Nov 16 2026) */
     CHECK(ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_AUX_MASK) == APOLLO_DEF_STRIP_AUX_MASK_X8P &&
           APOLLO_DEF_STRIP_AUX_MASK_X8P == 0x5 &&
-          ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_STRIP_AUX_MASK) == 0 &&
+          ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_STRIP_AUX_MASK) == APOLLO_DEF_STRIP_AUX_MASK_TWINX &&
+          APOLLO_DEF_STRIP_AUX_MASK_TWINX == 0x5 &&
           ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_AUX_MASK) == 0 &&
           wcscmp(ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->NameW, L"StripAuxMask") == 0 &&
           strcmp(ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->Name, "StripAuxMask") == 0 &&
           ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->Hex && APOLLO_PARAM_STRIP_AUX_MASK == 21 && APOLLO_PARAM_COUNT == 22,
-          "[AuxStrips] StripAuxMask: id 21 (after BusEnable), the x8p's APOLLO_DEF_STRIP_AUX_MASK_X8P, 0 on every other model, "
+          "[AuxStrips] StripAuxMask: id 21 (after BusEnable), x8p and Twin X 0x5, 0 on every other model, "
           "logged in hex");
     CHECK(u.Value[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == 0 && u.Source[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == APOLLO_SRC_DEFAULT,
           "[Virtual] x8p default StripVirtualMask 0 (built-in)");

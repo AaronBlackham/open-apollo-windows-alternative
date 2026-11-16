@@ -41,9 +41,11 @@
  * [AuxStrips] The x8p's built-in StripAuxMask (docs/STRIPS.md 14): 0x5, the Input Strips on the L returns of AUX 1 and
  * AUX 2 (0x10, 0x12; the model allows no more, strip_plan.h). Nov 16 2026 on the x8p: sends reach the aux buses, the
  * return reaches both MON sides at its level, mute works, input 1 and the other inputs record as before. ident-test
- * checks the default against this constant; every other model stays 0.
+ * checks the defaults against these constants; every other model stays 0.
  */
 #define APOLLO_DEF_STRIP_AUX_MASK_X8P   0x5u
+#define APOLLO_DEF_STRIP_AUX_MASK_TWINX 0x5u    /* the same on the Twin X Gen 1: proven there Nov 16 2026 (AUX 1/2 -43.0, return on
+                                                   both MON sides, mute, no leaks) */
 
 /* Parameter ids */
 #define APOLLO_PARAM_MODE                   0
@@ -155,8 +157,8 @@ static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
            one an aux return mixes nothing and records silence (measured on the x8p, Nov 16 2026). Only the L inputs are built
            (the models allow 0x05: a mono strip on 0x11/0x13 covered input 1's record slot): mono aux buses, the return on
            both monitor sides, the sends' left entry. The x8p and the Twin X have AUX 1-2; every other model: none. The
-           x8p's default: APOLLO_DEF_STRIP_AUX_MASK_X8P; the Twin X 0 (not run there). */
-        { "StripAuxMask",            L"StripAuxMask",            APOLLO_DEF_STRIP_AUX_MASK_X8P, 0, 1, 0 },
+           defaults: APOLLO_DEF_STRIP_AUX_MASK_X8P / _TWINX (0x5 on both). */
+        { "StripAuxMask",            L"StripAuxMask",            APOLLO_DEF_STRIP_AUX_MASK_X8P, 0, 1, APOLLO_DEF_STRIP_AUX_MASK_TWINX },
     };
 
     return (Id >= 0 && Id < APOLLO_PARAM_COUNT) ? &t[Id] : &t[APOLLO_PARAM_MODE];

@@ -1101,7 +1101,7 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
             { 0x0EB, 0x0DA, 0x0A5, 0x0C2, 0x12B },
             { 0x0001, 0x0002, 0, 0, 0, 0, 0, 0 },
             /* [AuxStrips] the left return inputs only, as on the x8p (0x10, 0x12: mono aux buses; its record descriptor
-               has AUX1 L .. AUX2 R, 0x0201-0x0204, at slots 28-31). Not run on a Twin X. */
+               has AUX1 L .. AUX2 R, 0x0201-0x0204, at slots 28-31). Run on a Twin X Nov 16 2026: AUX 1/2 as on the x8p. */
             0x05,
         },
     };
