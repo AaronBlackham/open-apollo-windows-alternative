@@ -1678,18 +1678,12 @@ static bool DoChain(Chain &ch)
     std::vector<ULONG> order;
     if (!BuildFor(ch, r, order, code, why)) return fail(code, why, false);
     /*
-     * Two or more active inserts composed into one chain hung the x8p's DSP 1 on their first hardware run (Nov 15 2026:
-     * UAD Sphere Mic Collection 180 + UAD AKG BX 20, stereo on inputs 1-2: silence from routing on, the next SERVICE read
-     * unanswered, DSP 1 quarantined, a power cycle). Until the composer is fixed, one active insert per input or aux;
-     * HKCU\Software\Avium\ApolloControl\ExperimentalChains = 1 allows more (for that work only).
+     * [Chainfix] Several active inserts per input or aux. The Nov 15 2026 hang (Sphere Mic Collection 180 + AKG BX 20 on x8p
+     * inputs 1-2) was the AKG BX 20 itself: alone and routed it stops DSP 1 at its first readback (chainfix-hw.ps1 step 3,
+     * Nov 16), and the qualification check refuses it. Two-insert chains of qualified plug-ins ran clean on the x8p the same
+     * day (step 4: Precision De-Esser + 1176LN Legacy mono; step 5: Sphere 180 + Precision De-Esser stereo, staged), so the
+     * one-insert limit is gone. A chain that stops its DSP anyway is caught by the head read after START and saved bypassed.
      */
-    if (order.size() > 1) {
-        DWORD v = 0, sz = sizeof(v);
-        if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Avium\\ApolloControl", L"ExperimentalChains", RRF_RT_REG_DWORD, nullptr, &v, &sz) != ERROR_SUCCESS || v != 1) {
-            return fail("chain", "two or more active inserts on one input stopped the DSP in testing: one active insert per input for now "
-                                 "(bypass the others) until that is fixed", false);
-        }
-    }
     if ((r.staged() || r.unison) && !(g_caps.Features & APOLLO_PLUGIN_FEAT_STAGE)) {
         return fail("staged", "its startup is over one page and the installed apollo.sys cannot stage one", false);
     }

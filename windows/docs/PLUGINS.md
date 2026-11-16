@@ -33,8 +33,11 @@ Hardware, Nov 16 2026 (`tools\phase1\chainfix-hw.ps1`, driver 6.55.42.311): step
 (7 uploads including its kind-3 module to pool 3, 70 rows zero-filled and linked, memspec), left DSP 1 answering. Step 3,
 the AKG BX 20 ALONE, routed stereo on inputs 1-2: the START was accepted, then the first readback (row 37) timed out
 (0xc00000b5) and the driver quarantined DSP 1 (load word 0x46b -> 0x80b). So the AKG itself stops DSP 1 as our map starts
-it; the two-insert composition is not needed for the hang. The qualification check refuses it (`QualFloor`). Steps 4-5
-(two-insert chains of plug-ins proven alone) run after the power cycle (`chainfix-hw.ps1 -From 4`).
+it; the two-insert composition is not needed for the hang. The qualification check refuses it (`QualFloor`). After the
+power cycle (`chainfix-hw.ps1 -From 4`): step 4, Precision De-Esser + UA 1176LN Legacy mono on input 1, 11 PASS (169 words
+read back as written, the effect measurable on input 1, plain strip back after DESTROY); step 5, Sphere Mic Collection 180 +
+Precision De-Esser stereo on inputs 1-2, staged (2,245 startup words in 3 pages), 16 PASS; DSP 1 answering throughout. The
+one-active-insert guard (`ExperimentalChains`) is removed from Apollo Control: chains of qualified plug-ins are allowed.
 
 Nov 15 2026, night (warmplug): **plug-ins after a warm start, and the chains' latency in the DAW, built with offline
 tests, not run on hardware.** After an x8p warm start that adopted its strips (`docs/STRIPS.md` 12), DSP 1 takes plug-ins as

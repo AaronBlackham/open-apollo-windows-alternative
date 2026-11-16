@@ -1375,7 +1375,7 @@
   "behaviour": "Plugin host: CAllocator, CDSPResourceManager, CPluginInstance, CChain,…",
   "upstream": "plugin",
   "ours": "partial",
-  "evidence": "Console inserts proven on x8p (P1, 4 plug-ins); no DAW streaming, rebalance, cost model",
+  "evidence": "Console inserts on x8p DSP 1: single plug-ins (P1) and two-insert chains mono and stereo staged (chainfix-hw Nov 16, 27 PASS); qualification gate; no DAW streaming, rebalance, cost model",
   "n": 138,
   "key": "Kext classes #138"
  },
