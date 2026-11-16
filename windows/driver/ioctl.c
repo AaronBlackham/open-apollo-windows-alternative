@@ -365,6 +365,19 @@ VOID ApolloEvtIoDeviceControl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request,
         return;
     }
 
+    if (ApolloEventsIsIoctl(IoControlCode)) {
+        /* [Events] answered now or parked until the next event (events.c); a gone unit answers NO_SUCH_DEVICE */
+        ApolloEventsIoctl(ctx, Request);
+        return;
+    }
+    if (ApolloParamsIsIoctl(IoControlCode)) {
+        /* [Params] lock-free: the values this start resolved, and Units\<key> in the registry (params.c);
+           SET_PARAM is administrators only (the admin check above) and applies at the next start */
+        status = ApolloParamsIoctl(ctx, IoControlCode, in, inLen, out, outLen, &info);
+        WdfRequestCompleteWithInformation(Request, status, info);
+        return;
+    }
+
     if (ctx->Stage == ApolloStageGone || ApolloGateClosed(ctx)) {
         WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
         return;

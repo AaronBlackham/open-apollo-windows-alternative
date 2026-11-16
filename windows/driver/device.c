@@ -22,6 +22,7 @@ VOID ApolloFail(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_STAGE Attempted, _In_ NTST
         Ctx->Stage = (Status == STATUS_DEVICE_NOT_CONNECTED) ? ApolloStageGone : ApolloStageFailed;
     }
     ApolloLogU(Ctx, "bring-up failed at stage %d: 0x%08x", Attempted, Status);
+    ApolloEventPost(Ctx, APOLLO_EVENT_STAGE, (ULONG)Ctx->Stage, (ULONG)Status);    /* [Events] */
 }
 
 /*
@@ -247,6 +248,7 @@ NTSTATUS ApolloEvtD0ExitPreInterruptsDisabled(_In_ WDFDEVICE Device,
     PDEVICE_CONTEXT ctx = ApolloGetContext(Device);
 
     InterlockedExchange(&ctx->StopRequested, 1);
+    ApolloEventPost(ctx, APOLLO_EVENT_LEAVING, 0, 0);     /* [Events] clients close their handles now */
     WdfWorkItemFlush(ctx->BringupWork);
     /* [G6] out of the combined device before anything stops (after the flush: a bring-up may just have joined) */
     ApolloAggLeave(ctx);
@@ -309,6 +311,7 @@ VOID ApolloEvtSurpriseRemoval(_In_ WDFDEVICE Device)
     ctx->TransportRunning = FALSE;
     KeSetEvent(&ctx->ServiceStop, IO_NO_INCREMENT, FALSE);
     ApolloLogU(ctx, "surprise removal");
+    ApolloEventPost(ctx, APOLLO_EVENT_LEAVING, 1, 0);     /* [Events] */
 }
 
 /* ------------------------------------------------------------------ */

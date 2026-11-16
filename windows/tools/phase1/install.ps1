@@ -1,5 +1,5 @@
 # Put apollo.sys on ONE Apollo and wait for it to come up. ADMIN PowerShell, after the setup reboot.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\install.ps1 [-Unit x8p|twinx] [-Package <folder with apollo.inf>] [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\install.ps1 [-Unit x8p|twinx] [-Package <folder with apollo.inf>] [-Yes]
 # -Unit x8p (default, as every release so far): the x8p (SUBSYS 0x0014), full driver.
 # -Unit twinx (gate G2, docs/spec-twinx.md 6.10 and 7): the Twin X Gen 1 (SUBSYS 0x0019) in OBSERVE mode:
 #   Parameters\Models\99\Mode=0 is written BEFORE binding, so the driver only identifies and quiesces it

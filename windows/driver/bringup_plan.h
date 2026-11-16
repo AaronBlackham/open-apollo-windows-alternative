@@ -163,6 +163,8 @@ typedef struct _APOLLO_BRINGUP_PLAN {
      */
     unsigned long   MonitorParams;
     int             InputParams, RawMixerSettings;
+    /* [Out] The output and front-panel codes (monitor_plan.h APOLLO_MON_OUT_*; MonitorParams ANY takes them all) */
+    unsigned long   OutputParams;
     /* [G4] Standalone Windows endpoints: rows of the model's table (endpoints.c), default EnabledEndpoints */
     unsigned long   EndpointRows, EndpointDefault;
     unsigned long   AdcFrames;          /* capture latency reported to Windows, frames at 48 kHz */
@@ -268,6 +270,7 @@ static __inline const APOLLO_BRINGUP_PLAN *ApolloBringupPlanFor(int Model)
             .RateConfirmMs = 0,
             .StepsCold = 0, .StepsWarm = 0, .StepsBoot = 0, .StepsConnect = 0,
             .MonitorParams = APOLLO_PLAN_MON_ANY, .InputParams = 1, .RawMixerSettings = 1,
+            .OutputParams = APOLLO_MON_OUT_ALL,
             .EndpointRows = APOLLO_X8P_EP_ROWS, .EndpointDefault = APOLLO_X8P_EP_DEFAULT,
             .AdcFrames = APOLLO_X8P_ADC_FRAMES,
             .DacCenti = { 4300, 1525, 1550 },                                 /* [Lat] 43, 15.25, 15.5 */
@@ -310,6 +313,9 @@ static __inline const APOLLO_BRINGUP_PLAN *ApolloBringupPlanFor(int Model)
                              0x008ul | 0x020ul | APOLLO_MON_EXT_TWINX | APOLLO_MON_EXT_MIX | APOLLO_MON_BIT_AUX,
             /* [G5] its 2 preamps and the Hi-Z impedance of input 1 (preamp_plan.h); raw settings never */
             .InputParams = 1, .RawMixerSettings = 0,
+            /* [Out] masked bit writes only: aux mono, meter holds, identify, the monitor reference (monitor_plan.h) */
+            .OutputParams = APOLLO_MON_OUT_AUX_MONO | APOLLO_MON_OUT_CLIP_HOLD | APOLLO_MON_OUT_PEAK_HOLD |
+                            APOLLO_MON_OUT_IDENTIFY | APOLLO_MON_OUT_MON_REF,
             .EndpointRows = APOLLO_TWX_EP_ROWS, .EndpointDefault = APOLLO_TWX_EP_DEFAULT,
             .AdcFrames = APOLLO_TWX_ADC_FRAMES,
             .DacCenti = { 4430, 1635, 1735 },                                 /* [Lat] 44.3, 16.35, 17.35 */
@@ -343,13 +349,16 @@ static __inline int ApolloPlanIoctlAllowed(const APOLLO_BRINGUP_PLAN *P, unsigne
 /* [G4] Within the SETTINGS class: may this unit take SET_MONITOR_PARAM Param? (x8p: any, as before) */
 static __inline int ApolloPlanMonitorParamAllowed(const APOLLO_BRINGUP_PLAN *P, unsigned long Param)
 {
-    unsigned long b = ApolloPlanMonBit(Param);
+    unsigned long b = ApolloPlanMonBit(Param), o = ApolloMonOutBit(Param);
 
     if (P == 0) {
         return 0;
     }
     if (P->MonitorParams == APOLLO_PLAN_MON_ANY) {
         return 1;
+    }
+    if (o != 0) {
+        return (P->OutputParams & o) != 0;      /* [Out] */
     }
     return b != 0 && (P->MonitorParams & b) != 0;
 }

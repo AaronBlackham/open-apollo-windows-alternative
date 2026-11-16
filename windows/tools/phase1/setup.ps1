@@ -1,5 +1,5 @@
 # Phase 1, step 1: one-time test-machine setup. Run in an ADMIN PowerShell, then reboot.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\setup.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\setup.ps1
 # Undo when development is over: bcdedit /set testsigning off ; verifier /reset
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Continue'

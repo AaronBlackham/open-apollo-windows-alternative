@@ -442,13 +442,15 @@ static void TestParams(void)
     CHECK(wcscmp(ApolloParamDef(APOLLO_PARAM_ENABLED_ENDPOINTS)->NameW, L"Endpoints") == 0,
           "[Endpoints] the value is Endpoints (a stored EnabledEndpoints names the old rows: ignored)");
     CHECK(ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_MODE) == 0, "Twin X default Mode still 0 (observe)");
-    /* [Warm] docs/STRIPS.md 12.5: plug-ins on adopted (x8p) or warm-rebuilt (Twin X) strips by default; StripWarmRebuild unchanged */
+    /* [Warm] docs/STRIPS.md 12.5: plug-ins on adopted (x8p) or warm-rebuilt (Twin X) strips by default; StripWarmRebuild
+       on for the x8p too since its first warm rebuild was accepted on hardware (Nov 15 2026: a rate change left its mics off) */
     CHECK(ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_WARM_PLUGINS) == 1 &&
           ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_STRIP_WARM_PLUGINS) == 1 &&
           ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_WARM_PLUGINS) == 0 &&
           wcscmp(ApolloParamDef(APOLLO_PARAM_STRIP_WARM_PLUGINS)->NameW, L"StripWarmPlugins") == 0 &&
-          ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_WARM_REBUILD) == 0,
-          "[Warm] StripWarmPlugins: x8p 1, Twin X 1, others 0; x8p StripWarmRebuild still 0");
+          ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_WARM_REBUILD) == 1 &&
+          ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_WARM_REBUILD) == 0,
+          "[Warm] StripWarmPlugins: x8p 1, Twin X 1, others 0; StripWarmRebuild x8p 1, others 0");
     {
         int i;
 

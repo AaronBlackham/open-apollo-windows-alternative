@@ -72,6 +72,9 @@
 #include "endpoints_host.h"                 /* [Endpoints] the Windows endpoint set: endpoints-* commands (docs 1.7) */
 #include "clock_host.h"                     /* [Clock] clock source, digital formats, front panel: clock-*, digital-*,
                                                panel-* commands and the panel/clock messages (docs 1.10) */
+#include "params_host.h"                    /* [Params] the units' driver Parameters: params-get (read-only) */
+#include "diag_host.h"                      /* [Diag] Save diagnostics: diag-save */
+#include "..\..\include\apollo_events.h"  /* [Events] WAIT_EVENTS: the event pump below */
 #include "..\res\resource.h"
 
 using Microsoft::WRL::Callback;
@@ -445,6 +448,21 @@ struct Slot {
     ULONG              lastSeq = 0xFFFFFFFF;
     bool               lastLevelsValid = false;
     std::atomic<ULONG> openGen{ 0 };            /* [Plug-ins] +1 per handle opened: a reopened handle lost its inserts */
+    /*
+     * [Events] A second, overlapped handle on the unit: the event pump parks WAIT_EVENTS on it. Opened and closed with h
+     * (under lock), and on every removal notice cancelled and closed with it, so it never holds a unit up.
+     */
+    HANDLE             evh = INVALID_HANDLE_VALUE;
+    /* Event pump thread only */
+    OVERLAPPED         evOv{};
+    APOLLO_EVENTS_WAIT evIn{};
+    APOLLO_EVENTS      evOut{};
+    bool               evPending = false;
+    ULONG              evAfter = 0;
+    ULONGLONG          evRetryAt = 0;
+    ULONG              evGen = 0xFFFFFFFF;      /* the openGen whose handle is primed (its ring read, nothing posted) */
+    ULONG              evIssueGen = 0;
+    bool               evPriming = false;
 };
 
 static Slot g_slots[MAX_UNITS];
@@ -464,6 +482,8 @@ static std::atomic<bool>         g_rescan{ true };
 static std::mutex          g_cmdLock;
 static std::deque<Command> g_cmds;
 static HANDLE              g_wake;
+static HANDLE              g_evWake = nullptr;      /* [Events] the pump's wake (a unit opened, the app quits) */
+static std::thread         g_evPump;
 static std::atomic<bool>   g_quit{ false };
 static std::thread         g_worker;
 
@@ -510,6 +530,16 @@ static void Unhold(const std::wstring &p)
                   g_holds.end());
 }
 
+/* [Events] Slot lock held exclusive: the event handle's parked wait cancelled, the handle closed. */
+static void EventHandleClose(Slot &s)
+{
+    if (s.evh != INVALID_HANDLE_VALUE) {
+        CancelIoEx(s.evh, nullptr);
+        CloseHandle(s.evh);
+        s.evh = INVALID_HANDLE_VALUE;
+    }
+}
+
 /* ---------- PnP callbacks (thread pool). Never unregister from here: that deadlocks. ---------- */
 
 static DWORD CALLBACK DevNotify(HCMNOTIFICATION, PVOID ctx, CM_NOTIFY_ACTION action, PCM_NOTIFY_EVENT_DATA, DWORD)
@@ -527,6 +557,7 @@ static DWORD CALLBACK DevNotify(HCMNOTIFICATION, PVOID ctx, CM_NOTIFY_ACTION act
             CloseHandle(s->h);
             s->h = INVALID_HANDLE_VALUE;
         }
+        EventHandleClose(*s);                   /* [Events] */
         ReleaseSRWLockExclusive(&s->lock);
         s->removing = true;
         SetEvent(g_wake);
@@ -617,10 +648,17 @@ static DWORD SlotOpen(Slot &s)
     }
     s.removing = false;
     s.queryFailed = false;
+    /* [Events] the pump's overlapped handle (none = no events for this unit; everything else works as before) */
+    HANDLE eh = CreateFileW(s.path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                            FILE_FLAG_OVERLAPPED, nullptr);
     /* The handle first, then the notification: a removal notice that fires at once finds it and closes it. */
     AcquireSRWLockExclusive(&s.lock);
     s.h = h;
+    s.evh = eh;
     ReleaseSRWLockExclusive(&s.lock);
+    if (g_evWake != nullptr) {
+        SetEvent(g_evWake);
+    }
     s.openGen++;
     CM_NOTIFY_FILTER filter{};
     filter.cbSize = sizeof(filter);
@@ -641,6 +679,7 @@ static void SlotClose(Slot &s)
         CloseHandle(s.h);
         s.h = INVALID_HANDLE_VALUE;
     }
+    EventHandleClose(s);                        /* [Events] */
     ReleaseSRWLockExclusive(&s.lock);
     if (s.notif != nullptr) {
         CM_Unregister_Notification(s.notif);    /* worker thread: never from the callback */
@@ -1270,6 +1309,122 @@ static void AggPollGeneration()
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* [Events] The event pump: one thread, one parked WAIT_EVENTS per unit */
+/* ------------------------------------------------------------------ */
+
+static const wchar_t *EventKindText(ULONG k)
+{
+    switch (k) {
+    case APOLLO_EVENT_STAGE:       return L"stage";
+    case APOLLO_EVENT_LEAVING:     return L"leaving";
+    case APOLLO_EVENT_RATE:        return L"rate";
+    case APOLLO_EVENT_CLOCK:       return L"clock";
+    case APOLLO_EVENT_PANEL:       return L"panel";
+    case APOLLO_EVENT_DSP_FAULT:   return L"dsp-fault";
+    case APOLLO_EVENT_ENGINE_LOST: return L"engine-lost";
+    case APOLLO_EVENT_PARAMS:      return L"params";
+    default:                       return L"other";
+    }
+}
+
+/*
+ * Each unit with an event handle has one WAIT_EVENTS parked in the driver; when it completes, its events go to the page
+ * as {"type":"event","unit":<slot>,"seq","kind","a","b"} (panel events are left to the panel poll: they come in runs)
+ * and the next wait goes out with the newest Seq. Completion is read from the OVERLAPPED itself, so a handle a removal
+ * notice closed (EventHandleClose: CancelIoEx, then CloseHandle) is never touched again. An error waits before the
+ * next try (2 s; an older driver without WAIT_EVENTS: a minute).
+ */
+static void EventPumpMain()
+{
+    for (Slot &s : g_slots) {
+        s.evOv.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    }
+    while (!g_quit) {
+        ULONGLONG now = GetTickCount64();
+        HANDLE waits[MAX_UNITS + 1];
+        DWORD n = 0;
+
+        for (int idx = 0; idx < MAX_UNITS; idx++) {
+            Slot &s = g_slots[idx];
+            if (s.evPending || s.evOv.hEvent == nullptr || now < s.evRetryAt) {
+                continue;
+            }
+            AcquireSRWLockShared(&s.lock);
+            if (s.evh != INVALID_HANDLE_VALUE) {
+                HANDLE ev = s.evOv.hEvent;
+                ZeroMemory(&s.evOv, sizeof(s.evOv));
+                s.evOv.hEvent = ev;
+                ResetEvent(ev);
+                /* a handle not read yet: one NOWAIT read primes it (what the ring holds is old news, never posted) */
+                s.evIssueGen = s.openGen.load();
+                s.evPriming = (s.evGen != s.evIssueGen);
+                s.evIn = APOLLO_EVENTS_WAIT{ APOLLO_EVENTS_VERSION, s.evPriming ? 0ul : s.evAfter,
+                                             s.evPriming ? (ULONG)APOLLO_EVENTS_WAIT_NOWAIT : 0ul, 0 };
+                BOOL ok = DeviceIoControl(s.evh, IOCTL_APOLLO_WAIT_EVENTS, &s.evIn, sizeof(s.evIn), &s.evOut, sizeof(s.evOut),
+                                          nullptr, &s.evOv);
+                DWORD err = ok ? 0 : GetLastError();
+                if (ok || err == ERROR_IO_PENDING) {
+                    s.evPending = true;
+                } else {
+                    s.evRetryAt = now + (err == ERROR_INVALID_FUNCTION ? 60000 : 2000);
+                }
+            }
+            ReleaseSRWLockShared(&s.lock);
+        }
+        waits[n++] = g_evWake;
+        for (Slot &s : g_slots) {
+            if (s.evPending) {
+                waits[n++] = s.evOv.hEvent;
+            }
+        }
+        WaitForMultipleObjects(n, waits, FALSE, 1000);
+        now = GetTickCount64();
+        for (int idx = 0; idx < MAX_UNITS; idx++) {
+            Slot &s = g_slots[idx];
+            if (!s.evPending || !HasOverlappedIoCompleted(&s.evOv)) {
+                continue;
+            }
+            s.evPending = false;
+            LONG st = (LONG)s.evOv.Internal;
+            if (st != 0 || s.evOv.InternalHigh < sizeof(APOLLO_EVENTS) || s.evOut.Version != APOLLO_EVENTS_VERSION) {
+                /* cancelled (a removal, the app closing), gone, or an older driver: try again later */
+                s.evRetryAt = now + ((ULONG)st == 0xC0000010ul ? 60000 : 2000);   /* STATUS_INVALID_DEVICE_REQUEST */
+                continue;
+            }
+            if (s.evPriming) {
+                s.evGen = s.evIssueGen;
+                s.evAfter = s.evOut.Seq;
+                continue;
+            }
+            for (ULONG i = 0; i < s.evOut.Count && i < APOLLO_EVENTS_MAX; i++) {
+                const APOLLO_EVENT_ENTRY &e = s.evOut.Entry[i];
+                if (e.Kind == APOLLO_EVENT_PANEL) {
+                    continue;
+                }
+                std::wstring j = L"{\"type\":\"event\",";
+                Appendf(j, L"\"unit\":%d,\"seq\":%lu,\"kind\":\"%s\",\"a\":%lu,\"b\":%lu,\"reset\":%s}", idx, e.Seq,
+                        EventKindText(e.Kind), e.A, e.B, (s.evOut.Flags & APOLLO_EVENTS_F_RESET) ? L"true" : L"false");
+                PostJson(std::move(j));
+            }
+            s.evAfter = s.evOut.Seq;
+            SetEvent(g_wake);                   /* the worker posts the units' status now */
+        }
+    }
+    /* quitting: cancel what is parked and wait for it (the buffers are the slots') */
+    for (Slot &s : g_slots) {
+        AcquireSRWLockShared(&s.lock);
+        if (s.evPending && s.evh != INVALID_HANDLE_VALUE) {
+            CancelIoEx(s.evh, &s.evOv);
+        }
+        ReleaseSRWLockShared(&s.lock);
+        if (s.evPending) {
+            WaitForSingleObject(s.evOv.hEvent, 2000);
+            s.evPending = false;
+        }
+    }
+}
+
 static void WorkerMain()
 {
     IfaceWatchStart();
@@ -1760,6 +1915,14 @@ static void HandleUiJson(const std::wstring &json)
     }
     if (clockhost::Owns(cmd)) {
         clockhost::Handle(Narrow(json), RatePost);  /* [Clock] clock-*, digital-*, panel-* (clock_host.h) */
+        return;
+    }
+    if (paramshost::Owns(cmd)) {
+        paramshost::Handle(Narrow(json), RatePost); /* [Params] params-get (params_host.h) */
+        return;
+    }
+    if (diaghost::Owns(cmd)) {
+        diaghost::Save(RatePost, APP_VERSION);      /* [Diag] one folder for a fault report (diag_host.h) */
         return;
     }
     if (cmd == L"agg-get") {
@@ -2327,7 +2490,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ 
     ApplyTheme(true, RGB(22, 24, 27), RGB(230, 230, 230));
 
     g_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    g_evWake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_worker = std::thread(WorkerMain);
+    if (g_optCapture.empty()) {
+        g_evPump = std::thread(EventPumpMain);  /* [Events] */
+    }
     if (!g_optDemo && g_optCapture.empty()) {
         pe::Start();                            /* [Plug-ins] saved inserts go back once the x8p's strips are live */
     }
@@ -2355,6 +2522,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ 
     clockhost::Stop();                          /* [Clock] a clock-set under way finishes first */
     g_quit = true;
     SetEvent(g_wake);
+    if (g_evWake != nullptr) {
+        SetEvent(g_evWake);                     /* [Events] the pump cancels its waits and ends */
+    }
+    if (g_evPump.joinable()) {
+        g_evPump.join();
+    }
     if (g_worker.joinable()) {
         g_worker.join();
     }

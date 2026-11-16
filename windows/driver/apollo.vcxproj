@@ -78,6 +78,8 @@
     <ClCompile Include="rate.c" />
     <ClCompile Include="clock.c" />
     <ClCompile Include="panel.c" />
+    <ClCompile Include="params.c" />
+    <ClCompile Include="events.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="apollo.h" />

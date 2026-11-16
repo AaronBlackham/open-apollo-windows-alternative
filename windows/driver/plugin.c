@@ -658,6 +658,7 @@ static VOID PlugQuarantine(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H,
     d = PlugSyncDsp(Ctx, H, D);
     if (!d->Quarantined) {
         ApolloLogU(Ctx, "plugins: DSP %lu quarantined until the Apollo is power-cycled: %s (0x%08x)", D, What, Status);
+        ApolloEventPost(Ctx, APOLLO_EVENT_DSP_FAULT, D, (ULONG)Status);          /* [Events] */
     }
     d->Quarantined = TRUE;
     if (D == s->Dsp && s->WarmUploads == STRIPS_WARM_UPLOADS_UNPROVEN) {

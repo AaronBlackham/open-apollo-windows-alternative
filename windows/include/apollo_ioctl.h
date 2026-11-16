@@ -380,6 +380,19 @@ typedef struct _APOLLO_MIXER_SETTING {
 #define APOLLO_MON_ALT_SELECT   0x3A    /* 0 MAIN, 1 ALT 1, 2 ALT 2  S13 [29:28]; readback word 6 [29:28] */
 #define APOLLO_MON_ALT1_ENABLE  0x3B    /* 0/1                   S15 bit 8          */
 #define APOLLO_MON_ALT2_ENABLE  0x3C    /* x8p                   S15 bit 12         */
+/*
+ * [Out] Output and front-panel settings (driver\monitor_plan.h has the evidence). Nothing reads back: the host keeps
+ * what it set and sends it again when the unit connects.
+ */
+#define APOLLO_MON_AUX1_MONO    0x0A    /* 0/1                   S6 [9:8], mono = bit 9 */
+#define APOLLO_MON_AUX2_MONO    0x0F    /* 0/1                   S7 [9:8], mono = bit 9 */
+#define APOLLO_MON_CLIP_HOLD    0x13    /* 0 none, 1/3/5/10 s = 1-4, 5 infinite   S1 [30:28] */
+#define APOLLO_MON_PEAK_HOLD    0x14    /* 0 none, 1/3/5/10 s = 1-4               S1 [15:13] */
+#define APOLLO_MON_LINE_PAD(n)  (0x19 + (n))    /* x8p line pair n 0-3: 0 +4 dBu, 1 -10 dBV  S0 bit 28+n */
+#define APOLLO_MON_IDENTIFY     0x1D    /* 0 normal, 1-7 identify states          S6 [13:11] */
+#define APOLLO_MON_DIG_MIRROR   0x1E    /* x8p: monitor mirrored to S/PDIF 0/1    S6 bit 10 */
+#define APOLLO_MON_MON_REF      0x32    /* monitor outputs: 0 +4 dBu, 1 -10 dBV   S11 bit 4 */
+#define APOLLO_MON_FUNC_SWITCH  0x42    /* x8p: 0 none, 2 mono, 3 dim, 4 talkback S13 [15:13] */
 /* Cue sends (driver-side codes: DSP ring bus coefficients, cached and re-sent by the driver).
    c = cue 0-3, b = mixer bus: ANALOG n = n-1, TALKBACK = 0x0A. */
 #define APOLLO_MON_CUE_SEND(c, b)   (0x1000u | ((c) << 8) | (b))    /* half-dB -120..24 (-60..+12 dB), -121 = off */

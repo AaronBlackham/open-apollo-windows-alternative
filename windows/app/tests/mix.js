@@ -4,7 +4,7 @@
 // buses, pans hard left / right on link), refusals inline and put back, saved per unit and re-sent on connect with
 // mutes and solos first, nothing sent for an untouched input, the names kept apart from the monitor's MUTE and
 // TALKBACK buttons, faders by mouse and keyboard, the main out L/R meters on the loopback, and 980 px.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;

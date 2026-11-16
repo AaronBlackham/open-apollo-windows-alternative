@@ -121,10 +121,11 @@ static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
            start ring-connects, which drops them, so it keeps the teardown whatever this says.
            StripWarmRebuild 1: a warm start that proves only this driver used the DSPs since the last power-up
            builds the strips again instead of asking for a power cycle. The Twin X needs it after every warm
-           start (on); the x8p adopts instead and builds warm only when told to (off: its warm DSP was never
-           sent an upload by this driver, docs/STRIPS.md 12.4). */
+           start (on). The x8p adopts when it can, and rebuilds when it cannot (a rate change tears its strips
+           down): on since Nov 15 2026, when the first x8p warm rebuild (96 kHz, no ring connect) had all five
+           module uploads accepted by DSP 1 (docs/STRIPS.md 12.4). Before, a rate change left its mics off. */
         { "StripAdopt",              L"StripAdopt",              1, 0, 0, 1 },
-        { "StripWarmRebuild",        L"StripWarmRebuild",        0, 0, 0, 1 },
+        { "StripWarmRebuild",        L"StripWarmRebuild",        1, 0, 0, 1 },
         /* [Warm] docs/STRIPS.md 12.5 (Nov 15 2026). StripWarmPlugins 1: after a warm start whose strips were adopted
            (the x8p: no ring connect, the DSPs' session byte 0x07) or rebuilt (the Twin X) from an anchored record
            that saw no plug-in left on the strip DSP, that DSP takes plug-ins as after a cold start; its first

@@ -1,5 +1,5 @@
 # Phase 2 step 3: install release5 = the multi-strip fix + Windows MIC/LINE 1-8 endpoints. ADMIN.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step3.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step3.ps1
 # Sets: EnabledEndpoints=0x3FF (MON L/R out+in, MIC/LINE 1-8), StripsEnable=1, StripMask=0xFF (all 8
 # inputs), StripSteps=9 (whole chain), MixerInitBatch=1 (x8p-safe: the unit keeps its own gains/polarity/48V).
 # Then install.ps1 (saves and restores your default devices). Strips build only on a COLD start:

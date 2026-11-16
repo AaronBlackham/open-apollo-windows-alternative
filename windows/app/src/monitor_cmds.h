@@ -33,6 +33,14 @@
  *   auxmute:<a> 0|1           its mute
  *   auxcue:<a>:<c> h          AUX a's return into CUE c, half-dB, -121 off (the driver refuses a cue the unit lacks)
  *   auxcuepan:<a>:<c> p       its pan
+ *   [Out] output and front-panel settings (no readback; Apollo Control keeps them and sends them again at connect):
+ *   aux1mono, aux2mono 0|1    the aux bus summed to mono
+ *   cliphold 0..5, peakhold 0..4   front-panel meter holds: none, 1, 3, 5, 10 s (clip: 5 = infinite)
+ *   linepad1..linepad4 0|1    x8p line pair 1-2 .. 7-8 reference: 0 +4 dBu, 1 -10 dBV
+ *   monref 0|1                monitor outputs reference, as above
+ *   digmirror 0|1             x8p: the monitor mirrored to the S/PDIF output
+ *   fcn 0|2|3|4               x8p function switch: none, mono, dim, talkback
+ *   identify 0..7             front-panel identify state (0 normal); the UI blinks 1 and 2, then 0
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -112,6 +120,13 @@ static bool MonFeatureParam(const std::wstring &n, ULONG &p)
         { L"cue4mix", APOLLO_MON_CUE4_MIX },      { L"cue4mono", APOLLO_MON_CUE4_MONO },
         { L"cue1mute", APOLLO_MON_CUE_MUTE(0) },  { L"cue2mute", APOLLO_MON_CUE_MUTE(1) },
         { L"cue3mute", APOLLO_MON_CUE_MUTE(2) },  { L"cue4mute", APOLLO_MON_CUE_MUTE(3) },
+        /* [Out] output and front-panel settings (driver\monitor_plan.h) */
+        { L"aux1mono", APOLLO_MON_AUX1_MONO },    { L"aux2mono", APOLLO_MON_AUX2_MONO },
+        { L"cliphold", APOLLO_MON_CLIP_HOLD },    { L"peakhold", APOLLO_MON_PEAK_HOLD },
+        { L"linepad1", APOLLO_MON_LINE_PAD(0) },  { L"linepad2", APOLLO_MON_LINE_PAD(1) },
+        { L"linepad3", APOLLO_MON_LINE_PAD(2) },  { L"linepad4", APOLLO_MON_LINE_PAD(3) },
+        { L"identify", APOLLO_MON_IDENTIFY },     { L"digmirror", APOLLO_MON_DIG_MIRROR },
+        { L"monref", APOLLO_MON_MON_REF },        { L"fcn", APOLLO_MON_FUNC_SWITCH },
     };
     ULONG cue = 0, bus = 0;
 

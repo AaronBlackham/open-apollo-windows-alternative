@@ -1,5 +1,5 @@
 # Twin X gate G5 "Twin X inputs" (docs/spec-twinx.md section 7 and 6.9.5). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-g5.ps1 [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-g5.ps1 [-Yes]
 #   ... -Batch 2    the A/B of spec-twinx 4.3: MixerInitBatch 2 (legacy) instead of 1. Only if a mic that is plugged
 #                   in still reads exact zero with batch 1. Read at the next Twin X power cycle.
 #   ... -Rollback   the Twin X's strips off (StripsEnable 0) and its endpoints back to MON L/R only (EnabledEndpoints 3);

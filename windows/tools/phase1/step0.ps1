@@ -1,5 +1,5 @@
 # Phase 2 step 0: install release1 with every Windows audio endpoint OFF (ACX init only). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step0.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step0.ps1
 # Proves the private interface (apollo-diag, Apollo Control) still works on an ACX device.
 # Strips stay at uploads only (StripSteps=1). Endpoints are turned on later (step 2).
 #Requires -RunAsAdministrator

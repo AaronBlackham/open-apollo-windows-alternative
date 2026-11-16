@@ -1,6 +1,6 @@
 # Monitor features (docs\console-parity.md "Monitor"): ALT speakers, monitor and headphone sources, cue MIX/mono,
 # cue sends and the talkback's cue sends, on each unit. Normal (non-admin) PowerShell, about a minute:
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-mon.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-mon.ps1
 #   ... -Unit x8p | twinx     one unit only (default: both)
 # NEEDS the [Monitor] apollo.sys running the unit in Mode 2. Installs nothing, restarts nothing, no power cycle.
 #

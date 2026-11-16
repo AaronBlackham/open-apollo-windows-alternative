@@ -317,6 +317,72 @@ static void ChainSelfTest(const Synth &s)
 
 /* ------------------------------------------------------------------ selftest */
 
+/* [Chainfix] which mapped plug-ins Apollo Control may run (plugin_host.h Qualification): synthetic lists, then
+   open-apollo's own native_known_good.json when the reference clone is next to this tree (GPL data, no UA bytes). */
+static void QualSelfTest()
+{
+    Qualification f;
+    QualFloor(f);
+    Ok(!QualWhy(f, "UAD AKG BX 20", "stereo").empty() && !QualWhy(f, "UAD AKG BX 20", "mono").empty(),
+       "chainfix: without any list the AKG BX 20 is refused in both layouts (the floor)");
+    Ok(QualWhy(f, "UAD AKG BX 20", "stereo").find("Mac trace") != std::string::npos,
+       "chainfix: the refusal says why (upstream's reason)");
+    Ok(!QualWhy(f, "UAD Studio D Chorus", "mono").empty(), "chainfix: Studio D Chorus (hung DSP 1 upstream) refused by the floor");
+    Ok(QualWhy(f, "UAD Precision De-Esser", "mono").empty() && QualWhy(f, "UAD Some Other Plug-in", "stereo").empty(),
+       "chainfix: a plug-in on no list may run");
+
+    Qualification q;
+    QualFloor(q);
+    std::string err;
+    const char *kg = "{\"plugins\":[],\"excluded\":{\"UAD UA 1176LN Legacy\":\"hand-built legacy provider\",\"UAD Foo\":\"x\","
+                     "\"UAD AKG BX 20\":\"other text\"},\"not_yet_supported\":{\"UAD Bar (mono)\":\"restore check fails\","
+                     "\"UAD Baz\":\"load refused\"}}";
+    Ok(QualKnownGood(kg, q, err), "chainfix: a known-good list parses");
+    Ok(QualWhy(q, "UAD UA 1176LN Legacy", "mono").empty(), "chainfix: excluded upstream but proven here in mono: may run");
+    Ok(QualWhy(q, "UAD UA 1176LN Legacy", "stereo").find("hand-built") != std::string::npos,
+       "chainfix: the same plug-in in a layout not proven here: refused with upstream's reason");
+    Ok(!QualWhy(q, "UAD Foo", "mono").empty() && !QualWhy(q, "UAD Baz", "stereo").empty(),
+       "chainfix: excluded and not_yet_supported entries refused in both layouts");
+    Ok(!QualWhy(q, "UAD Bar", "mono").empty() && QualWhy(q, "UAD Bar", "stereo").empty(),
+       "chainfix: \"<name> (mono)\" refuses that layout only");
+    Ok(QualWhy(q, "UAD AKG BX 20", "mono").find("Nov 15 2026") != std::string::npos,
+       "chainfix: the floor's text is kept over the list's");
+    QualProven("# UAD Foo | mono | a comment\nUAD Foo | stereo | ran on inputs 1-2\r\nUAD Baz | * |\nUAD Bar | quad | bad layout\nno bars\n", q);
+    Ok(QualWhy(q, "UAD Foo", "stereo").empty() && !QualWhy(q, "UAD Foo", "mono").empty(),
+       "chainfix: proven.txt lifts one layout; a comment line lifts nothing");
+    Ok(QualWhy(q, "UAD Baz", "mono").empty() && QualWhy(q, "UAD Baz", "stereo").empty(), "chainfix: proven.txt '*' lifts both");
+    Ok(!QualWhy(q, "UAD Bar", "mono").empty(), "chainfix: a malformed proven.txt line lifts nothing");
+    Qualification z;
+    Ok(!QualKnownGood("not json", z, err) && !QualKnownGood("{\"excluded\":[1]}", z, err),
+       "chainfix: an unreadable list is refused (the floor stays)");
+
+    /* open-apollo's own list, when the reference clone is found above this exe */
+    wchar_t exe[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, exe, MAX_PATH) > 0) {
+        std::wstring d = exe;
+        for (int up = 0; up < 6; up++) {
+            size_t sl = d.find_last_of(L'\\');
+            if (sl == std::wstring::npos) break;
+            d.resize(sl);
+            std::wstring f8 = d + L"\\reference\\open-apollo\\mixer-engine\\device_maps\\native_known_good.json";
+            if (GetFileAttributesW(f8.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+            int cch = WideCharToMultiByte(CP_UTF8, 0, f8.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            std::string p8((size_t)std::max(cch, 1) - 1, '\0'), t;
+            WideCharToMultiByte(CP_UTF8, 0, f8.c_str(), -1, p8.data(), cch, nullptr, nullptr);
+            Qualification u;
+            QualFloor(u);
+            bool ok = FileText(p8, t) && QualKnownGood(t, u, err);
+            Ok(ok && !QualWhy(u, "UAD AKG BX 20", "stereo").empty() && !QualWhy(u, "UAD Studio D Chorus", "mono").empty() &&
+               QualWhy(u, "UAD UA 1176LN Legacy", "mono").empty() && QualWhy(u, "UAD Sphere Mic Collection 180", "stereo").empty() &&
+               QualWhy(u, "UAD Lexicon 480L", "mono").empty() && !QualWhy(u, "UAD Sound Machine Wood Works", "mono").empty() &&
+               QualWhy(u, "UAD Sound Machine Wood Works", "stereo").empty(),
+               "chainfix: open-apollo's native_known_good.json: AKG BX 20 and Studio D Chorus refused, what ran here allowed, "
+               "Wood Works refused in mono only");
+            break;
+        }
+    }
+}
+
 static int SelfTest()
 {
     Synth s = MakeModules();
@@ -511,6 +577,7 @@ static int SelfTest()
         Ok(ok && r.in1 == 2 && seen, "a saved insert rebuilds on its input with its words, and the readback expects them");
     }
     ChainSelfTest(s);                   /* [Ins] */
+    QualSelfTest();                     /* [Chainfix] */
     printf("\nselftest: %d PASS, %d FAIL\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

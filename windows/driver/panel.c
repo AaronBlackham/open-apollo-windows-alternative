@@ -81,6 +81,7 @@ static VOID PanelEvent(_Inout_ PDEVICE_CONTEXT Ctx, _In_ ULONG Field, _In_ ULONG
     if (Ctx->Panel.Count < APOLLO_PANEL_EVENTS) {
         Ctx->Panel.Count++;
     }
+    ApolloEventPost(Ctx, APOLLO_EVENT_PANEL, Ctx->Panel.Seq, Field);          /* [Events] */
 }
 
 /* One monitor write by the driver itself (DevLock held): the plan filter, the encoding, its echo marked Origin. */

@@ -806,6 +806,7 @@ NTSTATUS ApolloAudioConnect(_In_ PDEVICE_CONTEXT Ctx)
         ApolloStepPassed(Ctx, APOLLO_BSTEP_G5_MIXER_INIT);     /* model-safe (1) or none (0) */
     }
     Ctx->Stage = ApolloStageConnected;
+    ApolloEventPost(Ctx, APOLLO_EVENT_STAGE, (ULONG)ApolloStageConnected, 0);     /* [Events] */
     return STATUS_SUCCESS;
 }
 

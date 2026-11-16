@@ -15,3 +15,4 @@ node "%~dp0rate.js" %1 || exit /b 1
 node "%~dp0signatures.js" %1 || exit /b 1
 node "%~dp0endpoints.js" %1 || exit /b 1
 node "%~dp0sessions.js" %1 || exit /b 1
+node "%~dp0undo.js" %1 || exit /b 1

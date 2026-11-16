@@ -1,5 +1,5 @@
 # Twin X gate G4 "speakers on our driver" (docs/spec-twinx.md section 7 and 6.9.4). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-g4.ps1 [-Package <folder>] [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-g4.ps1 [-Package <folder>] [-Yes]
 #   ... -Restart    pass 1 restarts both units' drivers itself (warm, no power cycle) and goes on to pass 2
 #   ... -Rollback   the Twin X back to Mode 1 (G3: bring-up + transport, no Windows endpoints)
 # Default package: builds\2026-11-14-g4\package (the frozen G4 build).

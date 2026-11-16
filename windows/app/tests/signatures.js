@@ -1,7 +1,7 @@
 // [Themes] The six signature features (docs/THEMES.md 3, step 4), light checks in demo mode: each shows only in its own
 // theme's composition, Mono's command line runs commands, Ctrl+K opens the palette in another theme, HI-SCORE fills from
 // the levels, Day's guided gain starts from the focus view, and Lab's Avium Measure hand-off posts the routing to the host.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
 let failed = 0;

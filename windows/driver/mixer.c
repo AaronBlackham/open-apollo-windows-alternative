@@ -195,6 +195,7 @@ static VOID ApolloServicePass(_In_ PDEVICE_CONTEXT Ctx)
         ApolloLogU(Ctx, "service: notification status all ones, device gone");
         Ctx->Stage = ApolloStageGone;
         Ctx->Connected = FALSE;
+        ApolloEventPost(Ctx, APOLLO_EVENT_STAGE, (ULONG)ApolloStageGone, 0);      /* [Events] */
         return;
     }
     Ctx->NotifStatusSeen |= s;

@@ -23,6 +23,8 @@
 #include "..\..\include\apollo_strip_pins.h"
 #include "..\..\include\apollo_rate.h"     /* [Rate] rate, rate <Hz> */
 #include "..\..\include\apollo_clock.h"    /* [Clock] clock, digital, panel, talkback */
+#include "..\..\include\apollo_params.h"   /* [Params] params, param */
+#include "..\..\include\apollo_events.h"   /* [Events] events */
 #include "..\..\driver\apollo_model.h"     /* model names, the driver's own table */
 #include "..\..\driver\bringup_plan.h"     /* [Twin X G3] step names, IO descriptor decoding */
 #include "..\..\driver\preamp_plan.h"      /* [Twin X G5] preamps per model: readback decoding, Hi-Z codes */
@@ -1490,6 +1492,13 @@ static const MON_NAME g_MonNames[] = {
     { "cue3mix", APOLLO_MON_CUE3_MIX, 7 },  { "cue4mix", APOLLO_MON_CUE4_MIX, 7 },
     { "cue1mono", APOLLO_MON_CUE1_MONO, 0 }, { "cue2mono", APOLLO_MON_CUE2_MONO, 0 },
     { "cue3mono", APOLLO_MON_CUE3_MONO, 0 }, { "cue4mono", APOLLO_MON_CUE4_MONO, 0 },
+    /* [Out] output and front-panel settings (driver\monitor_plan.h); kind 8 = a raw value the driver checks */
+    { "aux1mono", APOLLO_MON_AUX1_MONO, 0 },   { "aux2mono", APOLLO_MON_AUX2_MONO, 0 },
+    { "linepad1", APOLLO_MON_LINE_PAD(0), 0 }, { "linepad2", APOLLO_MON_LINE_PAD(1), 0 },
+    { "linepad3", APOLLO_MON_LINE_PAD(2), 0 }, { "linepad4", APOLLO_MON_LINE_PAD(3), 0 },
+    { "monref", APOLLO_MON_MON_REF, 0 },       { "digmirror", APOLLO_MON_DIG_MIRROR, 0 },
+    { "fcn", APOLLO_MON_FUNC_SWITCH, 8 },      { "cliphold", APOLLO_MON_CLIP_HOLD, 8 },
+    { "peakhold", APOLLO_MON_PEAK_HOLD, 8 },   { "identify", APOLLO_MON_IDENTIFY, 8 },
 };
 
 /* [Monitor] mix|cue1..cue4 (and the Twin X's names hp = cue1, line34 = cue2): 0..4, or -1. */
@@ -1527,7 +1536,10 @@ static int CmdMon(int n, char **a)
                 "       mon alt1|alt2 0|1           ALT output on (x8p: Line 1-2 / 3-4; Twin X: alt1 = Line 3/4)\n"
                 "       mon alt1trim|alt2trim <dB -30..30, 0.5 dB steps>\n"
                 "       mon cue1mix..cue4mix own|mon   a cue's source: its own mix or the monitor mix\n"
-                "       mon cue1mono..cue4mono 0|1  (Twin X: cue1 = HP, cue2 = Line 3/4)\n");
+                "       mon cue1mono..cue4mono 0|1  (Twin X: cue1 = HP, cue2 = Line 3/4)\n"
+                "       mon linepad1..linepad4 0|1  x8p Line 1-2..7-8 reference: 0 +4 dBu, 1 -10 dBV; monref 0|1 the monitor's\n"
+                "       mon digmirror 0|1 (x8p, monitor to S/PDIF) | aux1mono|aux2mono 0|1\n"
+                "       mon fcn 0|2|3|4 (x8p: none, mono, dim, talkback) | cliphold 0..5 | peakhold 0..4 | identify 0..7\n");
         return 1;
     }
     if (m->Kind == 2 || m->Kind == 3) {
@@ -1578,6 +1590,8 @@ static int CmdMon(int n, char **a)
                 return 1;
             }
             v = (long)floor(APOLLO_MP_ALT_TRIM_UNITY + 2.0 * d + 0.5);     /* raw = 60 + 2*dB */
+        } else if (m->Kind == 8) {
+            v = (long)d;                    /* [Out] the driver says what it takes (STATUS_INVALID_PARAMETER) */
         } else {
             v = (long)d;
             if (v != 0 && v != 1) {
@@ -3192,6 +3206,177 @@ static int ClockSet(ULONG What, ULONG Value, ULONG Flags, const char *Text)
     return c.Result == APOLLO_CLOCK_ERR_NONE ? 0 : 1;
 }
 
+
+/* ---------------------------------------------------------------- [Events] events [seconds] */
+
+static const char *EventKindName(ULONG k)
+{
+    switch (k) {
+    case APOLLO_EVENT_STAGE:       return "stage";
+    case APOLLO_EVENT_LEAVING:     return "leaving";
+    case APOLLO_EVENT_RATE:        return "rate";
+    case APOLLO_EVENT_CLOCK:       return "clock";
+    case APOLLO_EVENT_PANEL:       return "panel";
+    case APOLLO_EVENT_DSP_FAULT:   return "DSP FAULT";
+    case APOLLO_EVENT_ENGINE_LOST: return "engine lost";
+    case APOLLO_EVENT_PARAMS:      return "params";
+    default:                       return "?";
+    }
+}
+
+/* Every event of this unit as it happens, for <seconds> (default 60; 0 = the ring now, no waiting). Its own overlapped
+   handle, so the wait ends on time; the driver parks the request between events. */
+static int CmdEvents(int n, char **a)
+{
+    double secs = (n >= 1) ? atof(a[0]) : 60.0;
+    HANDLE h = CreateFileW(g_units[g_unitIndex].Path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+                           FILE_FLAG_OVERLAPPED, NULL);
+    HANDLE ev = CreateEventW(NULL, TRUE, FALSE, NULL);
+    ULONGLONG end = GetTickCount64() + (ULONGLONG)(secs * 1000.0);
+    ULONG after = 0, shown = 0;
+    int rc = 0;
+
+    if (h == INVALID_HANDLE_VALUE || ev == NULL) {
+        fprintf(stderr, "could not open the unit for events: %lu\n", GetLastError());
+        return 1;
+    }
+    printf("Events of this unit%s (oldest first; Ctrl+C stops):\n", secs > 0 ? "" : " (the ring now)");
+    for (;;) {
+        APOLLO_EVENTS_WAIT w;
+        APOLLO_EVENTS o;
+        OVERLAPPED ov;
+        DWORD ret = 0, left;
+        ULONG i;
+        BOOL ok;
+
+        ZeroMemory(&w, sizeof(w));
+        ZeroMemory(&o, sizeof(o));
+        ZeroMemory(&ov, sizeof(ov));
+        w.Version = APOLLO_EVENTS_VERSION;
+        w.AfterSeq = after;
+        w.Flags = (secs > 0) ? 0 : APOLLO_EVENTS_WAIT_NOWAIT;
+        ResetEvent(ev);
+        ov.hEvent = ev;
+        ok = DeviceIoControl(h, IOCTL_APOLLO_WAIT_EVENTS, &w, sizeof(w), &o, sizeof(o), &ret, &ov);
+        if (!ok && GetLastError() == ERROR_IO_PENDING) {
+            ULONGLONG t = GetTickCount64();
+            left = (secs > 0 && end > t) ? (DWORD)(end - t) : 0;
+            if (WaitForSingleObject(ev, left) != WAIT_OBJECT_0) {
+                CancelIoEx(h, &ov);
+                (void)GetOverlappedResult(h, &ov, &ret, TRUE);
+                break;                                  /* time is up */
+            }
+            ok = GetOverlappedResult(h, &ov, &ret, FALSE);
+        }
+        if (!ok) {
+            DWORD err = GetLastError();
+            if (err == ERROR_INVALID_FUNCTION) fprintf(stderr, "this apollo.sys has no event channel (an older build)\n");
+            else if (err != ERROR_OPERATION_ABORTED) fprintf(stderr, "WAIT_EVENTS failed: %lu\n", err);
+            rc = (err == ERROR_OPERATION_ABORTED) ? 0 : 1;
+            break;
+        }
+        if (o.Flags & APOLLO_EVENTS_F_RESET) printf("  (the driver restarted: sequences begin again)\n");
+        if (o.Lost) printf("  (%lu older event(s) no longer in the ring)\n", o.Lost);
+        for (i = 0; i < o.Count && i < APOLLO_EVENTS_MAX; i++) {
+            const APOLLO_EVENT_ENTRY *e = &o.Entry[i];
+            FILETIME ft, lt;
+            SYSTEMTIME st;
+
+            ft.dwLowDateTime = (DWORD)e->Time;
+            ft.dwHighDateTime = (DWORD)(e->Time >> 32);
+            FileTimeToLocalFileTime(&ft, &lt);
+            FileTimeToSystemTime(&lt, &st);
+            printf("  #%-5lu %02u:%02u:%02u.%03u  %-12s A=%lu (0x%lX)  B=%lu (0x%08lX)\n", e->Seq, st.wHour, st.wMinute,
+                   st.wSecond, st.wMilliseconds, EventKindName(e->Kind), e->A, e->A, e->B, e->B);
+            shown++;
+        }
+        after = o.Seq;
+        if (secs <= 0 || GetTickCount64() >= end) break;
+    }
+    printf("%lu event(s) shown; the unit's newest is #%lu.\n", shown, after);
+    CloseHandle(ev);
+    CloseHandle(h);
+    return rc;
+}
+
+/* ---------------------------------------------------------------- [Params] params, param */
+
+static void PrintParams(const APOLLO_PARAMS_INFO *I)
+{
+    static const char src[] = "DUMGX";
+    ULONG i, pending = 0;
+
+    printf("Driver Parameters of this unit (Units\\%s%s)%s\n", I->UnitKey[0] ? I->UnitKey : "-",
+           I->UnitKey[0] ? "" : ": no unit key", I->Resolved ? "" : "  [not identified: the safe defaults]");
+    printf("  %-22s %12s %3s %12s %12s\n", "name", "in force", "src", "default", "Units\\key");
+    for (i = 0; i < I->Count && i < APOLLO_PARAMS_MAX; i++) {
+        const APOLLO_PARAM_ENTRY *e = &I->Entry[i];
+        char v[16], d[16], st[24];
+        const char *fmt = (e->Flags & APOLLO_PARAM_F_HEX) ? "0x%lX" : "%lu";
+
+        sprintf_s(v, sizeof(v), fmt, e->Value);
+        sprintf_s(d, sizeof(d), fmt, e->Default);
+        if (e->Flags & APOLLO_PARAM_F_STORED) sprintf_s(st, sizeof(st), fmt, e->Stored);
+        else strcpy_s(st, sizeof(st), "-");
+        printf("  %-22s %12s  %c  %12s %12s%s\n", e->Name, v, e->Source < 5 ? src[e->Source] : '?', d, st,
+               (e->Flags & APOLLO_PARAM_F_PENDING) ? "  <- next start" : "");
+        pending += (e->Flags & APOLLO_PARAM_F_PENDING) ? 1 : 0;
+    }
+    printf("  src: D built-in default, U Units\\key, M Models\\TT, G legacy global (x8p), X forced by Mode\n");
+    if (pending)
+        printf("  %lu value(s) apply at the unit's next start (disable/enable, driver update, reboot or power cycle).\n", pending);
+}
+
+static int CmdParams(void)
+{
+    APOLLO_PARAMS_INFO I;
+    DWORD ret = 0;
+
+    ZeroMemory(&I, sizeof(I));
+    if (!Ioctl(IOCTL_APOLLO_GET_PARAMS, "GET_PARAMS", NULL, 0, &I, (DWORD)sizeof(I), &ret))
+        return 1;
+    if (ret < sizeof(I) || I.Version != APOLLO_PARAMS_VERSION) {
+        fprintf(stderr, "GET_PARAMS returned %lu bytes (version %lu): driver and tool are out of step.\n", ret, I.Version);
+        return 1;
+    }
+    PrintParams(&I);
+    return 0;
+}
+
+/* param <name> <value> | param <name> --remove   (elevated) */
+static int CmdParam(int n, char **a)
+{
+    APOLLO_PARAM_SET q;
+    APOLLO_PARAMS_INFO I;
+    DWORD ret = 0;
+    char *end = NULL;
+
+    if (n < 2) {
+        fprintf(stderr, "usage: param <name> <value>|--remove   (names: 'params'; applies at the unit's next start)\n");
+        return 1;
+    }
+    ZeroMemory(&q, sizeof(q));
+    q.Version = APOLLO_PARAMS_VERSION;
+    strncpy_s(q.Name, sizeof(q.Name), a[0], _TRUNCATE);
+    if (_stricmp(a[1], "--remove") == 0) {
+        q.Flags = APOLLO_PARAM_SET_DELETE;
+    } else {
+        q.Value = strtoul(a[1], &end, 0);
+        if (end == a[1] || *end != '\0') {
+            fprintf(stderr, "'%s' is not a number (decimal, or 0x... hex)\n", a[1]);
+            return 1;
+        }
+    }
+    ZeroMemory(&I, sizeof(I));
+    if (!Ioctl(IOCTL_APOLLO_SET_PARAM, "SET_PARAM", &q, (DWORD)sizeof(q), &I, (DWORD)sizeof(I), &ret))
+        return 1;
+    if (I.Result != 0) {
+        fprintf(stderr, "the registry write failed: 0x%08lX\n", I.Result);
+    }
+    PrintParams(&I);
+    return I.Result == 0 ? 0 : 1;
+}
+
 static int CmdClock(int n, char **a)
 {
     static const struct { const char *Name; ULONG Source; } src[] = {
@@ -3524,6 +3709,10 @@ static void Usage(void)
 "  talkback                      the talkback: button, record slots (AX_REC_CH), strip, dim\n"
 "  setting <index> <val> <mask>  raw mixer mailbox setting (index 0..37)\n"
 "  readback                      the unit's 40-word hardware readback, decoded\n"
+"  events [seconds=60]           the unit's events as they happen (rate, clock, front panel, DSP faults;\n"
+"                                0 = what the ring holds now)\n"
+"  params                        the unit's driver Parameters: in force, source, default, stored\n"
+"  param <name> <value>|--remove (elevated) store one in Units\\<key> for the unit's next start\n"
 "  log [--all]                   the driver's own log (bring-up steps, errors); with --unit,\n"
 "                                that unit's lines (tag [x8p], [twx]) and driver-wide ones\n"
 "  strips                        input-strip state: ownership, pools, modules, replies\n"
@@ -3668,6 +3857,12 @@ int main(int argc, char **argv)
         rc = CmdRate(n, args);
     else if (_stricmp(cmd, "clock") == 0)
         rc = CmdClock(n, args);
+    else if (_stricmp(cmd, "params") == 0)
+        rc = CmdParams();
+    else if (_stricmp(cmd, "events") == 0)
+        rc = CmdEvents(n, args);
+    else if (_stricmp(cmd, "param") == 0)
+        rc = CmdParam(n, args);
     else if (_stricmp(cmd, "digital") == 0)
         rc = CmdDigital(n, args);
     else if (_stricmp(cmd, "panel") == 0)

@@ -2,7 +2,7 @@
 // sends), unit added/removed notices and Status sections, the clock master default, presets,
 // Apply with the elevation and pending/error states, validation, forget, slot gaps, the host's
 // "not available" agg reply, the demo scenarios, and the layout at 980 px.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;

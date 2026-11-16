@@ -1,5 +1,5 @@
 # Strips test T3 (uploads only), one command. ADMIN PowerShell. Then power-cycle the x8p.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\t3.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\t3.ps1
 # Uses the reviewed, frozen build in builds\2026-11-14-t3-strip-uploads (driver + its matching apollo-diag).
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Continue'

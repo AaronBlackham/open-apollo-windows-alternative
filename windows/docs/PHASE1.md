@@ -33,7 +33,7 @@ hardware: cables, the x8p's power switch, the mic.
 In an admin PowerShell:
 
 ```
-powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\setup.ps1
+powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\setup.ps1
 ```
 
 It runs `bcdedit /set testsigning on`, `verifier /standard /driver apollo.sys`, and adds
@@ -47,7 +47,7 @@ the x8p, boot, then run `verifier /reset`.
 
 1. Connect and power on the x8p. UA's driver binds to it as usual.
 2. In an admin PowerShell:
-   `powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\install.ps1`
+   `powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\install.ps1`
    It checks test signing is active, closes UA's apps, stages the package (`pnputil /add-driver`),
    forces it onto the x8p (`devcon update ... "PCI\VEN_1A00&DEV_0002&SUBSYS_00141A00"`, because
    UA's Microsoft-signed package ranks higher), waits up to 2 minutes for bring-up, then saves

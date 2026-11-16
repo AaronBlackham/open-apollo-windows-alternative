@@ -1,5 +1,5 @@
 # Twin X gate G3 "bring-up + transport" (docs/spec-twinx.md section 7 and 6.9.3). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-g3.ps1 [-Package <folder>] [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-g3.ps1 [-Package <folder>] [-Yes]
 #   ... -WarmTest   after pass 2 and the tone test: restart the Twin X's driver (a WARM start) and read it again
 #   ... -Rollback   the Twin X back to observe: its unit key Mode = 0, then power-cycle the Twin X
 # Default package: builds\2026-11-14-g3\package (the frozen G3 build).

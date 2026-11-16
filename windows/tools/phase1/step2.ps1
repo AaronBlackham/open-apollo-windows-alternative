@@ -1,5 +1,5 @@
 # Phase 2 step 2: install release4 (endpoints named "MON L/R") and register the ASIO driver. ADMIN.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step2.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step2.ps1
 # 1. Driver: release4 with EnabledEndpoints=3, StripSteps=1, through install.ps1 (defaults saved and put back).
 # 2. ASIO: the built avium-asio.dll, checked against tools\bin\tools-manifest.txt, is copied to
 #    %ProgramFiles%\Avium\ASIO (Program Files permissions: everyone reads, only admins change it),

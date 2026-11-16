@@ -230,7 +230,7 @@ Setup added it, but it does unbind and remove every Avium apollo.inf package).
 
 1. **Static (every build):** `build.cmd` already checks the helper (/W4 /WX), the IOCTL layout, the
    certificate, the compile, and the file list against the manifest.
-2. **Windows Sandbox: layout, UI and uninstall.** Copy the exe into `C:\Users\aaron\Sandbox\installers`
+2. **Windows Sandbox: layout, UI and uninstall.** Copy the exe into `%USERPROFILE%\Sandbox\installers`
    (mapped read-only), open `Test Sandbox.wsb`, and in the sandbox run:
 
    ```

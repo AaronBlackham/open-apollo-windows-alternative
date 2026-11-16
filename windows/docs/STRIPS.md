@@ -1009,7 +1009,7 @@ If the device is gone (cable pulled), the modules are forgotten and nothing is s
 - **Dynamic** mic or nothing on the inputs. No strip is started, so nothing becomes audible, but
   keep the monitors low anyway.
 
-Commands below are relative to `C:\Users\aaron\Desktop\Avium\apollo-win\tools\apollo-diag\`; the
+Commands below are relative to `C:\apollo-win\tools\apollo-diag\`; the
 `reg` and `strips install` steps need an **admin** PowerShell.
 
 1. **Install the modules (T1)**, once:
@@ -1020,7 +1020,7 @@ Commands below are relative to `C:\Users\aaron\Desktop\Avium\apollo-win\tools\ap
 
    Pass: five lines `0x0eb  716 bytes  pinned SHA-256 matches (...)` through 0x12b, then
    `0eb.bill ok` .. `12b.bill ok` and `Installed.` If UAD is not installed, pass the copies:
-   `.\apollo-diag.exe strips install C:\Users\aaron\Desktop\Avium\apollo-win\ua-files`.
+   `.\apollo-diag.exe strips install C:\apollo-win\ua-files`.
 2. **Optional dry run with the new build (T2b):**
 
    ```

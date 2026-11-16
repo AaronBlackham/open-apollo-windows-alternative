@@ -1,7 +1,7 @@
 // Looks (themes.css): six looks on one set of tokens, picked in Settings (each item drawn in its own look) or with
 // Ctrl+Shift+T, remembered; every screen follows; text contrast and the state colours (running, waiting, refused /
 // clip, bypassed) checked per look; Arcade's own faces load and its scanlines are off until asked for.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;

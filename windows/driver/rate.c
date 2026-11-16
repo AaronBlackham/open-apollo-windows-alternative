@@ -572,6 +572,7 @@ ULONG ApolloRateChange(PDEVICE_CONTEXT Ctx, ULONG Hz, ULONG Flags, WDFFILEOBJECT
     if (!InAgg) {
         ApolloAggRateUnitChanged(Ctx);          /* a unit of a combined device that runs alone now */
     }
+    ApolloEventPost(Ctx, APOLLO_EVENT_RATE, Ctx->SampleRate, err);            /* [Events] */
     if (err == APOLLO_RATE_ERR_NONE) {
         RateSetWhy(Ctx, "%s, locked in %lu ms%s%s", ApolloRateText(Ctx->SampleRate), lockMs,
                    layoutChanged ? "; channel layout changed" : "",

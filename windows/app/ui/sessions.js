@@ -401,6 +401,12 @@ const Sess = (() => {
       if (a.post !== undefined && t.post === undefined) t.post = false;
       for (const f of ['sends', 'cues']) for (const kk of Object.keys(a[f] || {})) if (!(t[f] && t[f][kk])) (t[f] || (t[f] = {}))[kk] = { level: SEND_OFF, pan: 0 };
     });
+    /* [Out] output settings: back to UA's defaults (+4 dBu, mirror off, FCN none, holds 3 s, aux stereo) */
+    const oo = old.out || {}, to = e.out || (e.out = {});
+    for (const [f, d] of [['monRef', false], ['digMirror', false], ['fcn', 0], ['clip', 2], ['peak', 2]]) if (oo[f] !== undefined && to[f] === undefined) to[f] = d;
+    for (const f of ['pads', 'auxMono']) {
+      (oo[f] || []).forEach((v, i) => { if (v !== undefined && (to[f] || [])[i] === undefined) (to[f] || (to[f] = []))[i] = false; });
+    }
     return e;
   }
 
@@ -1142,7 +1148,32 @@ const Sess = (() => {
 
   function onTheme() { if (SS.root) SS.root.dataset.stamp = ''; render(); }
 
+  /* [Undo] (undo.js) a unit's state as an undo step holds it: a session part without the plug-ins, rate, names or identity */
+  function undoPart(idx) {
+    const p = partOf(idx, null);
+    for (const f of ['plugins', 'rate', 'channels', 'serial', 'model', 'id', 'deviceType']) delete p[f];
+    return p;
+  }
+
+  /* [Undo] a step back on the unit, through the session paths; 48V never on (said in the notes) */
+  function undoApply(idx, p) {
+    const o = { notes: [], later: [], allow48: false }, c = ctl(idx), m = p.monitor || {};
+    const off48 = (Array.isArray(p.inputs) ? p.inputs : []).map((x, ch) => (x && x.p48 && c.inputs[ch] && !c.inputs[ch].p48 ? ch + 1 : 0)).filter(Boolean);
+    applyPreamps(idx, p, o);
+    if (Number.isInteger(m.alt) && m.alt !== c.mon.alt && c.mon.alt) setMon('altsel', 0, idx);
+    applyMix(idx, p);
+    applyMonitor(idx, p);
+    if (off48.length) o.notes.push(`48V stays off on input${off48.length > 1 ? 's' : ''} ${off48.join(', ')} (turn it on yourself)`);
+    renderUnitInputs(idx);
+    renderMixFor(idx);
+    renderMaster(idx);
+    Aux.render(idx);
+    if (idx === S.sel) { renderMonitor(); renderCues(); }
+    return o.notes;
+  }
+
   return {
+    undoPart, undoApply,
     build, hello, onHost, onTheme, open, close, render, stripsReady, onLive, arrive, capture, apply, clean, quickSave, saveAs, save, load, loadByName,
     exec, actions, subs, names: listNames, setAutostart, closeToTray, importIt, exportIt,
     autostart: () => ({ ...SS.auto }),

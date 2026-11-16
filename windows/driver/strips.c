@@ -164,6 +164,7 @@ static VOID StripsQuarantine(_In_ PDEVICE_CONTEXT Ctx, _In_z_ PCSTR What, _In_ N
         ApolloLogU(Ctx, "strips: DSP %lu quarantined until the Apollo is power-cycled: %s (0x%08x)",
                   s->Dsp, What, Status);
         StripsRecLost(Ctx, "quarantine");      /* [Warm] no adoption or warm rebuild until a power cycle */
+        ApolloEventPost(Ctx, APOLLO_EVENT_DSP_FAULT, s->Dsp, (ULONG)Status);     /* [Events] */
     }
     s->Quarantined = TRUE;
     s->State = APOLLO_STRIPS_STATE_FAILED;

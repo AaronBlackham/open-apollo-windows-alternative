@@ -281,6 +281,12 @@ static NTSTATUS ApolloEvtDeviceAdd(_In_ WDFDRIVER Driver, _Inout_ PWDFDEVICE_INI
         return status;
     }
 
+    /* [Events] the event ring and the queue parked WAIT_EVENTS wait in (events.c) */
+    status = ApolloEventsInit(ctx);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&qcfg, WdfIoQueueDispatchSequential);
     qcfg.EvtIoDeviceControl = ApolloEvtIoDeviceControl;
     WDF_OBJECT_ATTRIBUTES_INIT(&attrs);

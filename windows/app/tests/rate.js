@@ -2,7 +2,7 @@
 // connect, disabled at the unit's rate when the host does not answer, only the offered rates (not allowed: disabled), a
 // change sent with the unit's id, pending then the host's own words on a refusal, one shared selector with combined:true
 // while the units run combined, plug-ins waiting away from 48 kHz, and the Device view's panel.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
 let failed = 0;

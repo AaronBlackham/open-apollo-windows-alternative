@@ -1,5 +1,5 @@
 # Gate P1 "one UAD plug-in on the x8p's DSP" (docs/PLUGINS.md 4.1). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-p1.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-p1.ps1
 #   ... -Step licence    only the licence read and CREATE CHECK (warm is fine)
 #   ... -Step plain      + the unrouted CREATE on DSP 2, then DESTROY (needs a cold-started x8p)
 #   ... -Step start      only START+CHAIN on DSP 1 input 1 (needs a cold-started x8p, strips live)

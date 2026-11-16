@@ -32,6 +32,7 @@
 #include "strip_record.h"       /* [Warm] the warm-start adoption record (strip_adopt.h, docs/STRIPS.md 12) */
 #include "clock_plan.h"         /* [Clock] clock sources, digital formats, the front panel per model */
 #include "..\include\apollo_clock.h"  /* [Clock] GET/SET_CLOCK, GET/SET_PANEL */
+#include "..\include\apollo_events.h" /* [Events] WAIT_EVENTS and the event kinds */
 
 #define APOLLO_POOL_TAG     'lopA'
 #define APOLLO_MAX_DSPS     8
@@ -522,6 +523,12 @@ typedef struct _DEVICE_CONTEXT {
     /* ACX endpoints (circuit.c, stream.c; WDF context on the device, see apollo_stream.h) */
     struct _APOLLO_ACX *Acx;
     BOOLEAN         AcxRemovedAfterFail;    /* [G4 review] a failed Twin X bring-up removed its circuits */
+
+    /* [Events] events.c: the unit's last events and the parked WAIT_EVENTS (EventLock is the innermost lock) */
+    WDFSPINLOCK     EventLock;
+    WDFQUEUE        EventQueue;
+    ULONG           EventSeq;
+    APOLLO_EVENT_ENTRY EventRing[APOLLO_EVENT_RING];
 } DEVICE_CONTEXT, *PDEVICE_CONTEXT;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVICE_CONTEXT, ApolloGetContext)
@@ -864,6 +871,19 @@ BOOLEAN  ApolloPanelIsIoctl(_In_ ULONG Code);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS ApolloPanelIoctl(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Code, _In_opt_ PVOID In, _In_ size_t InLen,
                           _Out_writes_bytes_opt_(OutLen) PVOID Out, _In_ size_t OutLen, _Out_ ULONG_PTR *Info);  /* DevLock */
+
+/* [Events] events.c (include\apollo_events.h) */
+NTSTATUS ApolloEventsInit(_In_ PDEVICE_CONTEXT Ctx);
+BOOLEAN  ApolloEventsIsIoctl(_In_ ULONG Code);
+VOID     ApolloEventsIoctl(_In_ PDEVICE_CONTEXT Ctx, _In_ WDFREQUEST Request);       /* completes or parks Request */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID     ApolloEventPost(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Kind, _In_ ULONG A, _In_ ULONG B);
+
+/* [Params] params.c: the per-unit Parameters at run time (include\apollo_params.h) */
+BOOLEAN  ApolloParamsIsIoctl(_In_ ULONG Code);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS ApolloParamsIoctl(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Code, _In_opt_ PVOID In, _In_ size_t InLen,
+                           _Out_opt_ PVOID Out, _In_ size_t OutLen, _Out_ PULONG_PTR Info);
 
 /* ---- unit.c: per-unit Parameters (docs/spec-twinx.md 6.9; apollo_unit.h) ---- */
 

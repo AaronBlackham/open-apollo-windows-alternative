@@ -1,5 +1,5 @@
 # Phase 2 step 1: install release3 with the two Windows endpoints ON (MON L/R playback + recording). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step1.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step1.ps1
 # release3 = release1 + drift-free 1 ms engine timer + the saturating-add fix (ASIO and ACX render
 # wrote 0x80000000 into every sample) + review fixes (capture packets, parked packet memory, no
 # register reads while the engine is lost). Strips stay at uploads only (StripSteps=1).

@@ -5,7 +5,7 @@
 // plug-in (not licensed, no room, power cycle, not on this driver build, mono only), the parameter drawer (the plug-in's own
 // texts, pending until the host answers, RB OK / NOT CONFIRMED), bypass, refusals inline, saved inserts coming back, stereo
 // on a linked pair, a second unit that hosts, Settings' hosting panel, the demo, and 980 px.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;

@@ -152,6 +152,17 @@ static int OaMonitorSetParam(ULONG Param, ULONG v, MON_OUT *O)
     case 0x43: O->Setting = 14; O->Value = (v & 7) << 28; O->Mask = 0x70000000; break;
     case 0x44: O->Setting = 2; O->Value = v ? (1ul << 31) : 0; O->Mask = 1ul << 31; break;
     case 0x46: O->Setting = 13; O->Value = v ? (1ul << 8) : 0; O->Mask = 1ul << 8; break;
+    /* [Out] */
+    case 0x0A: O->Setting = 6; O->Value = OaSwap2(v, 8); O->Mask = 0x00000300; break;
+    case 0x0F: O->Setting = 7; O->Value = OaSwap2(v, 8); O->Mask = 0x00000300; break;
+    case 0x13: O->Setting = 1; O->Value = (v & 7) << 28; O->Mask = 0x70000000; break;
+    case 0x14: O->Setting = 1; O->Value = (v & 7) << 13; O->Mask = 0x0000E000; break;
+    case 0x19: case 0x1A: case 0x1B: case 0x1C:
+        O->Setting = 0; O->Value = v ? (1ul << (28 + Param - 0x19)) : 0; O->Mask = 1ul << (28 + Param - 0x19); break;
+    case 0x1D: O->Setting = 6; O->Value = (v & 7) << 11; O->Mask = 0x0000F800; break;
+    case 0x1E: O->Setting = 6; O->Value = v ? (1ul << 10) : 0; O->Mask = 1ul << 10; break;
+    case 0x32: O->Setting = 11; O->Value = v ? (1ul << 4) : 0; O->Mask = 1ul << 4; break;
+    case 0x42: O->Setting = 13; O->Value = (v & 7) << 13; O->Mask = 0x0000E000; break;
     default: return R_NOTSUP;
     }
     return R_OK;
@@ -204,7 +215,8 @@ static int IsNewCode(ULONG p)
     for (k = 0; k < RTL_NUMBER_OF(g_newCodes); k++) {
         if (g_newCodes[k] == p) return 1;
     }
-    return (p >= 0x1000 && p <= 0x3FFF) || (p >= APOLLO_MP_MIX_FIRST && p <= APOLLO_MP_MIX_LAST);     /* [Mix] */
+    return (p >= 0x1000 && p <= 0x3FFF) || (p >= APOLLO_MP_MIX_FIRST && p <= APOLLO_MP_MIX_LAST) ||    /* [Mix] */
+           ApolloMonOutBit(p) != 0;                                                                     /* [Out] */
 }
 
 /* No monitor write may touch a preamp field (spec-dsp-mixer 5.2, spec-twinx 4.1). */
@@ -1465,6 +1477,75 @@ static void CheckPanel(void)
           "a dim the user had stays: talkback neither sets nor clears it");
 }
 
+/* [Out] output and front-panel settings: open-apollo's kext mapping, per model, clear of every preamp field */
+static void CheckOutputs(void)
+{
+    static const ULONG codes[] = { 0x0A, 0x0F, 0x13, 0x14, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x32, 0x42 };
+    static const int models[2] = { APOLLO_MODEL_X8P, APOLLO_MODEL_TWINX };
+    /* preamp and Unison fields (preamp_plan.h, spec-twinx 4.1/4.4): S0 [25:0], S11 [15:8], S12 [23:0], S13 [7:0], S15 [31:24] */
+    static const struct { ULONG Setting, Mask; } pre[] = {
+        { 0, 0x03FFFFFF }, { 11, 0x0000FF00 }, { 12, 0x00FFFFFF }, { 13, 0x000000FF }, { 15, 0xFF000000 },
+        { 3, 0xFFFFFFFF }, { 14, 0x0FFFFFFF }, { 16, 0xFFFFFFFF }, { 17, 0xFFFFFFFF }, { 24, 0xFFFFFFFF }, { 25, 0xFFFFFFFF },
+    };
+    ULONG k, j, writes = 0, bad = 0, clash = 0, bits = 0;
+    LONG v;
+    int m;
+    char what[200];
+
+    for (m = 0; m < 2; m++) {
+        for (k = 0; k < RTL_NUMBER_OF(codes); k++) {
+            for (v = -3; v <= 10; v++) {
+                APOLLO_MON_WRITE w;
+                MON_OUT o;
+
+                if (Path(models[m], codes[k], v, &w) != R_OK) {
+                    continue;
+                }
+                writes++;
+                if (OaMonitorSetParam(codes[k], (ULONG)v, &o) != R_OK || o.Setting != w.Setting || o.Value != w.Value ||
+                    o.Mask != w.Mask) {
+                    if (bad++ < 5) {
+                        sprintf_s(what, sizeof(what), "[Out] model %d code 0x%lX value %ld: S%lu 0x%08lX/0x%08lX", models[m],
+                                  codes[k], v, w.Setting, w.Value, w.Mask);
+                        Check(0, what);
+                    }
+                }
+                for (j = 0; j < RTL_NUMBER_OF(pre); j++) {
+                    if (pre[j].Setting == w.Setting && (w.Mask & pre[j].Mask) != 0) clash++;
+                }
+            }
+        }
+    }
+    sprintf_s(what, sizeof(what), "[Out] %lu writes on both models = open-apollo's kext mapping, none on a preamp field", writes);
+    Check(writes > 60 && bad == 0 && clash == 0, what);
+    for (k = 0; k < RTL_NUMBER_OF(codes); k++) {
+        ULONG b = ApolloMonOutBit(codes[k]);
+        bits |= b;
+        Check(b != 0 && ApolloMonExtBit(codes[k]) == 0 && ApolloPlanMonBit(codes[k]) == 0, "[Out] its own plan word, not MonitorParams");
+    }
+    Check(bits == APOLLO_MON_OUT_ALL, "[Out] every plan bit used");
+    Expect(X, 0x1C, 1, R_OK, 0, 0x80000000ul, 0x80000000ul, "Line 7-8 -10 dBV");
+    Expect(X, 0x19, 0, R_OK, 0, 0, 0x10000000ul, "Line 1-2 +4 dBu");
+    Expect(X, 0x19, 2, R_INVALID, 0, 0, 0, "line pad 2");
+    Expect(T, 0x19, 1, R_NOTSUP, 0, 0, 0, "Twin X has no line reference");
+    Expect(X, 0x32, 1, R_OK, 11, 0x10, 0x10, "monitor -10 dBV");
+    Expect(T, 0x32, 1, R_OK, 11, 0x10, 0x10, "monitor -10 dBV");
+    Expect(X, 0x1E, 1, R_OK, 6, 0x400, 0x400, "monitor to S/PDIF");
+    Expect(T, 0x1E, 1, R_NOTSUP, 0, 0, 0, "Twin X has no digital mirror");
+    Expect(X, 0x42, 4, R_OK, 13, 0x8000, 0xE000, "FCN talkback");
+    Expect(X, 0x42, 1, R_INVALID, 0, 0, 0, "FCN alt 2 (not the x8p's)");
+    Expect(T, 0x42, 2, R_NOTSUP, 0, 0, 0, "Twin X has no function switch");
+    Expect(X, 0x13, 5, R_OK, 1, 0x50000000ul, 0x70000000ul, "clip hold infinite");
+    Expect(X, 0x13, 6, R_INVALID, 0, 0, 0, "clip hold 6");
+    Expect(T, 0x14, 4, R_OK, 1, 0x8000, 0xE000, "peak hold 10 s");
+    Expect(X, 0x14, 5, R_INVALID, 0, 0, 0, "peak hold 5");
+    Expect(T, 0x0A, 1, R_OK, 6, 0x200, 0x300, "AUX 1 mono");
+    Expect(X, 0x0F, 0, R_OK, 7, 0, 0x300, "AUX 2 stereo");
+    Expect(T, 0x1D, 2, R_OK, 6, 0x1000, 0xF800, "identify 2");
+    Expect(X, 0x1D, 0, R_OK, 6, 0, 0xF800, "identify off");
+    Expect(X, 0x1D, 8, R_INVALID, 0, 0, 0, "identify 8");
+}
+
 int main(void)
 {
     CheckX8pUnchanged();
@@ -1481,6 +1562,7 @@ int main(void)
     CheckMixPass();
     CheckAux();
     CheckPanel();
+    CheckOutputs();
     printf("mon-plan-test: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

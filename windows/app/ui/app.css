@@ -442,6 +442,16 @@ body[data-live="0"] .monitor { opacity: 0.5; }
 .alt-row .sw { height: 24px; }
 .alt-out { font-size: 11px; color: var(--text-dim); }
 .alt-row .knob { flex-direction: row; gap: 4px; }
+/* [Undo] the header's undo / redo (undo.js) */
+.undo-wrap { display: flex; gap: 2px; margin-right: 6px; }
+.undo-btn { min-width: 28px; padding-inline: 6px; font-size: 15px; line-height: 1; }
+.undo-btn:disabled { opacity: .35; }
+/* [Out] the Outputs card (outputs.js) */
+.out-pads { display: flex; flex-direction: column; gap: 6px; }
+.out-ref { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: 6px; }
+.out-ref .seg button { padding-inline: 6px; }
+.out-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.mon-out .sw { height: 24px; }
 .talk-cues { align-self: flex-start; padding: 2px 8px; font-size: 12px; }
 
 /* ---------- channels bridge ---------- */
@@ -790,3 +800,9 @@ kbd {
 #view-control[data-comp="console"] .aux-sec[data-open="0"], #view-control[data-comp="hud"] .aux-sec[data-open="0"] { display: none; }
 #view-control[data-comp="console"] .st-aux > .st-lbl, #view-control[data-comp="hud"] .st-aux > .st-lbl { display: none; }
 .aux-ins:has(.ins-slots[hidden]) { display: none; }
+/* [Params] the Device view's driver parameters (app.js renderParams) */
+.params-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.params-table th, .params-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line, rgba(127,127,127,.2)); }
+.params-table td.num { font-variant-numeric: tabular-nums; }
+.params-table tr.pending td { color: var(--warn, #e2a840); }
+.dev-params { overflow-x: auto; }

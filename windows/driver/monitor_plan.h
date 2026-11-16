@@ -126,6 +126,24 @@
 #define APOLLO_MP_ALT1_ENABLE   0x3Bul  /* 0/1: S15 bit 8 */
 #define APOLLO_MP_ALT2_ENABLE   0x3Cul  /* 0/1: S15 bit 12 */
 /*
+ * [Out] Output and front-panel settings: kext SetOtherParam ids, encodings as oa:driver/ua_core.c ua_monitor_set_param
+ * (no kind gate on the x8p, kind 12, or the Twin X Gen 1, kind 15, except 0x42: kinds 4,6,10-13,16-20, the x8p only),
+ * offered per model as oa:devices/apollo-x8p.json / apollo-twin-x.json say the model has it (output_pad line/monitor,
+ * mirror_to_digital, func_switch) and the x8p device map lists it (oa:mixer-engine/device_maps/device_map_apollo_x8p.json:
+ * outputs/0-7 Pad, outputs/22 Pad + MirrorsToDigital, auxs/0-1 MixToMono, /ClipHold, /PeakHold, /devices/0/FuncSwitchMode).
+ * The fields sit clear of the preamp fields (preamp_plan.h: S0 [25:0], S12 [23:0], S13 nibbles, S15 [31:24]).
+ */
+#define APOLLO_MP_AUX1_MONO     0x0Aul  /* 0/1: S6 [9:8] swapped, mono = bit 9 (CMxAuxBus MixToMono) */
+#define APOLLO_MP_AUX2_MONO     0x0Ful  /* 0/1: S7 [9:8] swapped, mono = bit 9 */
+#define APOLLO_MP_CLIP_HOLD     0x13ul  /* front-panel meters: 0 NONE, 1 1 s, 2 3 s, 3 5 s, 4 10 s, 5 INFINITE: S1 [30:28] */
+#define APOLLO_MP_PEAK_HOLD     0x14ul  /* 0 NONE, 1 1 s, 2 3 s, 3 5 s, 4 10 s: S1 [15:13] */
+#define APOLLO_MP_LINE_PAD(n)   (0x19ul + (unsigned long)(n))   /* line pair n (0-3) reference: 0 +4 dBu, 1 -10 dBV: S0 bit 28+n */
+#define APOLLO_MP_LINE_PAD_LAST 0x1Cul
+#define APOLLO_MP_IDENTIFY      0x1Dul  /* 0 normal, 1-7 the front panel's identify states (UA: 3, 1, 2, 0): S6 [13:11], [15:14] cleared */
+#define APOLLO_MP_DIG_MIRROR    0x1Eul  /* 0/1: the monitor mirrored to the S/PDIF output: S6 bit 10 (DTrace-verified upstream) */
+#define APOLLO_MP_MON_REF       0x32ul  /* monitor outputs reference: 0 +4 dBu, 1 -10 dBV: S11 bit 4 (DTrace-verified upstream) */
+#define APOLLO_MP_FUNC_SWITCH   0x42ul  /* function switch: 0 none, 2 mono, 3 dim, 4 talkback (DescartesFuncSwitchMode): S13 [15:13] */
+/*
  * [Monitor] driver-side families (no kext id: the sends are DSP ring commands, not mailbox fields).
  * Cue c is 0-based (0-3), bus = the mixer input bus (ANALOG n = n-1, TALKBACK 0x0A).
  */
@@ -200,6 +218,11 @@ typedef struct _APOLLO_MON_MODEL {
     unsigned long   TalkbackBus;        /* the talkback mic's bus */
     const char     *CueName[APOLLO_MON_CUES_MAX];
     const char     *AltOut[2];          /* the line pair ALT n uses */
+    /* [Out] */
+    unsigned long   LinePads;           /* line output pairs with a reference level (0x19..) */
+    int             MonRef;             /* monitor outputs reference level (0x32) */
+    int             DigMirror;          /* monitor to S/PDIF (0x1E) */
+    int             FuncSwitch;         /* function switch mode (0x42) */
 } APOLLO_MON_MODEL;
 
 /* The monitor plan of a model, or 0 (no monitor control). */
@@ -209,11 +232,15 @@ static __inline const APOLLO_MON_MODEL *ApolloMonModelFor(int Model)
         /* x8p: CUE 1-4 (CueBusCount max 4, oa:devices/apollo-x8p.json cue_buses), ALT 1-2 (MaxAltMons 2,
            oa:mixer-engine/device_maps/device_map_apollo_x8p.json), HP 1-2, ANALOG 1-8, talkback */
         { APOLLO_MODEL_X8P, "Apollo x8p", 4, 2, 2, 4, 8, APOLLO_MON_TALKBACK_BUS,
-          { "CUE 1", "CUE 2", "CUE 3", "CUE 4" }, { "Line 1-2", "Line 3-4" } },
+          { "CUE 1", "CUE 2", "CUE 3", "CUE 4" }, { "Line 1-2", "Line 3-4" },
+          /* [Out] Line 1-8 reference per pair, monitor reference, S/PDIF mirror, function switch */
+          4, 1, 1, 1 },
         /* Twin X Gen 1 (spec-twinx 4.1): two fixed cues named after their outputs, one ALT on LINE 3/4,
            one headphone, ANALOG 1-2, the built-in talkback mic */
         { APOLLO_MODEL_TWINX, "Apollo Twin X (Gen 1)", 2, 1, 1, 2, 2, APOLLO_MON_TALKBACK_BUS,
-          { "HP", "LINE 3/4", 0, 0 }, { "Line 3/4", 0 } },
+          { "HP", "LINE 3/4", 0, 0 }, { "Line 3/4", 0 },
+          /* [Out] the monitor reference only (output_pad monitor true, line false; no digital out, no FCN) */
+          0, 1, 0, 0 },
     };
 
     if (Model == APOLLO_MODEL_X8P) {
@@ -325,6 +352,36 @@ static __inline unsigned long ApolloMonExtBit(unsigned long Param)
     case 0x2000ul: return APOLLO_MON_BIT_CUE_PAN;
     case 0x3000ul: return APOLLO_MON_BIT_CUE_MUTE;
     default:       return 0;
+    }
+}
+
+/*
+ * [Out] The output codes have their own plan word (bringup_plan.h APOLLO_BRINGUP_PLAN.OutputParams): MonitorParams has
+ * no free bit left. 0 = not an output code.
+ */
+#define APOLLO_MON_OUT_AUX_MONO     0x001ul
+#define APOLLO_MON_OUT_CLIP_HOLD    0x002ul
+#define APOLLO_MON_OUT_PEAK_HOLD    0x004ul
+#define APOLLO_MON_OUT_LINE_PAD     0x008ul
+#define APOLLO_MON_OUT_IDENTIFY     0x010ul
+#define APOLLO_MON_OUT_DIG_MIRROR   0x020ul
+#define APOLLO_MON_OUT_MON_REF      0x040ul
+#define APOLLO_MON_OUT_FUNC_SWITCH  0x080ul
+#define APOLLO_MON_OUT_ALL          0x0FFul
+
+static __inline unsigned long ApolloMonOutBit(unsigned long Param)
+{
+    switch (Param) {
+    case APOLLO_MP_AUX1_MONO:
+    case APOLLO_MP_AUX2_MONO:   return APOLLO_MON_OUT_AUX_MONO;
+    case APOLLO_MP_CLIP_HOLD:   return APOLLO_MON_OUT_CLIP_HOLD;
+    case APOLLO_MP_PEAK_HOLD:   return APOLLO_MON_OUT_PEAK_HOLD;
+    case APOLLO_MP_IDENTIFY:    return APOLLO_MON_OUT_IDENTIFY;
+    case APOLLO_MP_DIG_MIRROR:  return APOLLO_MON_OUT_DIG_MIRROR;
+    case APOLLO_MP_MON_REF:     return APOLLO_MON_OUT_MON_REF;
+    case APOLLO_MP_FUNC_SWITCH: return APOLLO_MON_OUT_FUNC_SWITCH;
+    default:
+        return (Param >= APOLLO_MP_LINE_PAD(0) && Param <= APOLLO_MP_LINE_PAD_LAST) ? APOLLO_MON_OUT_LINE_PAD : 0ul;
     }
 }
 
@@ -660,7 +717,56 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
             return APOLLO_MON_NOT_HERE;     /* ALT 2 on the Twin X */
         }
         return ApolloMonPut(W, 13, (unsigned long)Value << 28, 0x30000000ul);
+
+    /* ---- [Out] output and front-panel settings ---- */
+    case APOLLO_MP_AUX1_MONO:
+    case APOLLO_MP_AUX2_MONO:
+        /* swapped 2-bit field [9:8] (ua_swap2): mono (value bit 0) is bit 9 */
+        if (!ApolloMonInRange(Value, 0, 1)) {
+            return APOLLO_MON_BAD_VALUE;
+        }
+        return ApolloMonPut(W, (Param == APOLLO_MP_AUX1_MONO) ? 6ul : 7ul, Value ? (1ul << 9) : 0ul, 0x300ul);
+    case APOLLO_MP_CLIP_HOLD:
+        if (!ApolloMonInRange(Value, 0, 5)) {
+            return APOLLO_MON_BAD_VALUE;
+        }
+        return ApolloMonPut(W, 1, (unsigned long)Value << 28, 0x70000000ul);
+    case APOLLO_MP_PEAK_HOLD:
+        if (!ApolloMonInRange(Value, 0, 4)) {
+            return APOLLO_MON_BAD_VALUE;
+        }
+        return ApolloMonPut(W, 1, (unsigned long)Value << 13, 0x0000E000ul);
+    case APOLLO_MP_IDENTIFY:
+        if (!ApolloMonInRange(Value, 0, 7)) {
+            return APOLLO_MON_BAD_VALUE;
+        }
+        return ApolloMonPut(W, 6, (unsigned long)Value << 11, 0x0000F800ul);
+    case APOLLO_MP_DIG_MIRROR:
+        if (!M->DigMirror) {
+            return APOLLO_MON_NOT_HERE;
+        }
+        return ApolloMonSwitch(W, Value, 6, 10);
+    case APOLLO_MP_MON_REF:
+        if (!M->MonRef) {
+            return APOLLO_MON_NOT_HERE;
+        }
+        return ApolloMonSwitch(W, Value, 11, 4);
+    case APOLLO_MP_FUNC_SWITCH:
+        if (!M->FuncSwitch) {
+            return APOLLO_MON_NOT_HERE;
+        }
+        if (!ApolloMonInRange(Value, 0, 4) || Value == 1) {
+            return APOLLO_MON_BAD_VALUE;    /* 1 = "alt 2": not in the x8p device map's list */
+        }
+        return ApolloMonPut(W, 13, (unsigned long)Value << 13, 0x0000E000ul);
     default:
+        if (Param >= APOLLO_MP_LINE_PAD(0) && Param <= APOLLO_MP_LINE_PAD_LAST) {
+            c = Param - APOLLO_MP_LINE_PAD(0);
+            if (c >= M->LinePads) {
+                return APOLLO_MON_NOT_HERE;
+            }
+            return ApolloMonSwitch(W, Value, 0, 28ul + c);
+        }
         return APOLLO_MON_NOT_HERE;
     }
 }

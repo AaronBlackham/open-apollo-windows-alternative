@@ -3,7 +3,7 @@
 // a cue is heard, refusals inline, saved per unit and re-sent when the unit connects), ALT speakers on the
 // Control view (per model, trim, the speaker set confirmed by readback word 6 [29:28]), the monitor source per
 // model, talkback dimming the monitor, the demo, and 980 px.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;

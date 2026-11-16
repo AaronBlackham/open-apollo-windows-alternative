@@ -381,8 +381,16 @@ static bool UnisonOp(ULONG handle, ULONG epoch, ULONG op, const std::vector<ULON
     return ok && q.Status == 0;
 }
 
-/* The readback of observation runs: words that differ (owned skipped, moving ones learned into owned). */
-static bool Readback(ULONG handle, ULONG epoch, std::set<RW> &owned, const std::vector<plughost::Obs> &obs, ULONG &bad, std::string &why)
+/*
+ * The readback of observation runs: words that differ (owned skipped, moving ones learned into owned).
+ * Learn (upstream plugin_native.py _observe(learn=True), the read before a control writes anything): a word can only
+ * differ there because the running DSP code changed it since it was verified (a delay pointer, an LFO phase, a meter,
+ * a state word it sets once and holds); up to max(2, half) of an observation's words are learned as the plug-in's own
+ * instead of failing. Without it a held DSP word refused every later change (Nov 15 2026: the Lexicon 480L,
+ * "row 10 word 156 is not as written").
+ */
+static bool Readback(ULONG handle, ULONG epoch, std::set<RW> &owned, const std::vector<plughost::Obs> &obs, ULONG &bad, std::string &why,
+                     bool learn = false)
 {
     bad = 0;
     size_t i = 0;
@@ -403,6 +411,19 @@ static bool Readback(ULONG handle, ULONG epoch, std::set<RW> &owned, const std::
                 diffs = plughost::GroupDiffs(obs, i, j, v, v2, owned, &moving);
                 owned.insert(moving.begin(), moving.end());
             }
+            if (learn && !diffs.empty()) {
+                std::set<RW> keep;
+                for (size_t k = i; k < j; k++) {
+                    std::vector<RW> mine;
+                    for (const RW &d : diffs) {
+                        if (d.first == obs[k].row && d.second >= obs[k].word && d.second < obs[k].word + (ULONG)obs[k].v.size()) mine.push_back(d);
+                    }
+                    if (mine.empty()) continue;
+                    if (mine.size() <= std::max<size_t>(2, obs[k].v.size() / 2)) owned.insert(mine.begin(), mine.end());
+                    else keep.insert(mine.begin(), mine.end());
+                }
+                diffs.assign(keep.begin(), keep.end());
+            }
             bad += (ULONG)diffs.size();
             if (!diffs.empty() && why.empty()) {
                 why = "row " + std::to_string(diffs[0].first) + " word " + std::to_string(diffs[0].second) + " is not as written";
@@ -413,15 +434,18 @@ static bool Readback(ULONG handle, ULONG epoch, std::set<RW> &owned, const std::
     return true;
 }
 
-/* Row 0 (the chain head) as page 0 wrote it (apollo-plug HeadCheck). */
-static bool HeadCheck(ULONG handle, ULONG epoch, const plughost::ChainRecipe &r)
+/*
+ * Row 0 (the chain head) as page 0 wrote it (apollo-plug HeadCheck): 0 as written, 1 a word differs (or the read was
+ * refused), -1 the DSP did not answer the read ([Chainfix]: timeout or quarantine, Refusal's "quarantine" statuses).
+ */
+static int HeadState(ULONG handle, ULONG epoch, const plughost::ChainRecipe &r)
 {
     ULONG n = std::min<ULONG>(r.rows[0].dwords, PLUG_READ_WORDS_MAX), want[PLUG_READ_WORDS_MAX]{}, v[PLUG_READ_WORDS_MAX];
     bool have[PLUG_READ_WORDS_MAX]{};
     ULONG page0 = r.pages[0].second;
     for (ULONG i = 0, len = 0; i + 3 < page0; i += len) {
         len = r.cmd[i] & 0xFFFF;
-        if (len < 4) return false;
+        if (len < 4) return 1;
         if ((r.cmd[i + 1] >> 24) != 0) continue;
         ULONG w0 = r.cmd[i + 1] & 0xFFFFFF;
         for (ULONG k = 0, pos = w0; k < len - 3; k++, pos++) {
@@ -430,11 +454,19 @@ static bool HeadCheck(ULONG handle, ULONG epoch, const plughost::ChainRecipe &r)
         }
     }
     LONG st = 0;
-    if (!ServiceRead(handle, epoch, 0, 0, n, v, st)) return false;
-    for (ULONG p = 0; p < n; p++) {
-        if (have[p] && v[p] != want[p]) return false;
+    if (!ServiceRead(handle, epoch, 0, 0, n, v, st)) {
+        ULONG s = (ULONG)st;
+        return (s == 0xC00000B5u || s == 0xC000038Eu || s == 0xC00000D0u) ? -1 : 1;
     }
-    return true;
+    for (ULONG p = 0; p < n; p++) {
+        if (have[p] && v[p] != want[p]) return 1;
+    }
+    return 0;
+}
+
+static bool HeadCheck(ULONG handle, ULONG epoch, const plughost::ChainRecipe &r)
+{
+    return HeadState(handle, epoch, r) == 0;
 }
 
 /* ------------------------------------------------------------------ what the driver says */
@@ -1291,6 +1323,38 @@ static plughost::ModuleReader StoreReader()
     };
 }
 
+/*
+ * [Chainfix] Which mapped plug-ins may run (plugin_host.h Qualification): open-apollo's own list of the plug-ins its live
+ * gate could not qualify from a user's install (plugins\tools\open-apollo\...\native_known_good.json "excluded" and
+ * "not_yet_supported"), less the ones this unit ran (the floor in QualFloor, plugins\p1\proven.txt). Read again when the
+ * plug-in folder changes. HKCU\Software\Avium\ApolloControl\ExperimentalPlugins = 1 turns the check off (for that work only).
+ */
+static plughost::Qualification g_qual;
+static std::wstring g_qualFor = L"?";
+
+static const plughost::Qualification &Qual()
+{
+    if (g_qualFor != g_plugins) {
+        g_qualFor = g_plugins;
+        g_qual = plughost::Qualification{};
+        plughost::QualFloor(g_qual);
+        std::string t, err;
+        if (!g_plugins.empty() &&
+            ReadAll(g_plugins + L"\\tools\\open-apollo\\mixer-engine\\device_maps\\native_known_good.json", t, 4ull << 20)) {
+            (void)plughost::QualKnownGood(t, g_qual, err);
+        }
+        if (!g_plugins.empty() && ReadAll(g_plugins + L"\\p1\\proven.txt", t, 1ull << 20)) plughost::QualProven(t, g_qual);
+    }
+    return g_qual;
+}
+
+static bool ExperimentalPlugins()
+{
+    DWORD v = 0, sz = sizeof(v);
+    return RegGetValueW(HKEY_CURRENT_USER, L"Software\\Avium\\ApolloControl", L"ExperimentalPlugins", RRF_RT_REG_DWORD, nullptr, &v,
+                        &sz) == ERROR_SUCCESS && v == 1;
+}
+
 /* The recipe of the chain's active slots (and its Unison header): slot order, saved words replayed after the startup. */
 static bool BuildFor(Chain &ch, plughost::ChainRecipe &r, std::vector<ULONG> &order, std::string &code, std::string &why)
 {
@@ -1299,6 +1363,18 @@ static bool BuildFor(Chain &ch, plughost::ChainRecipe &r, std::vector<ULONG> &or
     order.clear();
     for (ChainSlot &s : ch.slots) {
         if (!s.bypass) act.push_back(&s);
+    }
+    if (!ExperimentalPlugins()) {
+        std::vector<ChainSlot *> all = act;
+        if (ch.hasUnison && !ch.unison.bypass) all.push_back(&ch.unison);
+        for (ChainSlot *s : all) {
+            std::string w = plughost::QualWhy(Qual(), s->name, ch.stereo ? "stereo" : "mono");
+            if (w.empty()) continue;
+            s->state = "failed";
+            s->code = code = "unqualified";
+            s->why = why = plughost::Label(s->name) + " is " + w;
+            return false;
+        }
     }
     bs.resize(act.size());
     for (size_t k = 0; k < act.size(); k++) {
@@ -1601,6 +1677,19 @@ static bool DoChain(Chain &ch)
     plughost::ChainRecipe r;
     std::vector<ULONG> order;
     if (!BuildFor(ch, r, order, code, why)) return fail(code, why, false);
+    /*
+     * Two or more active inserts composed into one chain hung the x8p's DSP 1 on their first hardware run (Nov 15 2026:
+     * UAD Sphere Mic Collection 180 + UAD AKG BX 20, stereo on inputs 1-2: silence from routing on, the next SERVICE read
+     * unanswered, DSP 1 quarantined, a power cycle). Until the composer is fixed, one active insert per input or aux;
+     * HKCU\Software\Avium\ApolloControl\ExperimentalChains = 1 allows more (for that work only).
+     */
+    if (order.size() > 1) {
+        DWORD v = 0, sz = sizeof(v);
+        if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Avium\\ApolloControl", L"ExperimentalChains", RRF_RT_REG_DWORD, nullptr, &v, &sz) != ERROR_SUCCESS || v != 1) {
+            return fail("chain", "two or more active inserts on one input stopped the DSP in testing: one active insert per input for now "
+                                 "(bypass the others) until that is fixed", false);
+        }
+    }
     if ((r.staged() || r.unison) && !(g_caps.Features & APOLLO_PLUGIN_FEAT_STAGE)) {
         return fail("staged", "its startup is over one page and the installed apollo.sys cannot stage one", false);
     }
@@ -1616,7 +1705,10 @@ static bool DoChain(Chain &ch)
     ch.loadBefore = ReadLoad();
     ULONG gen = g_slots[g_u->slot].openGen.load();
     bool oldLive = ch.handle && ch.slot == g_u->slot && ch.gen == gen;
-    if (!oldLive && ch.handle) ForgetRun(ch);       /* a handle of a closed slot: the driver destroyed it */
+    /* not this handle's: DESTROY it through its own slot while that handle lives (DestroyOn), else only forget it (a closed
+       handle took its instances with it). Forgetting a live one left it routed and every new chain's START was refused as
+       busy (Nov 15 2026, the Sphere on x8p inputs 1-2). */
+    if (!oldLive && ch.handle) DestroyOn(ch);
     ch.owned.clear();
     for (const plughost::Owned &w : r.owned) ch.owned.insert({ w.row, w.word });
     ULONG h = 0;
@@ -1634,7 +1726,21 @@ static bool DoChain(Chain &ch)
     ch.handle = h;
     ch.slot = g_u->slot;
     ch.gen = gen;
-    if (canStage && !RouteChain(ch, h, r, code, why)) {
+    bool routed = !canStage || RouteChain(ch, h, r, code, why);
+    if (!routed && code == "busy") {
+        /* another chain of ours still routed on these inputs (a stale entry): take it off and START once more */
+        bool took = false;
+        for (Chain &o : g_chains) {
+            if (&o == &ch || o.unit != ch.unit || o.aux != ch.aux || !o.handle) continue;
+            if (!(o.covers(ch.input) || (ch.stereo && o.covers(ch.input + 1)))) continue;
+            DestroyOn(o);
+            o.state = o.active() ? "waiting" : "idle";
+            SetSlotStates(o);
+            took = true;
+        }
+        if (took) routed = RouteChain(ch, h, r, code, why);
+    }
+    if (!routed) {
         Destroy(h);
         ForgetRun(ch);
         return fail(code, why, false);
@@ -1646,6 +1752,25 @@ static bool DoChain(Chain &ch)
         peak = std::max(peak, ReadLoad());
     }
     ch.loadAfter = peak;
+    /*
+     * [Chainfix] The DSP must still answer once the chain runs: one SERVICE read of the head after the load samples, as
+     * upstream reads its live observations after activation (plugin_native_chain.py _live_observations) and apollo-plug its
+     * head ("chain head while it runs"). Nov 15 2026 nothing read DSP 1 after START: it had stopped at routing, the chain
+     * was saved as running, and the next read came 50 s later. No answer now = the driver quarantined the DSP: the inserts
+     * this build routed are saved bypassed, so neither a restart nor the next power cycle loads them again.
+     */
+    if (HeadState(h, ch.epoch, r) < 0) {             /* a word that differs is left alone: only no answer acts */
+        Destroy(h);                                  /* sends nothing to a quarantined DSP (plugin.c PlugUnplaceOnce) */
+        ForgetRun(ch);
+        for (ChainSlot &s : ch.slots) {
+            if (std::find(order.begin(), order.end(), s.slot) != order.end()) s.bypass = true;
+        }
+        if (ch.hasUnison && std::find(order.begin(), order.end(), kUnisonSlot) != order.end()) ch.unison.bypass = true;
+        Save();
+        return fail("stopped", "DSP " + std::to_string(StripDsp()) + " stopped answering once this chain was routed: it is quarantined "
+                               "until the " + Nm() + " is power-cycled. Its inserts are saved bypassed so they do not load again; "
+                               "turn them on one at a time to find the one that does it", false);
+    }
     if (peak > kLoadMax) {
         Destroy(h);
         ForgetRun(ch);
@@ -1685,6 +1810,7 @@ static bool DoChain(Chain &ch)
 static bool ApplyChange(Chain &ch, const Chain &prev)
 {
     if (DoChain(ch)) return true;
+    if (ch.code == "stopped") return false;     /* [Chainfix] the DSP stopped: keep it saved bypassed, rebuild nothing */
     std::string c = ch.code, w = ch.why;
     bool waiting = ch.state == "waiting";
     ch.slots = prev.slots;
@@ -2264,8 +2390,30 @@ static void DoParam(const Cmd &c)
     const aggjson::Value *prop = r.Get("proposal"), *rest = r.Get("restore");
     bool running = ch->handle && ch->state == "running" && in->base != 0 && ch->slot == g_u->slot &&
                    ch->gen == g_slots[g_u->slot].openGen.load();
-    auto apply = [&](const aggjson::Value *plan, std::string &w) -> bool {
+    auto obsOf = [&](const aggjson::Value *plan) {
+        std::vector<plughost::Obs> obs;
+        if (const aggjson::Value *ob = plan ? plan->Get("observe") : nullptr) {
+            for (const aggjson::Value &x : ob->a) {
+                plughost::Obs o;
+                if (x.a.size() == 3 && plughost::U32(&x.a[0], o.row) && plughost::U32(&x.a[1], o.word) && Words32(&x.a[2], o.v) && !o.v.empty() &&
+                    o.row >= 10) {
+                    o.row = in->base + o.row - 10;      /* ComposedEffect._observations: the carrier's words are the chain's */
+                    obs.push_back(o);
+                }
+            }
+        }
+        return obs;
+    };
+    /* prior: the restore plan, whose observations are the words as last verified; read with learning before writing */
+    auto apply = [&](const aggjson::Value *plan, std::string &w, const aggjson::Value *prior) -> bool {
         if (!plan) { w = "no plan"; return false; }
+        if (prior) {
+            std::vector<plughost::Obs> pobs = obsOf(prior);
+            ULONG pbad = 0;
+            std::string pw;
+            if (!Readback(ch->handle, ch->epoch, ch->owned, pobs, pbad, pw, true)) { w = pw; return false; }
+            if (pbad) { w = "the plug-in's words had changed before the write (" + pw + "): nothing was sent"; return false; }
+        }
         if (const aggjson::Value *chs = plan->Get("chunks")) {
             for (const aggjson::Value &chunk : chs->a) {
                 Words cmd, moved;
@@ -2281,17 +2429,7 @@ static void DoParam(const Cmd &c)
                 }
             }
         }
-        std::vector<plughost::Obs> obs;
-        if (const aggjson::Value *ob = plan->Get("observe")) {
-            for (const aggjson::Value &x : ob->a) {
-                plughost::Obs o;
-                if (x.a.size() == 3 && plughost::U32(&x.a[0], o.row) && plughost::U32(&x.a[1], o.word) && Words32(&x.a[2], o.v) && !o.v.empty() &&
-                    o.row >= 10) {
-                    o.row = in->base + o.row - 10;      /* ComposedEffect._observations: the carrier's words are the chain's */
-                    obs.push_back(o);
-                }
-            }
-        }
+        std::vector<plughost::Obs> obs = obsOf(plan);
         ULONG bad = 0;
         if (!Readback(ch->handle, ch->epoch, ch->owned, obs, bad, w)) return false;
         return bad == 0;
@@ -2300,11 +2438,11 @@ static void DoParam(const Cmd &c)
     std::string code;
     if (running) {
         ch->busy = "Sending the change";
-        ok = apply(prop, why);
+        ok = apply(prop, why, rest);
         if (!ok) {
             code = Quarantined() ? "quarantine" : "readback";
             std::string w2;
-            apply(rest, w2);                /* put the prior words back (best effort) */
+            apply(rest, w2, nullptr);       /* put the prior words back (best effort) */
             aggjson::Value a2;
             HelperCall("{\"op\":\"accept\",\"key\":" + Q(key) + ",\"which\":\"restore\"}", a2, w2);
             TakeState(*in, a2);

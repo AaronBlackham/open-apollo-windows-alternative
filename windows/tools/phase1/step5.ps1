@@ -1,5 +1,5 @@
 # Phase 2 step 5 (Twin X gate G1): install release7 on the x8p = release6 + Twin X groundwork (model identification, per-unit settings, serial fix), strip probe off. ADMIN.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step5.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step5.ps1
 # Sets EnabledEndpoints=0x3FF, StripsEnable=1, StripMask=0xFF, StripSteps=9, MixerInitBatch=1, StripProbe=0
 # (the probe is diagnostics only: the "dead" inputs were empty jacks, which the x8p mutes by design).
 # Only the x8p is touched; the Twin X stays on UA's driver (install.ps1 refuses any other unit).

@@ -1,5 +1,5 @@
 # Input-strip test (docs\STRIPS.md 10.6): set the strip registry values, then power-cycle the x8p. ADMIN.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\strips-steps.ps1 -Steps 9 [-Mask 1] [-Enable 1]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\strips-steps.ps1 -Steps 9 [-Mask 1] [-Enable 1]
 # -Steps N: stages 1..9 (9 = the whole chain). -Enable 0 switches the strips off (after a failed stage).
 # Takes effect at the next cold start of the x8p (power cycle): a warm start never builds strips.
 #Requires -RunAsAdministrator

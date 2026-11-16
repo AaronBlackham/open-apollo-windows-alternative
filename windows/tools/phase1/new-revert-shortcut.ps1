@@ -1,5 +1,5 @@
 # Make the desktop shortcut "Twin X back to UA": the panic button for the speakers (docs/spec-twinx.md 6.10).
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\new-revert-shortcut.ps1 [-Unit twinx|x8p]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\new-revert-shortcut.ps1 [-Unit twinx|x8p]
 # Run it once as yourself (no admin needed). Double-clicking the shortcut asks Windows for administrator
 # rights (it is marked "Run as administrator"), then runs
 #   revert-unit.ps1 -Unit twinx -Yes

@@ -2,7 +2,7 @@
 // endpoints-get when Settings opens, a checkbox per row checked from `next`, a draft until Apply, endpoints-set with the
 // unit's id and rows, pending then the host's words, "Use defaults" as default:true, a warning before dropping an endpoint
 // an app has open, the Twin X under the combined set, and a unit that is not there.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
 let failed = 0;

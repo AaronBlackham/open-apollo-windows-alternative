@@ -2,7 +2,7 @@
 // Speakers tab, the unit it acts on (the Twin X by default), loading a profile file (checked by the host, shown with
 // its filters, target and curves, outputs chosen, applied), on/off and A/B as corr-set, the state the driver reports,
 // refusals inline, removing it, the hardware-monitoring note, an old driver, the demo, and 980 px.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const fs = require('fs');
 const out = process.argv[2] || require('os').tmpdir();

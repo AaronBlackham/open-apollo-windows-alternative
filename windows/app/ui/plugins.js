@@ -49,6 +49,8 @@ const Plug = (() => {
     engine: 'Parameter engine', driver: 'Refused', absent: 'Not connected', admin: 'Administrator step',
     rate: 'Waits for 48 kHz', unit: 'Not on this driver build',
     cycles: 'DSP load', layout: 'Layout', unison: 'No Unison map', aux: 'Aux inserts off',
+    /* [Chainfix] a plug-in open-apollo could not qualify, a chain that stopped the DSP (saved bypassed), the chain guard */
+    unqualified: 'Not qualified', stopped: 'Stopped the DSP', chain: 'One insert per input',
   };
   const STATE_TEXT = { running: 'Running', loading: 'Loading', bypassed: 'Bypassed', waiting: 'Waiting', failed: 'Not running', idle: 'Plain strip' };
   const MAX_SLOTS = 4;                  /* rows built per strip; a host without "slots" (1.5) shows the first only */
@@ -246,7 +248,15 @@ const Plug = (() => {
     const an = /^[aeiouxAEIOUX]/.test(short) ? 'an' : 'a';
     if (!s.present) return { code: 'absent', short: `${short.toUpperCase()} OFFLINE`, text: `The ${short} is not connected (or not in full mode): saved inserts come back when it is.` };
     if (!h.driver) return { code: 'driver', short: 'NO HOST', text: 'The installed apollo.sys has no plug-in hosting.' };
-    if (!h.on) return { code: 'hosting', short: 'HOSTING OFF', text: 'Plug-in hosting is off. Turning it on needs an administrator once (Settings, Plug-in hosting).' };
+    if (!h.on) {
+      /* the driver says why it holds plug-ins back (caps Why): a rate away from 48 kHz is not "hosting off" */
+      const why = String(h.why || '').trim();
+      if (/kHz/.test(why)) {
+        const at = why.replace(/:.*$/, '').replace(/^the unit/, `the ${short}`);
+        return { code: 'rate', short: '48 KHZ ONLY', text: `Plug-ins run at 48 kHz only: ${at}. Its inserts wait and come back at 48 kHz.` };
+      }
+      return { code: 'hosting', short: 'HOSTING OFF', text: 'Plug-in hosting is off. Turning it on needs an administrator once (Settings, Plug-in hosting).' };
+    }
     if (!h.caller) return { code: 'caller', short: 'OTHER PROGRAM', text: 'The driver takes plug-in calls from another program. Turn hosting on again from this Apollo Control.' };
     if ((s.dsp || {}).quarantined) return { code: 'quarantine', short: 'QUARANTINED', text: `${dspName(idx)} is quarantined after an unproven plug-in step. Power-cycle the ${short}${idx ? '' : ' (it also drops the Twin X)'}.` };
     /* [Warm] the driver says whether the strip DSP is ours (a warm start that adopted the strips counts) and why not */

@@ -290,6 +290,7 @@ static ULONG ClockSetSource(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Source, _In_ UL
             ClockSetWhy(Ctx, "%s, event after %lu ms, locked for %lu ms", ApolloClockName(Source), ackMs,
                         Source == APOLLO_CK_INTERNAL ? CLOCK_INTERNAL_SETTLE : APOLLO_CK_SETTLE_MS);
             Ctx->ClockChanges++;
+            ApolloEventPost(Ctx, APOLLO_EVENT_CLOCK, Source, (ULONG)st);          /* [Events] */
         } else if (st == STATUS_DEVICE_NOT_CONNECTED || st == STATUS_CANCELLED) {
             err = APOLLO_CLOCK_ERR_HARDWARE;
             ClockSetWhy(Ctx, "the unit stopped answering during the change (0x%08x)", st);

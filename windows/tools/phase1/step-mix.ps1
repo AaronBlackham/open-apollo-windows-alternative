@@ -1,6 +1,6 @@
 # [Mix] The monitor mix on the Twin X (docs\console-parity.md "Mixer"): input 1 muted, unmuted, then at -12 dB in the
 # monitor mix, read on the monitor-mix loopback. Normal (non-admin) PowerShell, no power cycle, about 40 s:
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-mix.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-mix.ps1
 #   ... -In 2                 test input 2 instead (the other inputs are muted while it runs)
 #   ... -Meter "Monitor mix (Apollo Twin X"   another recording endpoint (wasapi-loop --list shows them; the default
 #                             is the combined "Monitor mix", the loopback of the unit Windows plays to: the Twin X.

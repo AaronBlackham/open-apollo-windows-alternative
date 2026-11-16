@@ -59,7 +59,7 @@ rem 3. Map (run from the mapper folder: upstream uses python -m plugin_mapper). 
 rem    a bundle records its metadata path as given, and offline_check --defaults / the emulator
 rem    reopen it from another folder (a relative --out made bundles whose defaults check fails).
 cd tools\open-apollo\tools\plugin-mapper
-set P=C:\Users\aaron\Desktop\Avium\apollo-win\plugins
+set P=C:\apollo-win\plugins
 ..\..\..\..\.venv\Scripts\python.exe -X utf8 -m plugin_mapper --from C:\ --out %P%\bundles --work %P%\work --specs %P%\specs --module-store %P%\store --authorized %P%\p1\authorized.txt --workers 16
 rem    add --only "UAD API Preamp" (repeatable) for one plug-in (--only ignores --authorized);
 rem    --retry-failures to try failures again; --force to rebuild a current map; --all for plug-ins

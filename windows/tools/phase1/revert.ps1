@@ -1,5 +1,5 @@
 # Put the x8p back on UA's driver: remove every staged apollo.inf package, then rescan. ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\revert.ps1 [-Yes] [-AllUnits]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\revert.ps1 [-Yes] [-AllUnits]
 # This MOVES THE x8p (and removes our package from the PC). Power-cycle the x8p afterwards so UA's software
 # starts it fresh.
 # Removing the package also moves every OTHER unit on it (a Twin X on our driver, later gates). So if any

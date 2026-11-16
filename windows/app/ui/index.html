@@ -33,6 +33,8 @@
     <button role="tab" data-view="settings" id="tab-settings">Settings</button>
   </nav>
   <div class="top-right">
+    <!-- [Undo] undo / redo of this app's changes on the focused unit (undo.js; Ctrl+Z, Ctrl+Y) -->
+    <div class="undo-wrap" id="undoWrap"></div>
     <!-- [Sess] the session on screen and its list (sessions.js): one model, each theme's own layout. -->
     <div class="sess-wrap">
       <button class="btn btn-quiet sess-btn" id="sessBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="sessPanel" title="Sessions (Ctrl+O; Ctrl+S saves)">Session</button>
@@ -116,6 +118,12 @@
           <!-- [Rate] per unit, or one for the combined device (app.js renderDeviceRate). -->
           <div class="dev-rate" id="devRate"></div>
         </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Driver parameters</h2>
+            <div class="panel-tools"><button class="btn" id="paramsRefresh">Refresh</button></div></div>
+          <!-- [Params] the selected unit's per-unit Parameters (app.js renderParams; read-only, apollo-diag param sets them) -->
+          <div class="dev-params" id="devParams"><p class="muted">Press Refresh to read them.</p></div>
+        </div>
       </div>
       <div class="panel log-panel">
         <div class="panel-head">
@@ -124,6 +132,7 @@
             <label class="check"><input type="checkbox" id="logAuto"> Auto refresh</label>
             <button class="btn" id="logRefresh">Refresh</button>
             <button class="btn" id="logCopy">Copy</button>
+            <button class="btn" id="diagSave" title="Driver log, each unit's state, readback, events and parameters, and Apollo Control's files, in one folder on this PC">Save diagnostics</button>
           </div>
         </div>
         <pre class="log" id="log" tabindex="0">Press Refresh to read the driver's log.</pre>
@@ -150,10 +159,12 @@
 <script src="correction.js"></script>
 <script src="plugins.js"></script>
 <script src="auxbus.js"></script>
+<script src="outputs.js"></script>
 <script src="styleguide.js"></script>
 <script src="signatures.js"></script>
 <script src="cmd.js"></script>
 <script src="sessions.js"></script>
+<script src="undo.js"></script>
 <script src="endpoints.js"></script>
 <script src="app.js"></script>
 </body>

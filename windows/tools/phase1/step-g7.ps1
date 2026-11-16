@@ -1,5 +1,5 @@
 # Gate G7 "combined Windows endpoints" (docs/spec-twinx.md 6.7 and 6.9.7). ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-g7.ps1 [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-g7.ps1 [-Yes]
 #   ... -Restart    pass 1 restarts both drivers itself (warm, no power cycle) and goes on to pass 2
 #   ... -NoAudio    pass 2 checks the endpoints only, plays nothing
 #   ... -LossTest   pass 2 also plays Windows audio for 90 s while you power the Twin X off and on

@@ -742,7 +742,7 @@ One install of the current build covers all of it; run the tables in order. Befo
 close Ableton, `asio-test`, `loopback-test`, `wasapi-loop` and any `apollo-diag pos/levels` loop
 (`install.ps1` now checks for them, and for Windows audio on the Apollo endpoints, and waits). Driver Verifier stays on (`verifier /standard /driver apollo.sys`, includes DDI compliance).
 "Normal" = a non-elevated prompt, "admin" = Run as administrator. Paths are under
-`C:\Users\aaron\Desktop\Avium\apollo-win`.
+`C:\apollo-win`.
 
 ### 10.1 Step 0: ACX loads, the private interface still works
 
@@ -781,7 +781,7 @@ If 0.1 fails with code 10/31 or 0.2 shows an ACX failure: revert (risk list abov
 | A.3 | repeat A.2 with 256, 1024, then 64 | 187.5/s, 46.9/s, 750/s; record underruns at 64 (see risk) |
 | A.4 | two `asio-test --run 20 128` at once | the second prints "Another program is already using the Apollo x8p's ASIO driver" |
 | A.5 | `asio-test --run 60 128`, end it from Task Manager after 10 s; then `apollo-diag engine` | no bugcheck; ASIO `closed` (EvtFileCleanup unmapped in the dying process) |
-| A.6 | admin: `regsvr32 C:\Users\aaron\Desktop\Avium\apollo-win\asio\bin\avium-asio.dll` | success dialog; `HKLM\SOFTWARE\ASIO\Apollo x8p (Avium)` exists |
+| A.6 | admin: `regsvr32 C:\apollo-win\asio\bin\avium-asio.dll` | success dialog; `HKLM\SOFTWARE\ASIO\Apollo x8p (Avium)` exists |
 | A.7 | Ableton: Preferences → Audio: Driver Type ASIO, Audio Device "Apollo x8p (Avium)", 48000 Hz, buffer 128. Enable outputs MON L/R and input MON L/R in Input/Output Config | Ableton shows input ≈ 3.2 ms / output ≈ 5.8 ms latency; a clip plays to the monitors (front-panel meters); recording the MON L/R input captures what plays |
 | A.8 | Ableton playing 30 min at 128; then `apollo-diag engine` | no audible dropouts; ASIO underruns/overruns 0 after start-up, late ticks 0 |
 | A.9 | while Ableton plays: admin `apollo-diag tone 5` | both are heard together on MON (the ADD path) |

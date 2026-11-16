@@ -1396,6 +1396,107 @@ static inline void CatalogFrom(const Bundle &b, CatalogItem &c)
     }
 }
 
+/* ------------------------------------------------------------------ [Chainfix] which mapped plug-ins may run
+ *
+ * Nov 15 2026: UAD Sphere Mic Collection 180 + UAD AKG BX 20 (stereo, x8p inputs 1-2) stopped DSP 1 from the moment it was
+ * routed. The chain itself is upstream's compose() byte for byte (chain-compare.py), and every pool, row and cycle figure
+ * of it is inside what single plug-ins already ran at on this x8p. What stands out is the AKG BX 20: open-apollo does not
+ * offer it from a user's install at all (native_known_good.json "excluded": "startup words recorded from a Mac trace"),
+ * and the map our mapper built of it starts the plug-in with 47 words for 70 rows and a million words of state. Upstream's
+ * list names every plug-in its live gate could not qualify from a user's install ("excluded") or saw fail on the Apollo
+ * ("not_yet_supported": Studio D Chorus "mono load hung DSP 1 (-110, quarantined until a cold start)", loads refused).
+ * Upstream offers none of them; Apollo Control now refuses them too, unless this unit ran the plug-in in that layout
+ * (kProvenHere, plugins\p1\proven.txt) or HKCU\Software\Avium\ApolloControl\ExperimentalPlugins = 1.
+ * Entries "<name> (mono)" / "<name> (stereo)" name one layout only. Without the list file the floor below still holds.
+ */
+struct Qualification {
+    std::map<std::string, std::string> refused;     /* "<name>|<layout or *>" -> upstream's reason */
+    std::set<std::string> proven;                   /* "<name>|<layout or *>" */
+};
+
+static inline std::string QualKey(std::string name, std::string &layout)
+{
+    layout = "*";
+    for (const char *l : { "mono", "stereo" }) {
+        std::string tail = std::string(" (") + l + ")";
+        if (name.size() > tail.size() && name.compare(name.size() - tail.size(), tail.size(), tail) == 0) {
+            name.resize(name.size() - tail.size());
+            layout = l;
+        }
+    }
+    return name;
+}
+
+/* The floor: what this x8p and upstream proved, kept even without the files. */
+static inline void QualFloor(Qualification &q)
+{
+    q.refused["UAD AKG BX 20|*"] = "startup words recorded from a Mac trace (open-apollo); the chain it was in stopped this x8p's "
+                                   "DSP 1 on Nov 15 2026";
+    q.refused["UAD Studio D Chorus|*"] = "skipped: mono load hung DSP 1 (-110, quarantined until a cold start) (open-apollo)";
+    /* docs/PLUGINS.md 4.1 / step-p1, Nov 15 2026: gate P1 passed on x8p input 1 (mono) */
+    for (const char *n : { "UAD Ampeg SVTVR Classic", "UAD Lexicon 480L", "UAD Precision De-Esser", "UAD UA 1176LN Legacy" }) {
+        q.proven.insert(std::string(n) + "|mono");
+    }
+    /* Apollo Control on x8p inputs 1-2, Nov 15 2026 (alone, mono and stereo) */
+    q.proven.insert("UAD Sphere Mic Collection 180|mono");
+    q.proven.insert("UAD Sphere Mic Collection 180|stereo");
+}
+
+/* upstream's native_known_good.json: its "excluded" and "not_yet_supported" maps (name -> reason) */
+static inline bool QualKnownGood(const std::string &text, Qualification &q, std::string &err)
+{
+    aggjson::Value root;
+    aggjson::Parser p(text);
+    if (!p.Parse(root) || root.kind != aggjson::Value::Object) { err = "the known-good list is not JSON"; return false; }
+    for (const char *k : { "excluded", "not_yet_supported" }) {
+        const aggjson::Value *m = root.Get(k);
+        if (m == nullptr) continue;
+        if (m->kind != aggjson::Value::Object) { err = std::string("\"") + k + "\" is not an object"; return false; }
+        for (const auto &kv : m->o) {
+            std::string layout, name = QualKey(kv.first, layout);
+            if (name.empty() || kv.second.kind != aggjson::Value::String) continue;
+            q.refused.emplace(name + "|" + layout, kv.second.s + " (open-apollo)");     /* the floor's text stays */
+        }
+    }
+    return true;
+}
+
+/* plugins\p1\proven.txt: "<name> | <mono|stereo|*> | <note>" per line, '#' comments */
+static inline void QualProven(const std::string &text, Qualification &q)
+{
+    size_t at = 0;
+    auto trim = [](const std::string &s) {
+        size_t f = s.find_first_not_of(" \t\r"), l = s.find_last_not_of(" \t\r");
+        return f == std::string::npos ? std::string() : s.substr(f, l - f + 1);
+    };
+    while (at < text.size()) {
+        size_t e = text.find('\n', at);
+        std::string line = trim(text.substr(at, e == std::string::npos ? std::string::npos : e - at));
+        at = (e == std::string::npos) ? text.size() : e + 1;
+        if (line.empty() || line[0] == '#') continue;
+        size_t a = line.find('|');
+        if (a == std::string::npos) continue;
+        size_t c = line.find('|', a + 1);
+        std::string name = trim(line.substr(0, a)), layout = trim(line.substr(a + 1, c == std::string::npos ? std::string::npos : c - a - 1));
+        if (name.empty() || (layout != "mono" && layout != "stereo" && layout != "*")) continue;
+        q.proven.insert(name + "|" + layout);
+    }
+}
+
+/* "" = it may run in this layout; else why not (upstream's reason). */
+static inline std::string QualWhy(const Qualification &q, const std::string &name, const std::string &layout)
+{
+    if (q.proven.count(name + "|" + layout) || q.proven.count(name + "|*")) return std::string();
+    for (const char *l : { "*", "" }) {
+        auto f = q.refused.find(name + "|" + (*l ? std::string(l) : layout));
+        if (f != q.refused.end()) {
+            return "not qualified on an Apollo from a user's install: " + f->second + ". It has not run on this unit in " + layout +
+                   ", and a plug-in that fails here can stop the DSP until a power cycle";
+        }
+    }
+    return std::string();
+}
+
 /* ------------------------------------------------------------------ saved inserts */
 
 /* {"0x<ref>": value} <-> map (plughelper.py's "diff") */

@@ -1,5 +1,5 @@
 # Phase 2 step 4: install release6 = release5 + the strip probe (docs\STRIPS.md 10.9). ADMIN.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step4.ps1
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step4.ps1
 # Sets EnabledEndpoints=0x3FF, StripsEnable=1, StripMask=0xFF, StripSteps=9, MixerInitBatch=1 and removes
 # StripProbe (absent = 2: after a cold start the driver measures every strip input and tries UA's
 # stop+start and span-on-every-DSP repairs on dead ones, logging which one worked).

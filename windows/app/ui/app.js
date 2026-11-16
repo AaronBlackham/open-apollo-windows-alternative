@@ -170,7 +170,7 @@ function defaultConfig() {
  * [Mix] main[bus] = { level, pan, mute, solo }: the monitor mix.
  * Only what was touched is kept (undefined = left as the unit has it).
  */
-function newMix() { return { alt: [{}, {}], cues: [{}, {}, {}, {}], main: {}, aux: [{}, {}], mon: {} }; }
+function newMix() { return { alt: [{}, {}], cues: [{}, {}, {}, {}], main: {}, aux: [{}, {}], mon: {}, out: {} }; }
 
 /* A saved mix as loaded: only well-formed values survive. */
 function cleanMix(m) {
@@ -209,6 +209,7 @@ function cleanMix(m) {
     }
   }
   out.aux = Aux.clean(m.aux);                  /* [Ins] the aux buses (auxbus.js) */
+  out.out = Outs.clean(m.out);                 /* [Out] output and front-panel settings (outputs.js) */
   /* [Sess] the monitor routing (no readback): source, headphone sources, dim level as set here */
   if (m.mon && typeof m.mon === 'object') {
     if (isInt(m.mon.source, 0, 4)) out.mon.source = m.mon.source;
@@ -305,9 +306,10 @@ function send(...parts) {
 /* Hardware commands for unit slot idx go to the demo model or the host. The host takes the slot
    as a last field ("input\t<ch>\t<param>\t<value>\t<unit>"); slot 0 goes untagged, as before. */
 function hwSend(idx, ...parts) {
-  if (S.demo) { demoCommand(idx, parts); return; }
+  if (S.demo) { demoCommand(idx, parts); Undo.touch(idx); return; }
   if (!unitPresent(idx)) { toastOnce(`Not connected: the change was not sent to the ${unitShort(idx)}.`, 'warn'); return; }
   send(...parts, ...(idx ? [idx] : []));
+  Undo.touch(idx);                     /* [Undo] a change this app made: undo.js keeps the step */
 }
 
 /* ------------------------------------------------------------------ */
@@ -948,6 +950,7 @@ function savedMixOut(idx) {
     if (a.on !== undefined) out.push([`alt${n + 1}`, a.on ? 1 : 0]);
     if (a.trim !== undefined) out.push([`alt${n + 1}trim`, a.trim]);
   });
+  Outs.applyOut(idx, out);             /* [Out] reference levels, S/PDIF mirror, FCN, meter holds, aux mono (outputs.js) */
   m.cues.slice(0, k.cues.length).forEach((q, c) => {
     if (q.mute !== undefined) out.push([`cue${c + 1}mute`, q.mute ? 1 : 0]);
     if (q.mix !== undefined) out.push([`cue${c + 1}mix`, q.mix]);
@@ -1031,6 +1034,12 @@ function onHostMessage(m) {
       Sess.onHost(m);                                          /* [Sess] sessions.js */
       break;
     case 'rate': if (!S.demo) onRate(m); break;                   /* [Rate] */
+    case 'params': if (!S.demo) onParams(m); break;               /* [Params] */
+    case 'event': if (!S.demo) onDriverEvent(m); break;           /* [Events] */
+    case 'diag-result':                                            /* [Diag] */
+      if (m.ok) toast(`Diagnostics saved (${m.files} files): ${m.dir}`, 'info', 8000);
+      else toast(`Diagnostics not saved: ${m.why || 'error'}`, 'bad');
+      break;
     case 'rate-result': if (!S.demo) onRateResult(m); break;
     case 'measure-result': Sig.onMeasure(m); break;            /* [Themes] Lab's Avium Measure hand-off */
     case 'endpoints': case 'endpoints-result': if (!S.demo) Endpoints.onHost(m); break;   /* [Endpoints] endpoints.js */
@@ -1192,6 +1201,7 @@ function writeKey(m) {
   if (MON_FIELDS[m.key]) return `mon:${MON_FIELDS[m.key]}`;
   if (CUE_WRITE.test(m.key)) return `cue:${m.key}`;
   if (MIX_WRITE.test(m.key)) return `mix:${m.key}`;
+  if (Outs.isWrite(m.key)) return `out:${m.key}`;     /* [Out] */
   return ALT_WRITE.test(m.key) ? `alt:${m.key}` : '';
 }
 
@@ -1215,6 +1225,7 @@ function writeName(m, idx) {
   if (q && q[1]) return `${cueSourceName(q[3], idx)} ${q[1] === 'send' ? 'send' : 'pan'} to ${cueName(idx, q[2] - 1)}`;
   if (q) return `${unit}${cueName(idx, q[4] - 1)} ${{ mix: 'source', mono: 'mono', mute: 'mute' }[q[5]]}`;
   if (a) return `${unit}ALT ${a[1]}${a[2] ? ' trim' : ''}`;
+  if (Outs.isWrite(m.key)) return Outs.name(m.key, idx);         /* [Out] */
   return `${monLabel(idx)} ${MON_NAMES[m.key] || m.key}`;
 }
 
@@ -1270,6 +1281,8 @@ function restoreWrite(idx, c, key) {
     } else if (x) {
       storeMix(idx, Number(x[2]), MIX_FIELD[x[1]], prev);
     }
+  } else if (kind === 'out') {
+    Outs.restore(idx, key.slice(4), before);       /* [Out] no readback: the value before the run of writes */
   } else if (kind === 'cue' || kind === 'alt') {
     /* [Monitor] no readback: the value before the run of writes (undefined = never set here) */
     const prev = before && typeof before === 'object' ? before.prev : undefined, name = key.slice(4);
@@ -2504,6 +2517,10 @@ function buildMaster(idx, k, sg) {
     onClick: () => setMon('dim', !ctl(idx).mon.dim, idx) });
   const all = mixSwitch('MUTE ALL', idx ? `Mute every ${short} input and the talkback in the monitor mix` : 'Mute every input and the talkback in the monitor mix', true,
     () => setMixMuteAll(all.getAttribute('aria-checked') !== 'true', idx));
+  /* [Mix] Console's SoloClear: every solo of this unit's monitor mix off at once (shown while one is on) */
+  const clrSolo = el('button', { class: 'btn btn-quiet mo-clrsolo', type: 'button', hidden: true,
+    title: idx ? `Clear every ${short} solo in the monitor mix` : 'Clear every solo in the monitor mix',
+    onclick: () => { for (const b of mixBuses(capsOf(unitType(idx)))) if (mixOfBus(idx, b).solo) setMix(b, 'solo', false, idx); } }, 'CLR SOLO');
   const auxBtn = el('button', { class: 'btn btn-quiet mo-aux', type: 'button', 'aria-expanded': cfg.auxStrips.open ? 'true' : 'false',
     title: 'Show or hide the AUX 1 / AUX 2 strips (returns, cue sends, inserts)', onclick: () => setAuxOpen(!cfg.auxStrips.open) }, 'AUX');
   const focus = el('button', { class: 'btn btn-quiet mo-focus', 'aria-pressed': 'false', 'aria-label': `Show the ${short} monitor settings`,
@@ -2516,12 +2533,12 @@ function buildMaster(idx, k, sg) {
   const node = el('div', { class: 'master', role: 'group', 'aria-label': `${short} master` },
     el('div', { class: 'mo-title', 'aria-hidden': 'true' }, el('span', { text: 'MAIN' }), el('span', { class: 'mo-lr', text: 'L R' })),
     el('div', { class: 'mo-body' },
-      el('div', { class: 'mo-ctl' }, level.node, mute, dim, el('div', { class: 'mo-gap' }), all, auxBtn, focus),
+      el('div', { class: 'mo-ctl' }, level.node, mute, dim, el('div', { class: 'mo-gap' }), all, clrSolo, auxBtn, focus),
       el('div', { class: 'mo-meters', title: 'Main out L/R: the monitor mix as the unit plays it (its loopback, before the monitor level), dBFS' },
         el('div', { class: 'mo-bars' }, mL.node, mR.node),
         el('div', { class: 'mo-peaks' }, el('span', { class: 'mo-pk' }, el('span', { class: 'mo-ch', text: 'L' }), pL),
           el('span', { class: 'mo-pk' }, el('span', { class: 'mo-ch', text: 'R' }), pR)))));
-  return { node, level, mute, dim, all, focus, mL, mR, pL, pR, lastL: '', lastR: '' };
+  return { node, level, mute, dim, all, clrSolo, focus, mL, mR, pL, pR, lastL: '', lastR: '' };
 }
 
 /* [Themes] the focus view (Day): one input open with everything about it, the others an overview */
@@ -2668,6 +2685,7 @@ function renderMixFor(idx) {
   }
   if (sg.master) {
     setChecked(sg.master.all, buses.length > 0 && buses.every(b => vals.get(b).mute));
+    if (sg.master.clrSolo) sg.master.clrSolo.hidden = !anySolo;      /* [Mix] SoloClear */
     sg.master.all.classList.toggle('refused', refusedOn(idx, 'mix:mixmuteall'));
   }
 }
@@ -2887,6 +2905,7 @@ function buildMonitor() {
   mon.altCard = el('div', { class: 'mon-card mon-alt' }, el('div', { class: 'sect-title', text: 'ALT speakers' }), mon.altRows,
     el('span', { class: 'hp-note', text: 'An ALT pair follows the monitor level; trim matches it to the main speakers.' }));
   root.append(mon.altCard);
+  root.append(Outs.card());            /* [Out] reference levels, S/PDIF mirror, FCN, meter holds, aux mono, identify */
 
   let downAt = 0, wasOn = false;
   mon.talk = sw('TALKBACK', { big: true, cls: 'talk', title: 'Click to latch, hold to talk' });
@@ -2987,6 +3006,7 @@ function renderMonitor() {
   renderMix();
   if (!mon.mono) return;
   syncMonitorModel();
+  Outs.render();                       /* [Out] */
   const m = S.mon;
   mon.hp1.set(m.hp1);
   mon.hp1.setUnconfirmed(isPending('mon:hp1'));
@@ -3533,6 +3553,12 @@ let logTimer = 0;
 
 function buildDevice() {
   document.getElementById('logRefresh').addEventListener('click', requestLog);
+  document.getElementById('paramsRefresh').addEventListener('click', requestParams);    /* [Params] */
+  document.getElementById('diagSave').addEventListener('click', () => {                 /* [Diag] app/src/diag_host.h */
+    if (S.demo || !host) { toast('Diagnostics come from the driver: not in the demo.', 'warn'); return; }
+    send(JSON.stringify({ cmd: 'diag-save' }));
+    toast('Saving diagnostics...');
+  });
   document.getElementById('logCopy').addEventListener('click', () => {
     const text = document.getElementById('log').textContent;
     navigator.clipboard.writeText(text).then(() => toast('Driver log copied.'), () => toast('Copy failed.', 'warn'));
@@ -3590,6 +3616,67 @@ function renderDevice() {
   document.getElementById('devFlags').replaceChildren(
     ...FLAG_CHIPS.map(([f, label]) => el('span', { class: 'chip' + ((flags & f) ? ' on' : ''), text: label })));
   renderDeviceRate();
+  renderParams();
+}
+
+/* ------------------------------------------------------------------ */
+/* [Params] the selected unit's driver Parameters (app/src/params_host.h; read-only here)               */
+/* ------------------------------------------------------------------ */
+
+const paramsByUnit = new Map();         /* unit id -> the last "params" message */
+const PARAM_SRC = { D: 'built-in default', U: 'this unit (Units key)', M: 'model key', G: 'legacy global', X: 'forced by Mode' };
+
+function requestParams() {
+  const id = mixKey(S.sel);
+  if (S.demo || !id) { renderParams(); return; }
+  send(JSON.stringify({ cmd: 'params-get', unit: id }));
+}
+
+/*
+ * [Events] What the driver reported as it happened (app/src/main.cpp EventPumpMain, include/apollo_events.h): a DSP that
+ * stopped answering or a lost engine is said at once; a rate or clock change asks for the new state now; parameters
+ * stored for the next start refresh the Device view. Stage and leaving changes come through the status as before.
+ */
+function onDriverEvent(m) {
+  const idx = msgUnit(m), name = unitShort(idx) || 'Apollo';
+  if (m.reset) return;                                     /* the ring of a driver that just started: old news */
+  if (m.kind === 'dsp-fault') {
+    toast(`${name}: DSP ${m.a} stopped answering and is set aside until the ${name} is power-cycled (0x${(m.b >>> 0).toString(16).toUpperCase()}).`, 'bad', 15000);
+  } else if (m.kind === 'engine-lost') {
+    toast(`${name}: the audio engine lost the unit. Check the Thunderbolt cable and power.`, 'bad', 10000);
+  } else if (m.kind === 'rate' || m.kind === 'clock') {
+    RATE.asked = -1e9;
+    rateAsk();
+  } else if (m.kind === 'params' && S.view === 'device' && idx === S.sel) {
+    requestParams();
+  }
+}
+
+function onParams(m) {
+  if (typeof m.unit === 'string') paramsByUnit.set(m.unit, m);
+  if (S.view === 'device') renderParams();
+}
+
+function renderParams() {
+  const box = document.getElementById('devParams');
+  if (!box) return;
+  const m = paramsByUnit.get(mixKey(S.sel));
+  if (!m) { box.replaceChildren(el('p', { class: 'muted', text: S.demo ? 'Not in the demo.' : 'Press Refresh to read them.' })); return; }
+  if (!m.present || m.error) {
+    box.replaceChildren(el('p', { class: 'muted', text: m.error === 1 ? 'The installed driver predates this (no GET_PARAMS).' : `Not read: ${m.detail || `error ${m.error}`}` }));
+    return;
+  }
+  const fmt = (e, v) => (v === null || v === undefined ? '-' : e.hex ? hex(v, 1) : String(v));
+  const head = el('tr', {}, ...['Parameter', 'In force', 'From', 'Default', 'Stored'].map(t => el('th', { text: t })));
+  const rows = (m.entries || []).map(e => el('tr', { class: e.pending ? 'pending' : '' },
+    el('td', { text: e.name }), el('td', { class: 'num', text: fmt(e, e.value) }),
+    el('td', { text: e.src, title: PARAM_SRC[e.src] || e.src }), el('td', { class: 'num', text: fmt(e, e.default) }),
+    el('td', { class: 'num', text: fmt(e, e.stored) + (e.pending ? ' (next start)' : '') })));
+  const pend = (m.entries || []).filter(e => e.pending).length;
+  box.replaceChildren(
+    el('p', { class: 'muted', text: `Units\\${m.key || '-'}${m.resolved ? '' : ' (not identified)'}. Read-only here: an elevated apollo-diag param <name> <value> stores one for the unit's next start.` }),
+    el('table', { class: 'params-table' }, el('thead', {}, head), el('tbody', {}, ...rows)),
+    pend ? el('p', { class: 'muted', text: `${pend} stored value(s) apply at the unit's next start.` }) : null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -4422,6 +4509,7 @@ function wireChrome() {
     if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && S.view === 'control') { Plug.focusSearch(); e.preventDefault(); return; }
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+    if (Undo.key(e)) { e.preventDefault(); return; }               /* [Undo] Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z */
     const n = /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
     if (e.ctrlKey && !e.altKey && n >= 1 && n <= VIEWS.length) {
       showView(VIEWS[n - 1]);
@@ -4451,6 +4539,7 @@ function boot() {
   Sig.build();                         /* [Themes] HI-SCORE, the measurement panel, the signal-flow overlay (signatures.js) */
   Cmd.build();                         /* [Themes] Mono's command line (cmd.js; Ctrl+K is the palette everywhere) */
   Sess.build();                        /* [Sess] the session button and list (sessions.js) */
+  Undo.build();                        /* [Undo] the undo / redo buttons (undo.js) */
   buildCues();
   renderUnitBar();
   buildBridge();

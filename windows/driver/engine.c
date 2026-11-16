@@ -424,6 +424,7 @@ static BOOLEAN EngineTickBody(_In_ PDEVICE_CONTEXT ctx)
         ULONG dead = ctx->EngDeadRun, slowRun = ctx->EngSlowRun;
 
         InterlockedExchange(&ctx->EngLost, 1);
+        ApolloEventPost(ctx, APOLLO_EVENT_ENGINE_LOST, dead, slowRun);           /* [Events] */
         /*
          * Nothing zeroes ahead of the hardware from now on. If it is in fact still
          * running (a false positive), it would loop the last 170 ms forever: silence

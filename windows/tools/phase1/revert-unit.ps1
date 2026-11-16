@@ -1,5 +1,5 @@
 # Put ONE Apollo back on Universal Audio's driver and leave every other unit as it is. ADMIN PowerShell.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\revert-unit.ps1 -Unit twinx [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\revert-unit.ps1 -Unit twinx [-Yes]
 #   ... -Unit x8p                 the x8p only; the Twin X keeps its driver
 #   ... -InstanceId '<id>'        one unit by its PnP instance ID (PCI\VEN_1A00&DEV_0002&SUBSYS_...\...)
 # The "Twin X back to UA" desktop shortcut (new-revert-shortcut.ps1) runs: -Unit twinx -Yes.

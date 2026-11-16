@@ -113,7 +113,7 @@ on-chip SHARC route is research. Details: [DSP.md](DSP.md).
 
 | # | Decision | Status |
 |---|---|---|
-| 1 | Toolchain | EWDK 26H1 ISO, downloading to `C:\Users\aaron\Downloads\EWDK` |
+| 1 | Toolchain | EWDK 26H1 ISO, downloading to `%USERPROFILE%\Downloads\EWDK` |
 | 2 | First target | x8p |
 | 3 | Every channel visible in Windows | required (Aaron, Nov 10) |
 | 4 | Endpoint layout | every input as a mono endpoint AND in a stereo pair; outputs as stereo pairs (Aaron, Nov 10) |

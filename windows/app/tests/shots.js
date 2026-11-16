@@ -4,7 +4,7 @@
 // The demo's plug-ins are invented and their previews are drawn placeholders: nothing from a UAD install is in these.
 // [Sess] Then the session list per theme (session-<theme>.png): three saved sessions, the current one edited since its
 // save, the autosaved last state. node shots.js <folder> sessions takes only those.
-const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/aaron/Desktop/Avium/Avium Invoid/node_modules/playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const fs = require('fs');
 const out = process.argv[2] || path.join(__dirname, 'shots');

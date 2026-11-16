@@ -1,6 +1,6 @@
 # Twin X gate G2 "observe" (docs/spec-twinx.md section 7): bind ONLY the Twin X to apollo.sys in observe mode
 # (Mode 0: identify and quiesce, nothing else), read its identity, keep the x8p exactly as it is. ADMIN.
-#   powershell -ExecutionPolicy Bypass -File C:\Users\aaron\Desktop\Avium\apollo-win\tools\phase1\step-g2.ps1 [-Package <folder>] [-Yes]
+#   powershell -ExecutionPolicy Bypass -File C:\apollo-win\tools\phase1\step-g2.ps1 [-Package <folder>] [-Yes]
 # Default package: builds\2026-11-14-g2\package (the frozen G2 build).
 #
 # Both units share one loaded apollo.sys, so the x8p must already run this package:

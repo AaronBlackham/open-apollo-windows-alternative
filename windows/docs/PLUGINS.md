@@ -14,6 +14,21 @@ least 0x1C0 / 0x80 / 0); F_START needs F_CHAIN; nothing is placed on the strip D
 a plug-in call waits for StripLock at most 10 s, but its DevLock waits are unbounded (as every IOCTL's but the
 3 s ones in ioctl.c), so a call that arrives during a long bring-up (ACEFACE, DSP-ready waits) waits for it to end.
 
+Nov 16 2026 (chainfix, builds\work-chainfix, offline only; the hardware run below is not done yet): the first two-insert
+chain, UAD Sphere Mic Collection 180 + UAD AKG BX 20 stereo on x8p inputs 1-2, stopped DSP 1 at routing (Nov 15). Offline:
+the composed chain is upstream's compose() line for line (`chain-compare.py`, 373 lines), and its code (14,912 of 16,384
+words), pool-2 scratch (2,624), largest row (634,979 words) and load (1,190 + 3,621 units) are all within what single
+plug-ins already ran at on this x8p or upstream; the kind-3 module went to pool 3 like any data module (upstream sends it
+the same way, and five plug-ins on its live list carry one), and DSP 1 acknowledged it. The AKG BX 20 is the outlier:
+open-apollo excludes it from user-built maps ("startup words recorded from a Mac trace"), and our map starts it with 47
+words for 70 rows (2,708-word root row, 9,873 pool-1 words, 1,025,151 pool-3 words). Fix in Apollo Control
+(`plugin_host.h` Qualification, `plugin_engine.h`): plug-ins on open-apollo's `excluded` / `not_yet_supported` lists are
+refused ("Not qualified") unless this unit ran them in that layout (the floor in `QualFloor`, `plugins\p1\proven.txt`;
+`HKCU\Software\Avium\ApolloControl\ExperimentalPlugins = 1` turns the check off); and every routed chain's head is read
+once after START: no answer means the DSP stopped, and the chain's inserts are saved bypassed so neither a restart nor the
+next power cycle loads them again. The one-active-insert guard (`ExperimentalChains`) stays until
+`builds\work-chainfix\tools\phase1\chainfix-hw.ps1` steps 4-5 pass on the x8p.
+
 Nov 15 2026, night (warmplug): **plug-ins after a warm start, and the chains' latency in the DAW, built with offline
 tests, not run on hardware.** After an x8p warm start that adopted its strips (`docs/STRIPS.md` 12), DSP 1 takes plug-ins as
 after a cold start: `StripWarmPlugins` (default 1) replaces `StripWarmRebuild` as the gate, the anchored record is the
