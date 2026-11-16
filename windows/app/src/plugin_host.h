@@ -1430,8 +1430,8 @@ static inline std::string QualKey(std::string name, std::string &layout)
 /* The floor: what this x8p and upstream proved, kept even without the files. */
 static inline void QualFloor(Qualification &q)
 {
-    q.refused["UAD AKG BX 20|*"] = "startup words recorded from a Mac trace (open-apollo); the chain it was in stopped this x8p's "
-                                   "DSP 1 on Nov 15 2026";
+    q.refused["UAD AKG BX 20|*"] = "startup words recorded from a Mac trace (open-apollo); alone on x8p inputs 1-2 it stopped "
+                                   "DSP 1 at its first readback (Nov 16 2026 test): a power cycle was needed";
     q.refused["UAD Studio D Chorus|*"] = "skipped: mono load hung DSP 1 (-110, quarantined until a cold start) (open-apollo)";
     /* docs/PLUGINS.md 4.1 / step-p1, Nov 15 2026: gate P1 passed on x8p input 1 (mono) */
     for (const char *n : { "UAD Ampeg SVTVR Classic", "UAD Lexicon 480L", "UAD Precision De-Esser", "UAD UA 1176LN Legacy" }) {

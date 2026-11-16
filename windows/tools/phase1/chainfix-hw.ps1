@@ -9,8 +9,8 @@
 #   4  a two-insert chain of plug-ins proven alone (Precision De-Esser + UA 1176LN Legacy), mono on input 1, 10 s
 #   5  the incident's chain shape with the AKG swapped for a light plug-in: Sphere Mic Collection 180 + Precision
 #      De-Esser, stereo on inputs 1/2, 3 startup pages staged, 10 s
-#   -Upto N stops after step N. Recipes: apollo-win\plugins\p1 (UA-derived, local only).
-param([int]$Upto = 5, [switch]$Yes)
+#   -Upto N stops after step N; -From N skips the steps before N (2-5; step 1, the preconditions, always runs). Recipes: apollo-win\plugins\p1 (UA-derived, local only).
+param([int]$Upto = 5, [int]$From = 2, [switch]$Yes)
 
 $ErrorActionPreference = 'Continue'     # native tools write to stderr; never turn that into a throw
 $root = 'C:\apollo-win'
@@ -83,15 +83,19 @@ foreach ($r in $akg, $c1m, $c1s) {
 }
 
 # --- 2: the AKG alone, unrouted ---
+if ($From -le 2) {
 Note ''; Note '=== step 2: AKG BX 20 alone, unrouted on DSP 1 (its code never runs)'
 [void](Plug @('create-plain', $akg, '--dsp', '1'))
 Gate 'step 2 (AKG unrouted)'
+}
 if ($Upto -le 2) { PluginLog; Done 0 }
 
 # --- 3: the AKG alone, routed ---
+if ($From -le 3) {
 Note ''; Note '=== step 3: AKG BX 20 alone, routed stereo on inputs 1/2 for 10 s'
 [void](Plug @('create-start', $akg, '--dsp', '1', '--hold', '10', '--mon'))
 Gate 'step 3 (AKG alone, routed)'
+}
 if ($Upto -le 3) { PluginLog; Done 0 }
 
 # --- 4: two proven inserts, mono ---

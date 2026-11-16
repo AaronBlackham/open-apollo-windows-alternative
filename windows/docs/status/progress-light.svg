@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1172" height="506" viewBox="0 0 1172 506" role="img" aria-label="Parity maps: open-apollo 739 of 1015 behaviours, the Windows port 660 of 1015">
+<svg xmlns="http://www.w3.org/2000/svg" width="1172" height="506" viewBox="0 0 1172 506" role="img" aria-label="Parity maps: open-apollo 739 of 1015 behaviours, the Windows port 684 of 1015">
 <style>text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}.h{font-size:13px;font-weight:600;fill:#1f2328}.s{font-size:12px;fill:#656d76}.l{font-size:10px;fill:#1f2328}.c{font-size:10px;fill:#656d76}.g{font-size:11px;fill:#656d76}</style>
 <defs><pattern id="hatch-light" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" fill="#d4a017"/><rect width="1.3" height="4" fill="#ffffff" fill-opacity="0.55"/></pattern></defs>
 <rect width="100%" height="100%" fill="#ffffff"/>
@@ -6,7 +6,7 @@
 <text x="0" y="12" class="h">open-apollo (Linux), Oct 11 2026</text>
 <text x="560" y="12" class="s" text-anchor="end">739 of 1015 &#183; 72.8%</text>
 <text x="596" y="12" class="h">Windows port, Nov 16 2026</text>
-<text x="1156" y="12" class="s" text-anchor="end">660 of 1015 &#183; 65.0%</text>
+<text x="1156" y="12" class="s" text-anchor="end">684 of 1015 &#183; 67.4%</text>
 <text x="3.0" y="34.0" class="l">Kext classes</text>
 <text x="153.7" y="34.0" class="c" text-anchor="end">75/142</text>
 <rect x="2.0" y="38.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes com_uaudio_driv…: 1 lifecycle | open-apollo: done in code</title></rect>
@@ -1049,7 +1049,7 @@
 <rect x="522.2" y="382.6" width="9.5" height="9.5" rx="1" fill="#d1242f"><title>Windows PCIe C07: /1840/1930 | open-apollo: needs hardware</title></rect>
 <rect x="533.2" y="382.6" width="9.5" height="9.5" rx="1" fill="#d1242f"><title>Windows PCIe C08: CLI pass-through: EnableCLI (0xC3F4 = en, 0xC3F8 = 0, 0xC3FC = 0), Send… | open-apollo: needs hardware</title></rect>
 <text x="599.0" y="34.0" class="l">Kext classes</text>
-<text x="749.7" y="34.0" class="c" text-anchor="end">103/142</text>
+<text x="749.7" y="34.0" class="c" text-anchor="end">106/142</text>
 <rect x="598.0" y="38.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>Kext classes com_uaudio_driv…: 1 lifecycle | ours: verified on hardware</title></rect>
 <rect x="611.0" y="38.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>Kext classes CPcieDevice: 1 lifecycle | ours: verified on hardware</title></rect>
 <rect x="624.0" y="38.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>Kext classes CPcieIntrManager: 1 lifecycle | ours: verified on hardware</title></rect>
@@ -1142,38 +1142,38 @@
 <rect x="611.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes ClockSourceIsAv…: helpers | ours: done in code</title></rect>
 <rect x="624.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes createNewAudioS…: streams and formats per rate band | ours: done in code</title></rect>
 <rect x="637.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes performAudioEng…: start/stop, pause on clock change | ours: done in code</title></rect>
-<rect x="650.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes ClockSourceIsAv…: source validity | ours: done in code</title></rect>
-<rect x="663.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes Set/GetPluginFo…: synchronous plugin to bus map | ours: done in code</title></rect>
-<rect x="676.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes StartAudio / St…: multi-device transport start/stop and restart on layout change | ours: done in code</title></rect>
-<rect x="689.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes SetAudioSampleR…: rate change across units with ack wait | ours: done in code</title></rect>
-<rect x="702.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes SetOutputDelayC…: latency knobs | ours: done in code</title></rect>
-<rect x="715.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes _handleNotifica…: event fan-out | ours: done in code</title></rect>
-<rect x="728.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes AddSession / Re…: sessions | ours: done in code</title></rect>
-<rect x="598.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes registerNotific…: async notification to user | ours: done in code</title></rect>
-<rect x="611.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 1: CPcieAudioExtension / CDeviceManager sample-rate change: the kext seque… | ours: done in code</title></rect>
-<rect x="624.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 5: UAD2Pcie2 power-state callbacks / UAD2System::performPowerStateChange:… | ours: done in code</title></rect>
-<rect x="637.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 14: CUAD2Device::testInterrupt and CPcieAudioExtension diagnostics (SetDiag… | ours: done in code</title></rect>
-<rect x="650.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CDeviceBus: 6 manager | ours: partial or being built</title></rect>
-<rect x="663.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CDSPResourceMan…: PLUGIN-HOST (triage 2026-10-11, was MISSING: DSP resource manager) — MI… | ours: partial or being built</title></rect>
-<rect x="676.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CSession: 8 session | ours: partial or being built</title></rect>
-<rect x="689.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes GetLatency, app…: latency report and output delay comp | ours: partial or being built</title></rect>
-<rect x="702.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SetSampleClock…: clock source and rate, firmware rate poll | ours: partial or being built</title></rect>
-<rect x="715.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes GetOutputDelayC…: per-output delay comp | ours: partial or being built</title></rect>
-<rect x="728.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes ResetDSP, _erro…: DSP reset and error events | ours: partial or being built</title></rect>
-<rect x="598.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SetInputParam,…: input param routing ARM vs DSP; scale; direct output route | ours: partial or being built</title></rect>
-<rect x="611.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes isSpannedFrom/T…: spanning inputs across DSPs | ours: partial or being built</title></rect>
-<rect x="624.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SetAudioClock /…: clock source and master selection | ours: partial or being built</title></rect>
-<rect x="637.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes StartTransports…: start units on one bus together | ours: partial or being built</title></rect>
-<rect x="650.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes AddDSP / Remove…: DSP inventory and power | ours: partial or being built</title></rect>
-<rect x="663.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CreatePluginIns…: placement and rebalance | ours: partial or being built</title></rect>
-<rect x="676.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SendSystemMessa…: system messages and latency broadcast | ours: partial or being built</title></rect>
-<rect x="689.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes ComputeCost / C…: load model | ours: partial or being built</title></rect>
-<rect x="702.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SetSampleRate,…: rate, sync mode, events | ours: partial or being built</title></rect>
-<rect x="715.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes AdjustLoad, Unl…: load and rebalance | ours: partial or being built</title></rect>
-<rect x="728.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes Initialize / Se…: session identity and format (rate change = format change) | ours: partial or being built</title></rect>
-<rect x="598.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes Session: SetSes…: session | ours: partial or being built</title></rect>
-<rect x="611.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes 4: Non-x4 models: CUAD2DeviceMixer DSP-side input params, spanning across… | ours: partial or being built</title></rect>
-<rect x="624.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes 7: CPcieAudioExtension S/PDIF, ADAT, Word Clock lock and digital I/O: cloc… | ours: partial or being built</title></rect>
+<rect x="650.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes SetSampleClock…: clock source and rate, firmware rate poll | ours: done in code</title></rect>
+<rect x="663.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes ClockSourceIsAv…: source validity | ours: done in code</title></rect>
+<rect x="676.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes Set/GetPluginFo…: synchronous plugin to bus map | ours: done in code</title></rect>
+<rect x="689.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes StartAudio / St…: multi-device transport start/stop and restart on layout change | ours: done in code</title></rect>
+<rect x="702.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes SetAudioSampleR…: rate change across units with ack wait | ours: done in code</title></rect>
+<rect x="715.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes SetAudioClock /…: clock source and master selection | ours: done in code</title></rect>
+<rect x="728.0" y="142.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes SetOutputDelayC…: latency knobs | ours: done in code</title></rect>
+<rect x="598.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes _handleNotifica…: event fan-out | ours: done in code</title></rect>
+<rect x="611.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes AddSession / Re…: sessions | ours: done in code</title></rect>
+<rect x="624.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes registerNotific…: async notification to user | ours: done in code</title></rect>
+<rect x="637.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 1: CPcieAudioExtension / CDeviceManager sample-rate change: the kext seque… | ours: done in code</title></rect>
+<rect x="650.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 5: UAD2Pcie2 power-state callbacks / UAD2System::performPowerStateChange:… | ours: done in code</title></rect>
+<rect x="663.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 7: CPcieAudioExtension S/PDIF, ADAT, Word Clock lock and digital I/O: cloc… | ours: done in code</title></rect>
+<rect x="676.0" y="155.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes 14: CUAD2Device::testInterrupt and CPcieAudioExtension diagnostics (SetDiag… | ours: done in code</title></rect>
+<rect x="689.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CDeviceBus: 6 manager | ours: partial or being built</title></rect>
+<rect x="702.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CDSPResourceMan…: PLUGIN-HOST (triage 2026-10-11, was MISSING: DSP resource manager) — MI… | ours: partial or being built</title></rect>
+<rect x="715.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CSession: 8 session | ours: partial or being built</title></rect>
+<rect x="728.0" y="155.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes GetLatency, app…: latency report and output delay comp | ours: partial or being built</title></rect>
+<rect x="598.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes GetOutputDelayC…: per-output delay comp | ours: partial or being built</title></rect>
+<rect x="611.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes ResetDSP, _erro…: DSP reset and error events | ours: partial or being built</title></rect>
+<rect x="624.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SetInputParam,…: input param routing ARM vs DSP; scale; direct output route | ours: partial or being built</title></rect>
+<rect x="637.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes isSpannedFrom/T…: spanning inputs across DSPs | ours: partial or being built</title></rect>
+<rect x="650.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes StartTransports…: start units on one bus together | ours: partial or being built</title></rect>
+<rect x="663.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes AddDSP / Remove…: DSP inventory and power | ours: partial or being built</title></rect>
+<rect x="676.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes CreatePluginIns…: placement and rebalance | ours: partial or being built</title></rect>
+<rect x="689.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SendSystemMessa…: system messages and latency broadcast | ours: partial or being built</title></rect>
+<rect x="702.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes ComputeCost / C…: load model | ours: partial or being built</title></rect>
+<rect x="715.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes SetSampleRate,…: rate, sync mode, events | ours: partial or being built</title></rect>
+<rect x="728.0" y="168.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes AdjustLoad, Unl…: load and rebalance | ours: partial or being built</title></rect>
+<rect x="598.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes Initialize / Se…: session identity and format (rate change = format change) | ours: partial or being built</title></rect>
+<rect x="611.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes Session: SetSes…: session | ours: partial or being built</title></rect>
+<rect x="624.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes 4: Non-x4 models: CUAD2DeviceMixer DSP-side input params, spanning across… | ours: partial or being built</title></rect>
 <rect x="637.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes 9: Talkback audio and virtual/loopback channels (CUAD2DeviceMixer other-pa… | ours: partial or being built</title></rect>
 <rect x="650.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes 11: Plugin host: CAllocator, CDSPResourceManager, CPluginInstance, CChain,… | ours: partial or being built</title></rect>
 <rect x="663.0" y="181.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Kext classes 12: Output delay compensation and latency knobs (CPcieAudioExtension::GetOu… | ours: partial or being built</title></rect>
@@ -1193,7 +1193,7 @@
 <rect x="702.0" y="194.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Kext classes 3: CUAD2Device::LoadFirmware / _sendBlock fan-out to DSPs 1-3 (x8/x8p/x16… | ours: not done</title></rect>
 <rect x="715.0" y="194.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Kext classes 15: CPcieAudioExtension::EnableCLI/SendCLICommand: CLI (ARM MCU) is blocked… | ours: not done</title></rect>
 <text x="599.0" y="234.0" class="l">Mixer params</text>
-<text x="749.7" y="234.0" class="c" text-anchor="end">68/142</text>
+<text x="749.7" y="234.0" class="c" text-anchor="end">69/142</text>
 <rect x="598.0" y="238.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>Mixer params A2: SetInputParam(ch=a, param=b, value=c) (+0x30) | ours: verified on hardware</title></rect>
 <rect x="611.0" y="238.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>Mixer params A4: AckSampleRateChange(a=rate) (+0x48), then CDeviceManager::AckRateChange… | ours: verified on hardware</title></rect>
 <rect x="624.0" y="238.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>Mixer params A5: any other | ours: verified on hardware</title></rect>
@@ -1244,50 +1244,50 @@
 <rect x="637.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x19-0x1c: kPropPad (0x9) on outputs with synch 8,9 / 10,11 / 12,13 / 14,15 (H; th… | ours: done in code</title></rect>
 <rect x="650.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x1d: IdentifyDevice::Do (H) | ours: done in code</title></rect>
 <rect x="663.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x1e: kPropCRToSPDIF (0x59) (H) | ours: done in code</title></rect>
-<rect x="676.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x22: kPropMixInSource, output synch 0x18 (H) | ours: done in code</title></rect>
-<rect x="689.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x23: kPropMixToMono, output synch 0x18 (H) | ours: done in code</title></rect>
-<rect x="702.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x24: kPropMixInSource, output synch 0x1a (H) | ours: done in code</title></rect>
-<rect x="715.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x32: kPropPad (0x9) on outputs synch 0,1 = output reference level (H) | ours: done in code</title></rect>
-<rect x="728.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x3d: error -0x12 | ours: done in code</title></rect>
-<rect x="598.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x3f: kPropMixInSource, output synch 0x1c = HP1 source; value-1 unless 0 or 7… | ours: done in code</title></rect>
-<rect x="611.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x40: same, synch 0x1e = HP2 source (H) | ours: done in code</title></rect>
-<rect x="624.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x42: kPropFuncSwitchMode (0xf9), mode &lt;= 5 (H) | ours: done in code</title></rect>
-<rect x="637.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x43: kPropDimAttenuation (0xfa): 7 if &gt; 0x3b else round(att/8.5) (H) | ours: done in code</title></rect>
-<rect x="650.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params &gt; 0x8a: silently ignored | ours: done in code</title></rect>
-<rect x="663.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params B8: param 1 | ours: done in code</title></rect>
-<rect x="676.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params B10: param 3 | ours: done in code</title></rect>
-<rect x="689.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params B11: param 4 | ours: done in code</title></rect>
-<rect x="702.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 7: gain lanes for inputs 4-7 (same layout as word 3). On the x4 [7:0] read… | ours: done in code</title></rect>
-<rect x="715.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 12-15: ADAT 1-4 (12, 13) and 5-8 (14, 15) | ours: done in code</title></rect>
-<rect x="728.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 16: S/PDIF L/R | ours: done in code</title></rect>
-<rect x="598.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 19-20: aux 1 and aux 2 returns L/R (12-bit) | ours: done in code</title></rect>
-<rect x="611.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 22-25: virtual 1-8 meters | ours: done in code</title></rect>
-<rect x="624.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params A3: SetOtherParam(param=b, value=c) (+0x38); a is ignored | ours: partial or being built</title></rect>
-<rect x="637.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x07: kPropImpedance (0xa) via ConvertImpedanceToHWCode (H) | ours: partial or being built</title></rect>
-<rect x="650.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x08: kPropCustomIntegratedPreamp (0xb1/0xb4): custom (Unison) preamp on (M) | ours: partial or being built</title></rect>
-<rect x="663.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x09: custom-preamp lane (Unison family, props 0x9c-0xa4/0xbc/0xbe) (M) | ours: partial or being built</title></rect>
-<rect x="676.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0a: same | ours: partial or being built</title></rect>
-<rect x="689.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0b: LED-steps value of a custom-preamp knob (M) | ours: partial or being built</title></rect>
-<rect x="702.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0c: same family | ours: partial or being built</title></rect>
-<rect x="715.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0d: same family, non-LED float (M) | ours: partial or being built</title></rect>
-<rect x="728.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0e: same family | ours: partial or being built</title></rect>
-<rect x="598.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0f: same family | ours: partial or being built</title></rect>
-<rect x="611.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x10: kPropPreampInputKnobSteps (0xbc), value &amp; 0xf (M) | ours: partial or being built</title></rect>
-<rect x="624.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x11: kPropHiZImpedance (0xbb) via ConvertHiZImpedanceToHWCode (H) | ours: partial or being built</title></rect>
-<rect x="637.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x12: kPropPreampSelectedParam (0xbe) (M) | ours: partial or being built</title></rect>
-<rect x="650.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x13: direct-output route (kPropDirectOutputMonitorMixEnable 0xcd path, Clear… | ours: partial or being built</title></rect>
-<rect x="663.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x16: span info (kPropDSPSpanning) (H) | ours: partial or being built</title></rect>
-<rect x="676.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x21: device mode word: PushDeviceMode (kPropMultiUnitOrder 0x80, TOSLINKType… | ours: partial or being built</title></rect>
-<rect x="689.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x46: kPropTalkbackOn (0x110) (H) | ours: partial or being built</title></rect>
-<rect x="702.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x64: trim-sync / setAllCorrectionsEnable (M) | ours: partial or being built</title></rect>
-<rect x="715.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x67: kPropSpeakerCorrectionMode (0x143) / BassMgrEnable (0x16f) (M) | ours: partial or being built</title></rect>
-<rect x="728.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x6a: UpdateADCDelayComp (H) | ours: partial or being built</title></rect>
-<rect x="598.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params A1: SetBusEnable(a=bus, b=enable) (+0x20) | ours: not done</title></rect>
-<rect x="611.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params A6: GetMixerParam (SEL1xx, ) | ours: not done</title></rect>
-<rect x="624.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x14: kPropHiZ (0xb), host write only when kPropInputJackSensingDisabled (0x1… | ours: not done</title></rect>
-<rect x="637.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x17: kPropRawRecordEnable (0x186) (H) | ours: not done</title></rect>
-<rect x="650.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x15: kPropPostFaderMetering (0x4a) (H) | ours: not done</title></rect>
-<rect x="663.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x1f: kPropSRCActive (0x3b), input IOType 2 (S/PDIF) (H) | ours: not done</title></rect>
+<rect x="676.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x1f: kPropSRCActive (0x3b), input IOType 2 (S/PDIF) (H) | ours: done in code</title></rect>
+<rect x="689.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x22: kPropMixInSource, output synch 0x18 (H) | ours: done in code</title></rect>
+<rect x="702.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x23: kPropMixToMono, output synch 0x18 (H) | ours: done in code</title></rect>
+<rect x="715.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x24: kPropMixInSource, output synch 0x1a (H) | ours: done in code</title></rect>
+<rect x="728.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x32: kPropPad (0x9) on outputs synch 0,1 = output reference level (H) | ours: done in code</title></rect>
+<rect x="598.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x3d: error -0x12 | ours: done in code</title></rect>
+<rect x="611.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x3f: kPropMixInSource, output synch 0x1c = HP1 source; value-1 unless 0 or 7… | ours: done in code</title></rect>
+<rect x="624.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x40: same, synch 0x1e = HP2 source (H) | ours: done in code</title></rect>
+<rect x="637.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x42: kPropFuncSwitchMode (0xf9), mode &lt;= 5 (H) | ours: done in code</title></rect>
+<rect x="650.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 0x43: kPropDimAttenuation (0xfa): 7 if &gt; 0x3b else round(att/8.5) (H) | ours: done in code</title></rect>
+<rect x="663.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params &gt; 0x8a: silently ignored | ours: done in code</title></rect>
+<rect x="676.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params B8: param 1 | ours: done in code</title></rect>
+<rect x="689.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params B10: param 3 | ours: done in code</title></rect>
+<rect x="702.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params B11: param 4 | ours: done in code</title></rect>
+<rect x="715.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 7: gain lanes for inputs 4-7 (same layout as word 3). On the x4 [7:0] read… | ours: done in code</title></rect>
+<rect x="728.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 12-15: ADAT 1-4 (12, 13) and 5-8 (14, 15) | ours: done in code</title></rect>
+<rect x="598.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 16: S/PDIF L/R | ours: done in code</title></rect>
+<rect x="611.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 19-20: aux 1 and aux 2 returns L/R (12-bit) | ours: done in code</title></rect>
+<rect x="624.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Mixer params 22-25: virtual 1-8 meters | ours: done in code</title></rect>
+<rect x="637.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params A3: SetOtherParam(param=b, value=c) (+0x38); a is ignored | ours: partial or being built</title></rect>
+<rect x="650.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x07: kPropImpedance (0xa) via ConvertImpedanceToHWCode (H) | ours: partial or being built</title></rect>
+<rect x="663.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x08: kPropCustomIntegratedPreamp (0xb1/0xb4): custom (Unison) preamp on (M) | ours: partial or being built</title></rect>
+<rect x="676.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x09: custom-preamp lane (Unison family, props 0x9c-0xa4/0xbc/0xbe) (M) | ours: partial or being built</title></rect>
+<rect x="689.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0a: same | ours: partial or being built</title></rect>
+<rect x="702.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0b: LED-steps value of a custom-preamp knob (M) | ours: partial or being built</title></rect>
+<rect x="715.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0c: same family | ours: partial or being built</title></rect>
+<rect x="728.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0d: same family, non-LED float (M) | ours: partial or being built</title></rect>
+<rect x="598.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0e: same family | ours: partial or being built</title></rect>
+<rect x="611.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x0f: same family | ours: partial or being built</title></rect>
+<rect x="624.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x10: kPropPreampInputKnobSteps (0xbc), value &amp; 0xf (M) | ours: partial or being built</title></rect>
+<rect x="637.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x11: kPropHiZImpedance (0xbb) via ConvertHiZImpedanceToHWCode (H) | ours: partial or being built</title></rect>
+<rect x="650.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x12: kPropPreampSelectedParam (0xbe) (M) | ours: partial or being built</title></rect>
+<rect x="663.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x13: direct-output route (kPropDirectOutputMonitorMixEnable 0xcd path, Clear… | ours: partial or being built</title></rect>
+<rect x="676.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x16: span info (kPropDSPSpanning) (H) | ours: partial or being built</title></rect>
+<rect x="689.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x21: device mode word: PushDeviceMode (kPropMultiUnitOrder 0x80, TOSLINKType… | ours: partial or being built</title></rect>
+<rect x="702.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x46: kPropTalkbackOn (0x110) (H) | ours: partial or being built</title></rect>
+<rect x="715.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x64: trim-sync / setAllCorrectionsEnable (M) | ours: partial or being built</title></rect>
+<rect x="728.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x67: kPropSpeakerCorrectionMode (0x143) / BassMgrEnable (0x16f) (M) | ours: partial or being built</title></rect>
+<rect x="598.0" y="342.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>Mixer params 0x6a: UpdateADCDelayComp (H) | ours: partial or being built</title></rect>
+<rect x="611.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params A1: SetBusEnable(a=bus, b=enable) (+0x20) | ours: not done</title></rect>
+<rect x="624.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params A6: GetMixerParam (SEL1xx, ) | ours: not done</title></rect>
+<rect x="637.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x14: kPropHiZ (0xb), host write only when kPropInputJackSensingDisabled (0x1… | ours: not done</title></rect>
+<rect x="650.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x17: kPropRawRecordEnable (0x186) (H) | ours: not done</title></rect>
+<rect x="663.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x15: kPropPostFaderMetering (0x4a) (H) | ours: not done</title></rect>
 <rect x="676.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x20: kPropOutputsAttenuate (0x6a) (H) | ours: not done</title></rect>
 <rect x="689.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x2a-0x2d: kPropPad (0x9) on outputs synch 16/17, 18/19, 20/21, 22/23 (H) | ours: not done</title></rect>
 <rect x="702.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>Mixer params 0x2e: kPropOutputDestination (0x3e) on the cue output, synch 2 (H) | ours: not done</title></rect>
@@ -1451,7 +1451,7 @@
 <rect x="780.7" y="155.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>HW interface I05: DSP n: 5n+4 | ours: not done</title></rect>
 <rect x="793.7" y="155.0" width="11.5" height="11.5" rx="1" fill="#ced0d3"><title>HW interface I10: one-shot auto-mask | ours: not done</title></rect>
 <text x="755.7" y="184.3" class="l">Mixer Engine</text>
-<text x="914.1" y="184.3" class="c" text-anchor="end">58/99</text>
+<text x="914.1" y="184.3" class="c" text-anchor="end">68/99</text>
 <rect x="754.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Mixer Engine I1: Preamp gain (preamps/0/Gain, GainTapered, inputs 0-3) | ours: verified on hardware</title></rect>
 <rect x="766.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Mixer Engine I2: 48V (preamps/0/48V) | ours: verified on hardware</title></rect>
 <rect x="778.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Mixer Engine I3: IP 0x01 | ours: verified on hardware</title></rect>
@@ -1479,72 +1479,72 @@
 <rect x="886.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Mixer Engine H7: Device list, online/offline, firmware compatibility, assign devices to… | ours: verified on hardware</title></rect>
 <rect x="898.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine I8: HiZ jack detect (preamps/0/HiZ, inputs 0-1) | ours: done in code</title></rect>
 <rect x="754.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine I14: PGA disabled in line mode (x8p) | ours: done in code</title></rect>
-<rect x="766.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M2: Pan / Pan2 | ours: done in code</title></rect>
-<rect x="778.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M4: Solo | ours: done in code</title></rect>
-<rect x="790.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M6: Stereo-linked input drive | ours: done in code</title></rect>
-<rect x="802.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M8: Input level meters | ours: done in code</title></rect>
-<rect x="814.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M10: Peak/Clip hold, clear (/ClipHold, /PeakHold, ClearPeak...) | ours: done in code</title></rect>
-<rect x="826.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M11: /MeterPulse heartbeat | ours: done in code</title></rect>
-<rect x="838.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S1: Input → AUX1/AUX2 send gain (inputs/N/sends/0,1/Gain) | ours: done in code</title></rect>
-<rect x="850.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S4: Send pan (aux sends) | ours: done in code</title></rect>
-<rect x="862.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S6: Pre/post fader (SendPostFader, HPnSendPostFader, PostFaderOverride) | ours: done in code</title></rect>
-<rect x="874.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S7: AUX return fader / mute (auxs/N/FaderLevel, Mute) | ours: done in code</title></rect>
-<rect x="886.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S9: AUX → CUE sends (auxs/N/sends/M/Gain) | ours: done in code</title></rect>
-<rect x="898.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S11: Cue bus count (/CueBusCount) | ours: done in code</title></rect>
-<rect x="754.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O5: Monitor output pad / OutputRef (outputs/18/Pad) | ours: done in code</title></rect>
-<rect x="766.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O6: Line-out pads (outputs/0-3/Pad) | ours: done in code</title></rect>
-<rect x="778.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O7: Mirror monitor to digital (MirrorsToDigital) | ours: done in code</title></rect>
-<rect x="790.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O9: Headphone level (outputs/19,20/CRMonitorLevel) | ours: done in code</title></rect>
-<rect x="802.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O13: CUE mix on/off (MixInSource cue/mon) | ours: done in code</title></rect>
-<rect x="814.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O19: Speaker correction / HP correction (SupportsSpeakerCorrection, ...Headp… | ours: done in code</title></rect>
-<rect x="826.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O20: Identify (LED blink) | ours: done in code</title></rect>
-<rect x="838.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D5: Sample rate (/SampleRate) | ours: done in code</title></rect>
-<rect x="850.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D16: Func switch modes (FuncSwitchMode, x8p) | ours: done in code</title></rect>
-<rect x="862.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine T1: Talkback on/off (/TalkbackOn) | ours: done in code</title></rect>
-<rect x="874.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine T2: Hardware TALKBACK button | ours: done in code</title></rect>
-<rect x="886.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine T4: Talkback level (trim) | ours: done in code</title></rect>
-<rect x="898.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine E1: Monitor and AUX bus meters (words 18-20, 12-bit) | ours: done in code</title></rect>
-<rect x="754.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine E3: DSP load (TotalDSPLoad, TotalPGMLoad, TotalMEMLoad) | ours: done in code</title></rect>
-<rect x="766.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine P9: Undo/redo (kPropUndoRedo, UndoRecording) | ours: done in code</title></rect>
-<rect x="778.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H3: Metering computation | ours: done in code</title></rect>
-<rect x="790.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H4: DSP load reporting | ours: done in code</title></rect>
-<rect x="802.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H6: Sleep/wake | ours: done in code</title></rect>
-<rect x="814.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H9: Rate change orchestration | ours: done in code</title></rect>
-<rect x="826.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine I11: Knob position / selected param (PreampInputKnobSteps, PreampGainCustomD… | ours: partial or being built</title></rect>
-<rect x="838.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine I17: Unison / custom integrated preamp (CustomIntegratedPreamp*, readback wo… | ours: partial or being built</title></rect>
-<rect x="850.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine I19: Front-panel selection (SelectedOnFront, word 0 bits 26-27) | ours: partial or being built</title></rect>
-<rect x="862.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine M5: SoloSafe / Isolate / RemoteSolo / SoloClear | ours: partial or being built</title></rect>
-<rect x="874.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine M9: Post-fader and send meters | ours: partial or being built</title></rect>
-<rect x="886.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine S8: AUX bus MixToMono, effects, LLM | ours: partial or being built</title></rect>
-<rect x="898.7" y="236.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D1: TOSLINK output type (TOSLinkOutput) | ours: partial or being built</title></rect>
-<rect x="754.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D2: TOSLINK input type (/devices/0/TOSLink) | ours: partial or being built</title></rect>
-<rect x="766.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D3: Converter mode (0x20/0x28/0x30), multi-unit role bits [2:0], order [7:6… | ours: partial or being built</title></rect>
-<rect x="778.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D6: Clock source (/ClockSource) | ours: partial or being built</title></rect>
-<rect x="790.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D7: Clock-source list and names (ClockSourceListChanged, device-advertised… | ours: partial or being built</title></rect>
-<rect x="802.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D14: IO routes and IO map presets (IOMapPreset, inputroutes/*, outputroutes/… | ours: partial or being built</title></rect>
-<rect x="814.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D15: Delay compensation (MaxDelayComp, ADC OP 0x6a, DAC SetDeviceOutputDelay… | ours: partial or being built</title></rect>
-<rect x="826.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine T3: TalkbackInPhysicalCR, TalkbackMicSelect, TalkbackMaster | ours: partial or being built</title></rect>
-<rect x="838.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine T5: Talkback audio (strip on the DSP, record slots 20/21) | ours: partial or being built</title></rect>
-<rect x="850.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine P2: Unison (kPropUnison, custom preamp) | ours: partial or being built</title></rect>
-<rect x="862.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine P6: Sessions (/Session, kPropSessionFile, ModifiedSessions, new/open/save/s… | ours: partial or being built</title></rect>
-<rect x="874.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine P7: Snapshots (kPropSnapshot, PrimedSnapshot, save/move/delete/import/expor… | ours: partial or being built</title></rect>
-<rect x="886.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine P8: Channel/insert presets and copy/paste (CMxSaveAsPreset, CMxCopyChannel,… | ours: partial or being built</title></rect>
-<rect x="898.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine H1: Persistence of mixer state | ours: partial or being built</title></rect>
-<rect x="754.7" y="260.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine H2: Push whole tree at connect | ours: partial or being built</title></rect>
-<rect x="766.7" y="260.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine H8: Front-panel to hardware write-back | ours: partial or being built</title></rect>
-<rect x="778.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I9: HiZ client override | ours: not done</title></rect>
-<rect x="790.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I13: Direct-out monitor mix (OutputMonitorMixEnable, x8p) | ours: not done</title></rect>
-<rect x="802.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I15: 24 dB mode (/Enable24dBMode, root) | ours: not done</title></rect>
-<rect x="814.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I18: Volt 876 ADAT preamps (AdatPreamp*, x8p) | ours: not done</title></rect>
-<rect x="826.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I20: Low-noise preamps (word 2 bit 30), temperature (word 17 bits 15:8), ana… | ours: not done</title></rect>
-<rect x="838.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine S5: Send Bypass (Bypass, HPnBypass, AuxnBypass) | ours: not done</title></rect>
-<rect x="850.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine S10: Aux→CUE send Bypass | ours: not done</title></rect>
-<rect x="862.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O8: CR PGA bypass (kPropCRPGABypass) | ours: not done</title></rect>
-<rect x="874.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O14: CUE mirror (OutputDestination → 0x2e..0x31 + enables 0x3b/0x3c) | ours: not done</title></rect>
-<rect x="886.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O16: Remote monitor controller | ours: not done</title></rect>
-<rect x="898.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O17: Surround (SurroundMonitorMode, SurroundTrimLevel, SurroundMute/Solo, St… | ours: not done</title></rect>
-<rect x="754.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O18: Bass management (BassMgr*, SupportsBassManagement true on x4) | ours: not done</title></rect>
-<rect x="766.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine D4: S/PDIF SRC (inputs/12,13/SRConvert) | ours: not done</title></rect>
+<rect x="766.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine I19: Front-panel selection (SelectedOnFront, word 0 bits 26-27) | ours: done in code</title></rect>
+<rect x="778.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M2: Pan / Pan2 | ours: done in code</title></rect>
+<rect x="790.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M4: Solo | ours: done in code</title></rect>
+<rect x="802.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M6: Stereo-linked input drive | ours: done in code</title></rect>
+<rect x="814.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M8: Input level meters | ours: done in code</title></rect>
+<rect x="826.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M10: Peak/Clip hold, clear (/ClipHold, /PeakHold, ClearPeak...) | ours: done in code</title></rect>
+<rect x="838.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine M11: /MeterPulse heartbeat | ours: done in code</title></rect>
+<rect x="850.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S1: Input → AUX1/AUX2 send gain (inputs/N/sends/0,1/Gain) | ours: done in code</title></rect>
+<rect x="862.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S4: Send pan (aux sends) | ours: done in code</title></rect>
+<rect x="874.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S6: Pre/post fader (SendPostFader, HPnSendPostFader, PostFaderOverride) | ours: done in code</title></rect>
+<rect x="886.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S7: AUX return fader / mute (auxs/N/FaderLevel, Mute) | ours: done in code</title></rect>
+<rect x="898.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S9: AUX → CUE sends (auxs/N/sends/M/Gain) | ours: done in code</title></rect>
+<rect x="754.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine S11: Cue bus count (/CueBusCount) | ours: done in code</title></rect>
+<rect x="766.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O5: Monitor output pad / OutputRef (outputs/18/Pad) | ours: done in code</title></rect>
+<rect x="778.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O6: Line-out pads (outputs/0-3/Pad) | ours: done in code</title></rect>
+<rect x="790.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O7: Mirror monitor to digital (MirrorsToDigital) | ours: done in code</title></rect>
+<rect x="802.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O9: Headphone level (outputs/19,20/CRMonitorLevel) | ours: done in code</title></rect>
+<rect x="814.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O13: CUE mix on/off (MixInSource cue/mon) | ours: done in code</title></rect>
+<rect x="826.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O19: Speaker correction / HP correction (SupportsSpeakerCorrection, ...Headp… | ours: done in code</title></rect>
+<rect x="838.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine O20: Identify (LED blink) | ours: done in code</title></rect>
+<rect x="850.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D1: TOSLINK output type (TOSLinkOutput) | ours: done in code</title></rect>
+<rect x="862.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D2: TOSLINK input type (/devices/0/TOSLink) | ours: done in code</title></rect>
+<rect x="874.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D4: S/PDIF SRC (inputs/12,13/SRConvert) | ours: done in code</title></rect>
+<rect x="886.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D5: Sample rate (/SampleRate) | ours: done in code</title></rect>
+<rect x="898.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D6: Clock source (/ClockSource) | ours: done in code</title></rect>
+<rect x="754.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D7: Clock-source list and names (ClockSourceListChanged, device-advertised… | ours: done in code</title></rect>
+<rect x="766.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine D16: Func switch modes (FuncSwitchMode, x8p) | ours: done in code</title></rect>
+<rect x="778.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine T1: Talkback on/off (/TalkbackOn) | ours: done in code</title></rect>
+<rect x="790.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine T2: Hardware TALKBACK button | ours: done in code</title></rect>
+<rect x="802.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine T4: Talkback level (trim) | ours: done in code</title></rect>
+<rect x="814.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine E1: Monitor and AUX bus meters (words 18-20, 12-bit) | ours: done in code</title></rect>
+<rect x="826.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine E3: DSP load (TotalDSPLoad, TotalPGMLoad, TotalMEMLoad) | ours: done in code</title></rect>
+<rect x="838.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine P6: Sessions (/Session, kPropSessionFile, ModifiedSessions, new/open/save/s… | ours: done in code</title></rect>
+<rect x="850.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine P7: Snapshots (kPropSnapshot, PrimedSnapshot, save/move/delete/import/expor… | ours: done in code</title></rect>
+<rect x="862.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine P9: Undo/redo (kPropUndoRedo, UndoRecording) | ours: done in code</title></rect>
+<rect x="874.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H1: Persistence of mixer state | ours: done in code</title></rect>
+<rect x="886.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H2: Push whole tree at connect | ours: done in code</title></rect>
+<rect x="898.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H3: Metering computation | ours: done in code</title></rect>
+<rect x="754.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H4: DSP load reporting | ours: done in code</title></rect>
+<rect x="766.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H6: Sleep/wake | ours: done in code</title></rect>
+<rect x="778.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Mixer Engine H9: Rate change orchestration | ours: done in code</title></rect>
+<rect x="790.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine I11: Knob position / selected param (PreampInputKnobSteps, PreampGainCustomD… | ours: partial or being built</title></rect>
+<rect x="802.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine I17: Unison / custom integrated preamp (CustomIntegratedPreamp*, readback wo… | ours: partial or being built</title></rect>
+<rect x="814.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine M5: SoloSafe / Isolate / RemoteSolo / SoloClear | ours: partial or being built</title></rect>
+<rect x="826.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine M9: Post-fader and send meters | ours: partial or being built</title></rect>
+<rect x="838.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine S8: AUX bus MixToMono, effects, LLM | ours: partial or being built</title></rect>
+<rect x="850.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D3: Converter mode (0x20/0x28/0x30), multi-unit role bits [2:0], order [7:6… | ours: partial or being built</title></rect>
+<rect x="862.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D14: IO routes and IO map presets (IOMapPreset, inputroutes/*, outputroutes/… | ours: partial or being built</title></rect>
+<rect x="874.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine D15: Delay compensation (MaxDelayComp, ADC OP 0x6a, DAC SetDeviceOutputDelay… | ours: partial or being built</title></rect>
+<rect x="886.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine T3: TalkbackInPhysicalCR, TalkbackMicSelect, TalkbackMaster | ours: partial or being built</title></rect>
+<rect x="898.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine T5: Talkback audio (strip on the DSP, record slots 20/21) | ours: partial or being built</title></rect>
+<rect x="754.7" y="260.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine P2: Unison (kPropUnison, custom preamp) | ours: partial or being built</title></rect>
+<rect x="766.7" y="260.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine P8: Channel/insert presets and copy/paste (CMxSaveAsPreset, CMxCopyChannel,… | ours: partial or being built</title></rect>
+<rect x="778.7" y="260.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Mixer Engine H8: Front-panel to hardware write-back | ours: partial or being built</title></rect>
+<rect x="790.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I9: HiZ client override | ours: not done</title></rect>
+<rect x="802.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I13: Direct-out monitor mix (OutputMonitorMixEnable, x8p) | ours: not done</title></rect>
+<rect x="814.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I15: 24 dB mode (/Enable24dBMode, root) | ours: not done</title></rect>
+<rect x="826.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I18: Volt 876 ADAT preamps (AdatPreamp*, x8p) | ours: not done</title></rect>
+<rect x="838.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine I20: Low-noise preamps (word 2 bit 30), temperature (word 17 bits 15:8), ana… | ours: not done</title></rect>
+<rect x="850.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine S5: Send Bypass (Bypass, HPnBypass, AuxnBypass) | ours: not done</title></rect>
+<rect x="862.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine S10: Aux→CUE send Bypass | ours: not done</title></rect>
+<rect x="874.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O8: CR PGA bypass (kPropCRPGABypass) | ours: not done</title></rect>
+<rect x="886.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O14: CUE mirror (OutputDestination → 0x2e..0x31 + enables 0x3b/0x3c) | ours: not done</title></rect>
+<rect x="898.7" y="260.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O16: Remote monitor controller | ours: not done</title></rect>
+<rect x="754.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O17: Surround (SurroundMonitorMode, SurroundTrimLevel, SurroundMute/Solo, St… | ours: not done</title></rect>
+<rect x="766.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine O18: Bass management (BassMgr*, SupportsBassManagement true on x4) | ours: not done</title></rect>
 <rect x="778.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine D17: DSP spanning (/devices/0/DSPSpanning, MaxSpans, ActiveSpans) | ours: not done</title></rect>
 <rect x="790.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine E2: Send/cue meters for the 144 + 16 send meter paths | ours: not done</title></rect>
 <rect x="802.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine P3: Plugin scenes (/pluginscenes/*, 128 scenes, SceneOperation) | ours: not done</title></rect>
@@ -1552,7 +1552,7 @@
 <rect x="826.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine H5: Mute-until-settle | ours: not done</title></rect>
 <rect x="838.7" y="272.3" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Mixer Engine H11: Bonjour announcement | ours: not done</title></rect>
 <text x="755.7" y="317.2" class="l">Plugin Support</text>
-<text x="914.1" y="317.2" class="c" text-anchor="end">53/87</text>
+<text x="914.1" y="317.2" class="c" text-anchor="end">54/87</text>
 <rect x="754.7" y="321.2" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Plugin Support Enumeration: Ge…: Device/DSP/bus/channel/clock topology, keyed by index or 64-bit HwID | ours: verified on hardware</title></rect>
 <rect x="766.7" y="321.2" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Plugin Support Mixer: SetMixer…: Bus coefficients, per-input and &quot;other&quot; params (preamp, monitor), readb… | ours: verified on hardware</title></rect>
 <rect x="778.7" y="321.2" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Plugin Support Driver IO routi…: Which DSP channels appear as driver (DAW) channels | ours: verified on hardware</title></rect>
@@ -1600,21 +1600,21 @@
 <rect x="814.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 156: SetTransportLatency | ours: done in code</title></rect>
 <rect x="826.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 159: GetAudioClockSourceInfo | ours: done in code</title></rect>
 <rect x="838.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 161: SetAudioSampleRate | ours: done in code</title></rect>
-<rect x="850.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 171/172/176: Set/GetDriverIoRoutings, SetDriverIoRoutingCount | ours: done in code</title></rect>
-<rect x="862.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 192: ClearSharedResourceCache | ours: done in code</title></rect>
-<rect x="874.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 195/196: Pause/ResumeAudioStreaming | ours: done in code</title></rect>
-<rect x="886.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 6: Notification delivery (SEL165 equivalent): poll()/eventfd on rate chang… | ours: done in code</title></rect>
-<rect x="898.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 7: Re-init on rate or interface change for USB, and rates other than 48 kHz | ours: done in code</title></rect>
-<rect x="754.7" y="369.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 10: FlashLED (SEL122) and system-message plumbing for identify-device | ours: done in code</title></rect>
-<rect x="766.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support Sample rate and…: Rate/clock-source/latency control; rate change is SetSessionFormat(0) t… | ours: partial or being built</title></rect>
-<rect x="778.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support CLI to the devi…: Text/word commands to the ARM MCU (preamp relays etc.) | ours: partial or being built</title></rect>
-<rect x="790.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support Plugin allocati…: Host-side DSP resource scheduling. SetCompatibilityMode writes the Stri… | ours: partial or being built</title></rect>
-<rect x="802.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support Allocate/Deallo…: Public plugin lifecycle and audio transfer; Allocate reads AssumeMaxLoad | ours: partial or being built</title></rect>
-<rect x="814.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 118: AdjustPluginLoad | ours: partial or being built</title></rect>
-<rect x="826.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 120: ReadPluginMessage | ours: partial or being built</title></rect>
-<rect x="838.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 125: AdjustAllocation | ours: partial or being built</title></rect>
-<rect x="850.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 162: SetAudioClockMaster | ours: partial or being built</title></rect>
-<rect x="862.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 163: SetAudioClock | ours: partial or being built</title></rect>
+<rect x="850.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 163: SetAudioClock | ours: done in code</title></rect>
+<rect x="862.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 171/172/176: Set/GetDriverIoRoutings, SetDriverIoRoutingCount | ours: done in code</title></rect>
+<rect x="874.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 192: ClearSharedResourceCache | ours: done in code</title></rect>
+<rect x="886.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 195/196: Pause/ResumeAudioStreaming | ours: done in code</title></rect>
+<rect x="898.7" y="357.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 6: Notification delivery (SEL165 equivalent): poll()/eventfd on rate chang… | ours: done in code</title></rect>
+<rect x="754.7" y="369.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 7: Re-init on rate or interface change for USB, and rates other than 48 kHz | ours: done in code</title></rect>
+<rect x="766.7" y="369.2" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Plugin Support 10: FlashLED (SEL122) and system-message plumbing for identify-device | ours: done in code</title></rect>
+<rect x="778.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support Sample rate and…: Rate/clock-source/latency control; rate change is SetSessionFormat(0) t… | ours: partial or being built</title></rect>
+<rect x="790.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support CLI to the devi…: Text/word commands to the ARM MCU (preamp relays etc.) | ours: partial or being built</title></rect>
+<rect x="802.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support Plugin allocati…: Host-side DSP resource scheduling. SetCompatibilityMode writes the Stri… | ours: partial or being built</title></rect>
+<rect x="814.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support Allocate/Deallo…: Public plugin lifecycle and audio transfer; Allocate reads AssumeMaxLoad | ours: partial or being built</title></rect>
+<rect x="826.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 118: AdjustPluginLoad | ours: partial or being built</title></rect>
+<rect x="838.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 120: ReadPluginMessage | ours: partial or being built</title></rect>
+<rect x="850.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 125: AdjustAllocation | ours: partial or being built</title></rect>
+<rect x="862.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 162: SetAudioClockMaster | ours: partial or being built</title></rect>
 <rect x="874.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 164: SetAudioAdditionalLatency | ours: partial or being built</title></rect>
 <rect x="886.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 165: SetNotificationParams | ours: partial or being built</title></rect>
 <rect x="898.7" y="369.2" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Plugin Support 166/167: Set/GetDriverParameter | ours: partial or being built</title></rect>
@@ -1641,7 +1641,7 @@
 <rect x="838.7" y="393.2" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Plugin Support 9: USB link-speed check (speed in sysfs) with a clear warning, matching th… | ours: not done</title></rect>
 <rect x="850.7" y="393.2" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Plugin Support 12: FX3 maintenance calls (version readout, reset) for diagnostics; flash/E… | ours: not done</title></rect>
 <text x="920.1" y="34.0" class="l">User client</text>
-<text x="1040.6" y="34.0" class="c" text-anchor="end">41/63</text>
+<text x="1040.6" y="34.0" class="c" text-anchor="end">42/63</text>
 <rect x="919.1" y="38.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>User client 0: _openUserClient | ours: verified on hardware</title></rect>
 <rect x="932.1" y="38.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>User client 1: _closeUserClient | ours: verified on hardware</title></rect>
 <rect x="945.1" y="38.0" width="11.5" height="11.5" rx="1" fill="#1f883d"><title>User client 100: UnregisterSharedResource | ours: verified on hardware</title></rect>
@@ -1673,21 +1673,21 @@
 <rect x="932.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 159: GetAudioClockSourceInfo | ours: done in code</title></rect>
 <rect x="945.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 161: SetAudioSampleRate | ours: done in code</title></rect>
 <rect x="958.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 162: SetAudioClockMaster | ours: done in code</title></rect>
-<rect x="971.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 172: GetDriverIoRoutings | ours: done in code</title></rect>
-<rect x="984.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 192: ClearSharedResourceCache | ours: done in code</title></rect>
-<rect x="997.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x01: Device added | ours: done in code</title></rect>
-<rect x="1010.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x02: Device removed | ours: done in code</title></rect>
-<rect x="1023.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x64: Rate info / lock update | ours: done in code</title></rect>
-<rect x="919.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x65: Input IO descriptor changed | ours: done in code</title></rect>
-<rect x="932.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x66: Output IO descriptor changed | ours: done in code</title></rect>
-<rect x="945.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x67: Sample rate changed | ours: done in code</title></rect>
-<rect x="958.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x68: Clock source changed | ours: done in code</title></rect>
-<rect x="971.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x6f: Clock master changed | ours: done in code</title></rect>
-<rect x="984.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 110: GetSessionInfo | ours: partial or being built</title></rect>
-<rect x="997.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 119: ProcessPlugin | ours: partial or being built</title></rect>
-<rect x="1010.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 125: AdjustAllocation | ours: partial or being built</title></rect>
-<rect x="1023.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 137: GetBusInfo | ours: partial or being built</title></rect>
-<rect x="919.1" y="103.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 163: SetAudioClock | ours: partial or being built</title></rect>
+<rect x="971.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 163: SetAudioClock | ours: done in code</title></rect>
+<rect x="984.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 172: GetDriverIoRoutings | ours: done in code</title></rect>
+<rect x="997.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 192: ClearSharedResourceCache | ours: done in code</title></rect>
+<rect x="1010.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x01: Device added | ours: done in code</title></rect>
+<rect x="1023.1" y="77.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x02: Device removed | ours: done in code</title></rect>
+<rect x="919.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x64: Rate info / lock update | ours: done in code</title></rect>
+<rect x="932.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x65: Input IO descriptor changed | ours: done in code</title></rect>
+<rect x="945.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x66: Output IO descriptor changed | ours: done in code</title></rect>
+<rect x="958.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x67: Sample rate changed | ours: done in code</title></rect>
+<rect x="971.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x68: Clock source changed | ours: done in code</title></rect>
+<rect x="984.1" y="90.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>User client 0x6f: Clock master changed | ours: done in code</title></rect>
+<rect x="997.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 110: GetSessionInfo | ours: partial or being built</title></rect>
+<rect x="1010.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 119: ProcessPlugin | ours: partial or being built</title></rect>
+<rect x="1023.1" y="90.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 125: AdjustAllocation | ours: partial or being built</title></rect>
+<rect x="919.1" y="103.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 137: GetBusInfo | ours: partial or being built</title></rect>
 <rect x="932.1" y="103.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 165: SetNotificationParams | ours: partial or being built</title></rect>
 <rect x="945.1" y="103.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 166: SetDriverParameter | ours: partial or being built</title></rect>
 <rect x="958.1" y="103.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-light)"><title>User client 189: SetDeviceOutputDelayComp | ours: partial or being built</title></rect>
@@ -1874,7 +1874,7 @@
 <rect x="1091.1" y="207.9" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>DSP+firmware R91: v1 count from FPGA_REV[31:28] table {1,2,4,1} | ours: not done</title></rect>
 <rect x="1103.1" y="207.9" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>DSP+firmware K06: DSP interrupt vectors | ours: not done</title></rect>
 <text x="920.1" y="241.9" class="l">Model types</text>
-<text x="1022.1" y="241.9" class="c" text-anchor="end">19/51</text>
+<text x="1022.1" y="241.9" class="c" text-anchor="end">22/51</text>
 <rect x="919.1" y="245.9" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Model types Apollo x8p: DONE (triage 2026-10-11, was PARTIAL: plan H4 224de41 + O5 1c1d3c5 (pre… | ours: verified on hardware</title></rect>
 <rect x="931.1" y="245.9" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Model types F01: Mixer class, type id per model | ours: verified on hardware</title></rect>
 <rect x="943.1" y="245.9" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Model types F02: Preamp count | ours: verified on hardware</title></rect>
@@ -1889,18 +1889,18 @@
 <rect x="955.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Model types F46: PCIe device-type identification | ours: verified on hardware</title></rect>
 <rect x="967.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1f883d"><title>Model types F47: DSP count per model | ours: verified on hardware</title></rect>
 <rect x="979.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F08: S/PDIF vs AES/EBU | ours: done in code</title></rect>
-<rect x="991.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F13: Digital mirror availability | ours: done in code</title></rect>
-<rect x="1003.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F16: Per-input AUX1/2 + CUE1-4 sends, 2 child meters | ours: done in code</title></rect>
-<rect x="919.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F18: Preamp controls past input 4 | ours: done in code</title></rect>
-<rect x="931.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F22: Output reference level (Pad) | ours: done in code</title></rect>
-<rect x="943.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F25: Line PGA disable | ours: done in code</title></rect>
-<rect x="955.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F04: Talkback support flag | ours: partial or being built</title></rect>
-<rect x="967.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F07: Desktop flag | ours: partial or being built</title></rect>
-<rect x="979.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F09: TOSLink settable in/out and route visibility | ours: partial or being built</title></rect>
-<rect x="991.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F10: Virtual cap and ADAT 5-8 hidden at 88.2/96 kHz | ours: partial or being built</title></rect>
-<rect x="1003.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F11: ADAT channel count at 176.4/192 kHz and the output side | ours: partial or being built</title></rect>
-<rect x="919.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F12: Default TOSLink type | ours: partial or being built</title></rect>
-<rect x="931.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F14: Clock-source set and default | ours: partial or being built</title></rect>
+<rect x="991.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F09: TOSLink settable in/out and route visibility | ours: done in code</title></rect>
+<rect x="1003.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F12: Default TOSLink type | ours: done in code</title></rect>
+<rect x="919.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F13: Digital mirror availability | ours: done in code</title></rect>
+<rect x="931.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F14: Clock-source set and default | ours: done in code</title></rect>
+<rect x="943.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F16: Per-input AUX1/2 + CUE1-4 sends, 2 child meters | ours: done in code</title></rect>
+<rect x="955.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F18: Preamp controls past input 4 | ours: done in code</title></rect>
+<rect x="967.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F22: Output reference level (Pad) | ours: done in code</title></rect>
+<rect x="979.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Model types F25: Line PGA disable | ours: done in code</title></rect>
+<rect x="991.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F04: Talkback support flag | ours: partial or being built</title></rect>
+<rect x="1003.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F07: Desktop flag | ours: partial or being built</title></rect>
+<rect x="919.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F10: Virtual cap and ADAT 5-8 hidden at 88.2/96 kHz | ours: partial or being built</title></rect>
+<rect x="931.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F11: ADAT channel count at 176.4/192 kHz and the output side | ours: partial or being built</title></rect>
 <rect x="943.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F21: Monitor knob taper, LED steps | ours: partial or being built</title></rect>
 <rect x="955.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F24: HiZ impedance | ours: partial or being built</title></rect>
 <rect x="967.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Model types F29: Front-panel Function switch and soft Func switch | ours: partial or being built</title></rect>
@@ -1972,7 +1972,7 @@
 <rect x="974.1" y="394.1" width="9.5" height="9.5" rx="1" fill="#ced0d3"><title>Device mgr EnableCLI, Send…: per-unit CLI | ours: not done</title></rect>
 <rect x="985.1" y="394.1" width="9.5" height="9.5" rx="1" fill="#ced0d3"><title>Device mgr CPcieDevice::Ge…: Dante info block at 0x3a00 | ours: not done</title></rect>
 <text x="1028.1" y="241.9" class="l">Transport+clock</text>
-<text x="1153.0" y="241.9" class="c" text-anchor="end">32/42</text>
+<text x="1153.0" y="241.9" class="c" text-anchor="end">34/42</text>
 <rect x="1027.1" y="245.9" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Transport+clock T01: PrepareTransport | ours: verified on hardware</title></rect>
 <rect x="1038.1" y="245.9" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Transport+clock T02: PrepareTransport (BUF_SIZE) | ours: verified on hardware</title></rect>
 <rect x="1049.1" y="245.9" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Transport+clock T03: PrepareTransport (DMA_BLKSZ) | ours: verified on hardware</title></rect>
@@ -2005,10 +2005,10 @@
 <rect x="1104.1" y="267.9" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Transport+clock C10: CUAD2DeviceMixer::AckSampleRateChange | ours: verified on hardware</title></rect>
 <rect x="1115.1" y="267.9" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Transport+clock L01: initHardware / _setSafetyOffset | ours: verified on hardware</title></rect>
 <rect x="1126.1" y="267.9" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Transport+clock L03: GetTransportInfo / CUAD2AudioMixer::GetLatency | ours: verified on hardware</title></rect>
-<rect x="1137.1" y="267.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock B07: _handleNotificationInterrupt / _notifyIntrCallback | ours: partial or being built</title></rect>
-<rect x="1027.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock N01: _handleNotificationInterrupt (bits 0/1) | ours: partial or being built</title></rect>
-<rect x="1038.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock C11: CDeviceManager::SetAudioClock / _clockSourceChangeHandler | ours: partial or being built</title></rect>
-<rect x="1049.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock C13: StartTransport / _setSampleClock (external clock) | ours: partial or being built</title></rect>
+<rect x="1137.1" y="267.9" width="9.5" height="9.5" rx="1" fill="#a1cdae"><title>Transport+clock C11: CDeviceManager::SetAudioClock / _clockSourceChangeHandler | ours: done in code</title></rect>
+<rect x="1027.1" y="278.9" width="9.5" height="9.5" rx="1" fill="#a1cdae"><title>Transport+clock C13: StartTransport / _setSampleClock (external clock) | ours: done in code</title></rect>
+<rect x="1038.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock B07: _handleNotificationInterrupt / _notifyIntrCallback | ours: partial or being built</title></rect>
+<rect x="1049.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock N01: _handleNotificationInterrupt (bits 0/1) | ours: partial or being built</title></rect>
 <rect x="1060.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock L02: CDeviceManager::SetAudioAdditionalLatency (SEL164) | ours: partial or being built</title></rect>
 <rect x="1071.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock L05: Mixer Engine: MixerTypeBase::GetAsioLatencyForDelayComp , MixerTypeFreu… | ours: partial or being built</title></rect>
 <rect x="1082.1" y="278.9" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Transport+clock D01: CPcieAudioExtension (no TOSLink code) | ours: partial or being built</title></rect>
@@ -2039,12 +2039,12 @@
 <rect x="1027.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services B11: Suspend/resume/shutdown handling | ours: done in code</title></rect>
 <rect x="1039.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services D6: UA Mixer Engine.ini (buffer size, sample rate, clock source, CR monitor… | ours: done in code</title></rect>
 <rect x="1051.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services F2: Collect a diagnostics bundle | ours: done in code</title></rect>
-<rect x="1063.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G3: Start order: kext first, then engine | ours: done in code</title></rect>
-<rect x="1075.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G5: Status UI | ours: done in code</title></rect>
-<rect x="1027.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services B5: Both Apollo PCI ids (pci1a00,1 and pci1a00,2) are matched by the kext | ours: partial or being built</title></rect>
-<rect x="1039.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services F1: Kext ring log with facility levels, read and set by ualogger (selectors… | ours: partial or being built</title></rect>
-<rect x="1051.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services F4: Per-app log files in ~/Library/Logs/Universal Audio | ours: partial or being built</title></rect>
-<rect x="1063.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services G2: LaunchAgent, RunAtLoad, no KeepAlive, -silent (Mixer Engine) | ours: partial or being built</title></rect>
+<rect x="1063.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services F4: Per-app log files in ~/Library/Logs/Universal Audio | ours: done in code</title></rect>
+<rect x="1075.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G2: LaunchAgent, RunAtLoad, no KeepAlive, -silent (Mixer Engine) | ours: done in code</title></rect>
+<rect x="1027.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G3: Start order: kext first, then engine | ours: done in code</title></rect>
+<rect x="1039.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G5: Status UI | ours: done in code</title></rect>
+<rect x="1051.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services B5: Both Apollo PCI ids (pci1a00,1 and pci1a00,2) are matched by the kext | ours: partial or being built</title></rect>
+<rect x="1063.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services F1: Kext ring log with facility levels, read and set by ualogger (selectors… | ours: partial or being built</title></rect>
 <rect x="1075.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services B9: USB Apollo arrival | ours: not done</title></rect>
 <rect x="1027.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services D2: Persistent network id (nework_uid.json, UA Network ID.ini) so clients r… | ours: not done</title></rect>
 <rect x="1039.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services D4: User-visible device name (rename) | ours: not done</title></rect>
@@ -2083,8 +2083,8 @@
 <rect x="1096.2" y="371.6" width="9.5" height="9.5" rx="1" fill="#a1cdae"><title>Windows PCIe B10: &gt; -&gt; | ours: done in code</title></rect>
 <rect x="1107.2" y="371.6" width="9.5" height="9.5" rx="1" fill="#a1cdae"><title>Windows PCIe B11: et al | ours: done in code</title></rect>
 <rect x="1118.2" y="371.6" width="9.5" height="9.5" rx="1" fill="#a1cdae"><title>Windows PCIe B30: Error returns identical to the kext: -0x5c () not connected / offline,… | ours: done in code</title></rect>
-<rect x="1129.2" y="371.6" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Windows PCIe B17: _allocateDSPs: count from ext_caps[15:8] (v2) or a FPGA_REV nibble tabl… | ours: partial or being built</title></rect>
-<rect x="1140.2" y="371.6" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Windows PCIe C05: _setSampleClock(src, rate): rate 1..6 else assert; cache FRAME_CFG (C01… | ours: partial or being built</title></rect>
+<rect x="1129.2" y="371.6" width="9.5" height="9.5" rx="1" fill="#a1cdae"><title>Windows PCIe C05: _setSampleClock(src, rate): rate 1..6 else assert; cache FRAME_CFG (C01… | ours: done in code</title></rect>
+<rect x="1140.2" y="371.6" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Windows PCIe B17: _allocateDSPs: count from ext_caps[15:8] (v2) or a FPGA_REV nibble tabl… | ours: partial or being built</title></rect>
 <rect x="1096.2" y="382.6" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Windows PCIe C06: _handleNotificationInterrupt bit map (status at 0xC008 + bank*4): bit 5… | ours: partial or being built</title></rect>
 <rect x="1107.2" y="382.6" width="9.5" height="9.5" rx="1" fill="url(#hatch-light)"><title>Windows PCIe C07: /1840/1930 | ours: partial or being built</title></rect>
 <rect x="1118.2" y="382.6" width="9.5" height="9.5" rx="1" fill="#ced0d3"><title>Windows PCIe B23: SetOutputMute(m): types {0x13, 0x1C, 0x27} only (, limit 0x27); vcall o… | ours: not done</title></rect>

@@ -345,7 +345,7 @@ static void QualSelfTest()
        "chainfix: excluded and not_yet_supported entries refused in both layouts");
     Ok(!QualWhy(q, "UAD Bar", "mono").empty() && QualWhy(q, "UAD Bar", "stereo").empty(),
        "chainfix: \"<name> (mono)\" refuses that layout only");
-    Ok(QualWhy(q, "UAD AKG BX 20", "mono").find("Nov 15 2026") != std::string::npos,
+    Ok(QualWhy(q, "UAD AKG BX 20", "mono").find("Nov 16 2026") != std::string::npos,
        "chainfix: the floor's text is kept over the list's");
     QualProven("# UAD Foo | mono | a comment\nUAD Foo | stereo | ran on inputs 1-2\r\nUAD Baz | * |\nUAD Bar | quad | bad layout\nno bars\n", q);
     Ok(QualWhy(q, "UAD Foo", "stereo").empty() && !QualWhy(q, "UAD Foo", "mono").empty(),

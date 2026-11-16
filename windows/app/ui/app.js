@@ -2413,8 +2413,10 @@ function buildStrip(ch, k, idx, sg) {
   const who = stripWho(idx, ch);
   const num = el('div', { class: 'strip-num num', text: String(ch + 1).padStart(2, '0') });
   const hiz = ch < k.hiz ? el('span', { class: 'tag', title: 'Front-panel instrument jack', text: 'HI-Z' }) : null;
-  const name = el('div', { class: 'strip-name', title: 'Double-click to rename' });
+  const name = el('div', { class: 'strip-name', title: 'Double-click to rename; right-click to copy or paste the channel' });
   name.addEventListener('dblclick', () => editName(ch, name, idx));
+  name.addEventListener('contextmenu', e => ChCopy.menu(e, idx, ch));            /* [Copy] copy / paste the channel */
+  num.addEventListener('contextmenu', e => ChCopy.menu(e, idx, ch));
   const gain = new Knob({
     size: 48, min: 10, max: 65, step: 1, wheelStep: 1, pageStep: 6, value: 10,
     aria: `${who} gain`,

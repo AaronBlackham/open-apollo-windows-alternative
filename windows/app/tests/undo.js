@@ -78,6 +78,18 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await wait(900);
   check(await redoBtn.isDisabled(), 'a new change clears redo');
 
+  /* [Copy] input 1 copied onto input 3: preamp, monitor mix, cue send; 48V never switched on */
+  await page.evaluate(() => { setInput(0, 'pad', true, { unit: 0 }); setMix(0, 'level', -12, 0); setSend(0, 0, 'level', -20, 0); });
+  await wait(300);
+  n = await mark();
+  await page.evaluate(() => { ctl(0).inputs[0].p48 = true; ChCopy.copy(0, 0); ChCopy.paste(0, 2); });
+  await wait(300);
+  const all = await page.evaluate(k => window.__sent.slice(k), n);
+  check(all.some(s => /^input\t2\tpad\t1/.test(s)), 'paste: input 3 PAD on, as input 1');
+  check(all.some(s => /^monitor\tmix:2\t-12/.test(s)), 'paste: input 3 monitor-mix level -6 dB');
+  check(all.some(s => /^monitor\tsend:1:2\t-20/.test(s)), 'paste: input 3 send to CUE 1');
+  check(!all.some(s => /^input\t2\t48v\t1/.test(s)), 'paste never switches 48V on');
+
   check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();
   console.log(failed ? `${failed} FAILED` : 'all passed');

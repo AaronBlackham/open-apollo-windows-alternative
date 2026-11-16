@@ -219,6 +219,52 @@ static std::wstring ConfigPath()
     return dir + L"\\config.json";
 }
 
+/*
+ * [Log] Apollo Control's own log (open-apollo parity "per-app log files"): %LOCALAPPDATA%\Avium\ApolloControl\
+ * apollo-control.log, UTF-8, one line per thing worth knowing later (start and quit, units arriving and leaving, refused
+ * settings, the driver's events). At 1 MiB it becomes apollo-control.log.1 (one kept). Any thread.
+ */
+static SRWLOCK g_logLock = SRWLOCK_INIT;
+static std::wstring g_logPath;
+
+static void AppLog(_Printf_format_string_ const wchar_t *fmt, ...)
+{
+    wchar_t msg[1200];
+    va_list a;
+    va_start(a, fmt);
+    _vsnwprintf_s(msg, _countof(msg), _TRUNCATE, fmt, a);
+    va_end(a);
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    wchar_t line[1300];
+    swprintf_s(line, L"%04u-%02u-%02u %02u:%02u:%02u.%03u  %s\r\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
+               t.wMilliseconds, msg);
+    int n = WideCharToMultiByte(CP_UTF8, 0, line, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) {
+        return;
+    }
+    std::string u((size_t)n - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, line, -1, u.data(), n, nullptr, nullptr);
+    AcquireSRWLockExclusive(&g_logLock);
+    if (g_logPath.empty()) {
+        std::wstring dir = KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloControl";
+        SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
+        g_logPath = dir + L"\\apollo-control.log";
+    }
+    WIN32_FILE_ATTRIBUTE_DATA fa{};
+    if (GetFileAttributesExW(g_logPath.c_str(), GetFileExInfoStandard, &fa) && (fa.nFileSizeHigh != 0 || fa.nFileSizeLow > (1u << 20))) {
+        MoveFileExW(g_logPath.c_str(), (g_logPath + L".1").c_str(), MOVEFILE_REPLACE_EXISTING);
+    }
+    HANDLE f = CreateFileW(g_logPath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f != INVALID_HANDLE_VALUE) {
+        DWORD w = 0;
+        WriteFile(f, u.data(), (DWORD)u.size(), &w, nullptr);
+        CloseHandle(f);
+    }
+    ReleaseSRWLockExclusive(&g_logLock);
+}
+
 static std::wstring ErrorText(DWORD err)
 {
     wchar_t *buf = nullptr;
@@ -1008,6 +1054,9 @@ static void DropSlot(int idx, bool hold, ULONGLONG now)
         HoldPath(s.path, now);
     }
     bool was = s.used;
+    if (was) {
+        AppLog(L"slot %d: unit left (%s)", idx, hold ? L"removal or driver update" : L"closed");    /* [Log] */
+    }
     s.used = false;
     ResetSlotState(s);
     clockhost::Forget(idx);                     /* [Clock] the next unit in this slot is posted afresh */
@@ -1076,6 +1125,9 @@ static void Rescan(ULONGLONG now)
         s.used = true;
         s.info = e[k].Info;
         s.infoBytes = e[k].InfoBytes;
+        AppLog(L"slot %d: unit type 0x%02lX serial %.16hs firmware %lu.%lu.%lu, stage %lu, interface v%lu", idx,     /* [Log] */
+               s.info.DeviceType, s.info.Serial, s.info.FwRelease >> 24, (s.info.FwRelease >> 16) & 0xFF, s.info.FwRelease & 0xFFFF,
+               s.info.Stage, s.info.Version);
     }
     if (!g_slots[0].used) {
         DWORD err = (n < 0) ? (DWORD)ERROR_GEN_FAILURE : (firstErr != 0 ? firstErr : (DWORD)ERROR_FILE_NOT_FOUND);
@@ -1098,6 +1150,7 @@ static void PostError(const wchar_t *op, const Command &c, DWORD code, const std
     JsonString(j, detail);
     j += L"}";
     PostJson(std::move(j));
+    AppLog(L"not done: %s %s (index %lu) on slot %lu, error %lu: %s", op, c.key.c_str(), c.a, c.unit, code, detail.c_str());  /* [Log] */
 }
 
 /*
@@ -1402,6 +1455,7 @@ static void EventPumpMain()
                 if (e.Kind == APOLLO_EVENT_PANEL) {
                     continue;
                 }
+                AppLog(L"slot %d: driver event #%lu %s A=%lu (0x%lX) B=0x%08lX", idx, e.Seq, EventKindText(e.Kind), e.A, e.A, e.B);  /* [Log] */
                 std::wstring j = L"{\"type\":\"event\",";
                 Appendf(j, L"\"unit\":%d,\"seq\":%lu,\"kind\":\"%s\",\"a\":%lu,\"b\":%lu,\"reset\":%s}", idx, e.Seq,
                         EventKindText(e.Kind), e.A, e.B, (s.evOut.Flags & APOLLO_EVENTS_F_RESET) ? L"true" : L"false");
@@ -2489,6 +2543,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ 
     }
     ApplyTheme(true, RGB(22, 24, 27), RGB(230, 230, 230));
 
+    AppLog(L"Apollo Control %s started%s", APP_VERSION, g_optDemo ? L" (demo)" : L"");    /* [Log] */
     g_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_evWake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_worker = std::thread(WorkerMain);
@@ -2532,6 +2587,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ 
         g_worker.join();
     }
     CloseHandle(g_wake);
+    AppLog(L"Apollo Control quit");             /* [Log] */
     CoUninitialize();
     if (single) {
         ReleaseMutex(single);

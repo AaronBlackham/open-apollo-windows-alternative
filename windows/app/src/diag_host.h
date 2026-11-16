@@ -6,7 +6,7 @@
  *   driver-log.txt         the driver's log ring (GET_LOG, every unit's lines, tagged)
  *   unit-<id>.txt          per unit: identity and state (GET_INFO), the readback words, the rate, clock, front panel and
  *                          driver Parameters as Apollo Control reads them, and the unit's event ring (WAIT_EVENTS, NOWAIT)
- *   app\config.json, app\plugins.json, app\plughelper.log    Apollo Control's own files
+ *   app\config.json, app\plugins.json, app\plughelper.log, app\apollo-control.log    Apollo Control's own files
  *   scripts\*.log          the install and test scripts' logs (tools\phase1), when this is a source-tree build
  *
  * Reply: {"type":"diag-result","ok":true|false,"dir":"...","why":"..."}.
@@ -179,6 +179,8 @@ static inline void Save(Post post, const std::wstring &AppVersion)
     CopyIf(roam + L"\\config.json", dir + L"\\app\\config.json", files);
     CopyIf(roam + L"\\plugins.json", dir + L"\\app\\plugins.json", files);
     CopyIf(local + L"\\plughelper.log", dir + L"\\app\\plughelper.log", files);
+    CopyIf(local + L"\\apollo-control.log", dir + L"\\app\\apollo-control.log", files);     /* [Log] */
+    CopyIf(local + L"\\apollo-control.log.1", dir + L"\\app\\apollo-control.log.1", files);
     /* a source-tree build: the scripts' logs (app\bin\apollo-control.exe -> tools\phase1) */
     wchar_t exe[MAX_PATH];
     if (GetModuleFileNameW(nullptr, exe, MAX_PATH)) {

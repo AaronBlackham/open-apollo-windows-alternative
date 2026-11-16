@@ -27,7 +27,14 @@ refused ("Not qualified") unless this unit ran them in that layout (the floor in
 `HKCU\Software\Avium\ApolloControl\ExperimentalPlugins = 1` turns the check off); and every routed chain's head is read
 once after START: no answer means the DSP stopped, and the chain's inserts are saved bypassed so neither a restart nor the
 next power cycle loads them again. The one-active-insert guard (`ExperimentalChains`) stays until
-`builds\work-chainfix\tools\phase1\chainfix-hw.ps1` steps 4-5 pass on the x8p.
+`tools\phase1\chainfix-hw.ps1` steps 4-5 pass on the x8p.
+
+Hardware, Nov 16 2026 (`tools\phase1\chainfix-hw.ps1`, driver 6.55.42.311): step 2, the AKG BX 20 unrouted on DSP 1
+(7 uploads including its kind-3 module to pool 3, 70 rows zero-filled and linked, memspec), left DSP 1 answering. Step 3,
+the AKG BX 20 ALONE, routed stereo on inputs 1-2: the START was accepted, then the first readback (row 37) timed out
+(0xc00000b5) and the driver quarantined DSP 1 (load word 0x46b -> 0x80b). So the AKG itself stops DSP 1 as our map starts
+it; the two-insert composition is not needed for the hang. The qualification check refuses it (`QualFloor`). Steps 4-5
+(two-insert chains of plug-ins proven alone) run after the power cycle (`chainfix-hw.ps1 -From 4`).
 
 Nov 15 2026, night (warmplug): **plug-ins after a warm start, and the chains' latency in the DAW, built with offline
 tests, not run on hardware.** After an x8p warm start that adopted its strips (`docs/STRIPS.md` 12), DSP 1 takes plug-ins as

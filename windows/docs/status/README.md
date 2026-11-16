@@ -12,7 +12,7 @@ port on Nov 15 2026, updated Nov 16; `evidence` in `parity.json` says where each
 
 | | open-apollo (Oct 11) | Windows port (Nov 16) |
 |---|---|---|
-| Done in code or verified | 739 of 1015 (72.8%) | 660 of 1015 (65.0%) |
+| Done in code or verified | 739 of 1015 (72.8%) | 684 of 1015 (67.4%) |
 | Tagged verified on hardware | 14 | 472 |
 | Models verified | Apollo Twin X Gen 2, Apollo x4, Apollo x8p | Apollo Twin X (Gen 1), Apollo x8p |
 | UAD plug-ins live on the Apollo | 124 | 4 |
@@ -24,27 +24,27 @@ so the hardware row partly compares how each project records proof.
 
 | Area | Behaviours | open-apollo done | Ours done | Ours on hardware | Ours partial | Ours not done | Not needed |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Kext classes | 142 | 75 | 103 | 83 | 24 | 15 | 0 |
-| Mixer params | 142 | 130 | 68 | 35 | 20 | 49 | 5 |
+| Kext classes | 142 | 75 | 106 | 83 | 21 | 15 | 0 |
+| Mixer params | 142 | 130 | 69 | 35 | 20 | 48 | 5 |
 | HW interface | 112 | 90 | 84 | 79 | 5 | 23 | 0 |
-| Mixer Engine | 99 | 85 | 58 | 25 | 22 | 19 | 0 |
-| Plugin Support | 87 | 35 | 53 | 35 | 17 | 17 | 0 |
-| User client | 63 | 29 | 41 | 26 | 8 | 10 | 4 |
+| Mixer Engine | 99 | 85 | 68 | 25 | 13 | 18 | 0 |
+| Plugin Support | 87 | 35 | 54 | 35 | 16 | 17 | 0 |
+| User client | 63 | 29 | 42 | 26 | 7 | 10 | 4 |
 | Windows+USB | 56 | 32 | 32 | 22 | 8 | 16 | 0 |
 | Lifecycle | 55 | 52 | 49 | 38 | 1 | 4 | 1 |
 | DSP+firmware | 51 | 46 | 38 | 33 | 2 | 11 | 0 |
-| Model types | 51 | 43 | 19 | 13 | 15 | 17 | 0 |
+| Model types | 51 | 43 | 22 | 13 | 12 | 17 | 0 |
 | Device mgr | 43 | 15 | 30 | 12 | 6 | 7 | 0 |
-| Transport+clock | 42 | 40 | 32 | 32 | 8 | 2 | 0 |
-| Services | 38 | 36 | 25 | 15 | 4 | 9 | 0 |
-| Windows PCIe | 34 | 31 | 28 | 24 | 4 | 2 | 0 |
+| Transport+clock | 42 | 40 | 34 | 32 | 6 | 2 | 0 |
+| Services | 38 | 36 | 27 | 15 | 2 | 9 | 0 |
+| Windows PCIe | 34 | 31 | 29 | 24 | 3 | 2 | 0 |
 
-## Ahead of open-apollo (132)
+## Ahead of open-apollo (136)
 
 Behaviours open-apollo marks as needing hardware, still to figure out, or plug-in hosting in progress, that this
 port has done or verified.
 
-- **Kext classes** (35): 3 transport/clock; 5 mixer; 6 manager; 7 plugin/DSP resources
+- **Kext classes** (38): 3 transport/clock; 5 mixer; 6 manager; 7 plugin/DSP resources
 - **Mixer params** (5): param 0; param 1; param 2; param 3
 - **HW interface** (8): 0x0001nnnn; 0x0004nnnn; Release shared resource (pool 0); Release shared resource (pool != 0)
 - **Mixer Engine** (4): Send pan (aux sends); Speaker correction / HP correction (SupportsSpeakerCorrection, ...Headp; Clock master, multi-unit order, peer-to-peer latency (ClockMasterHwId,; Plugin inserts (inputs/N/effects/N/*: 192 + 4 preamp + 8 aux entries)
@@ -56,24 +56,25 @@ port has done or verified.
 - **Device mgr** (17): mutex, 8 slot events, 3 timers, defaults rate 1 / src 0xC / mode 0; slot, bus grouping, DSP registration, master callbacks, notify 1; ext + AudioDevInfo arrays, master wiring; master promotion, P2P reconfig
 - **Transport+clock** (1): PrepareTransport (P2P reg)
 - **Services** (1): Services reads kext state through the same user client as the engine (I
+- **Windows PCIe** (1): _setSampleClock(src, rate): rate 1..6 else assert; cache FRAME_CFG (C01
 
-## Open on our side (205)
+## Open on our side (185)
 
 Behaviours open-apollo has done that this port has not, or only partly.
 
 - **Kext classes** (7): mute outputs around state changes; DSP firmware block stream; latency report and output delay comp; per-output delay comp
-- **Mixer params** (62): SetBusEnable(a=bus, b=enable) (+0x20); SetOtherParam(param=b, value=c) (+0x38); a is ignored; GetMixerParam (SEL1xx, ); kPropImpedance (0xa) via ConvertImpedanceToHWCode (H)
+- **Mixer params** (61): SetBusEnable(a=bus, b=enable) (+0x20); SetOtherParam(param=b, value=c) (+0x38); a is ignored; GetMixerParam (SEL1xx, ); kPropImpedance (0xa) via ConvertImpedanceToHWCode (H)
 - **HW interface** (14): W+0x40 and W+0x44 + n*0x14 (n 0-15); W+0x1A0; W+0x3C8; PrepareTransport (only when an interval was set by SetPeriodicTimerInte
-- **Mixer Engine** (31): HiZ client override; Knob position / selected param (PreampInputKnobSteps, PreampGainCustomD; Direct-out monitor mix (OutputMonitorMixEnable, x8p); 24 dB mode (/Enable24dBMode, root)
-- **Plugin Support** (9): Text/word commands to the ARM MCU (preamp relays etc.); SetAudioClock; SetAudioAdditionalLatency; SetNotificationParams
-- **User client** (6): LoadFirmware; GetSessionInfo; GetBusInfo; SetAudioClock
+- **Mixer Engine** (21): HiZ client override; Knob position / selected param (PreampInputKnobSteps, PreampGainCustomD; Direct-out monitor mix (OutputMonitorMixEnable, x8p); 24 dB mode (/Enable24dBMode, root)
+- **Plugin Support** (8): Text/word commands to the ARM MCU (preamp relays etc.); SetAudioAdditionalLatency; SetNotificationParams; Set/GetDriverParameter
+- **User client** (5): LoadFirmware; GetSessionInfo; GetBusInfo; SetNotificationParams
 - **Windows+USB** (14): LoadFirmware; SetDriverParameter; EnableCLI; SendCLICommand
 - **Lifecycle** (3): SetOutputMute 0x6140; DSP error vectors; SetOutputMute
 - **DSP+firmware** (9): _intrCallback 0x7d9c -> _serviceMessageFIFO 0x93de; _errorCallback 0x804e -> _dispatchErrorEvent 0x9526; ResetDSP() 0x93b8; Map status word 1 to error codes (table above)
-- **Model types** (24): DONE; DONE (triage 2026-10-11, was PARTIAL: mixer-engine/hardware_usb.py (pla; DONE (triage 2026-10-11, was MISSING: plan H8/O4 5daaecf/29204e7: publi; Talkback support flag
+- **Model types** (21): DONE; DONE (triage 2026-10-11, was PARTIAL: mixer-engine/hardware_usb.py (pla; DONE (triage 2026-10-11, was MISSING: plan H8/O4 5daaecf/29204e7: publi; Talkback support flag
 - **Device mgr** (2): client pause + 0x264/0x265; fan-out of the codes in §7
-- **Transport+clock** (9): _handleNotificationInterrupt / _notifyIntrCallback; _handleNotificationInterrupt (bits 0/1); CDeviceManager::SetAudioClock / _clockSourceChangeHandler; StartTransport / _setSampleClock (external clock)
-- **Services** (12): Both Apollo PCI ids (pci1a00,1 and pci1a00,2) are matched by the kext; USB Apollo arrival; Persistent network id (nework_uid.json, UA Network ID.ini) so clients r; User-visible device name (rename)
+- **Transport+clock** (7): _handleNotificationInterrupt / _notifyIntrCallback; _handleNotificationInterrupt (bits 0/1); CDeviceManager::SetAudioAdditionalLatency (SEL164); SetOutputDelayComp / WriteAudioOutputData / GetOutputDelayComp
+- **Services** (10): Both Apollo PCI ids (pci1a00,1 and pci1a00,2) are matched by the kext; USB Apollo arrival; Persistent network id (nework_uid.json, UA Network ID.ini) so clients r; User-visible device name (rename)
 - **Windows PCIe** (3): _allocateDSPs: count from ext_caps[15:8] (v2) or a FPGA_REV nibble tabl; SetOutputMute(m): types {0x13, 0x1C, 0x27} only (, limit 0x27); vcall o; _handleNotificationInterrupt bit map (status at 0xC008 + bank*4): bit 5
 
 ## Windows work outside the list
