@@ -1228,41 +1228,41 @@
 <rect x="715.0" y="264.0" width="11.5" height="11.5" rx="1" fill="#2ea043"><title>Mixer params 6: 8 talkback button; [29:28] alt-monitor selection (if remote-monitor con… | ours: verified on hardware</title></rect>
 <rect x="728.0" y="264.0" width="11.5" height="11.5" rx="1" fill="#2ea043"><title>Mixer params 8-9: analog input meters 1-4 (16-bit linear, hi = even ch) | ours: verified on hardware</title></rect>
 <rect x="598.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#2ea043"><title>Mixer params 18: [27:16] monitor L, [11:0] monitor R (12-bit, /4095, 0xFFF = clip, 0 -&gt;… | ours: verified on hardware</title></rect>
-<rect x="611.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#2ea043"><title>Mixer params 38, 39: validity guards ( = skip the snapshot) | ours: verified on hardware</title></rect>
-<rect x="624.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x02: CRMonitorLevel on HP-class outputs, synch-0x1b &lt; 3 (H) | ours: done in code</title></rect>
-<rect x="637.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x04: kPropMixInSource (0x37), CR output (H) | ours: done in code</title></rect>
-<rect x="650.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x05: kPropMixInSource, output synch 2 (H) | ours: done in code</title></rect>
-<rect x="663.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x06: kPropMixToMono, output synch 2: value bit 0 = mono (H) | ours: done in code</title></rect>
-<rect x="676.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x07: kPropMixInSource, output synch 4 (H) | ours: done in code</title></rect>
-<rect x="689.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x08: kPropMixToMono, output synch 4 (H) | ours: done in code</title></rect>
-<rect x="702.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x09: error -0x12 | ours: done in code</title></rect>
-<rect x="715.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x0a: CMxAuxBus MixToMono, aux bus 1 (M) | ours: done in code</title></rect>
-<rect x="728.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x0e: error -0x12 | ours: done in code</title></rect>
-<rect x="598.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x0f: CMxAuxBus MixToMono, aux bus 2 (M) | ours: done in code</title></rect>
-<rect x="611.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x13: kPropClipHold via CMxRoot::UpdateHardwareState () (H) | ours: done in code</title></rect>
-<rect x="624.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x14: kPropPeakHold () (H) | ours: done in code</title></rect>
-<rect x="637.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x19-0x1c: kPropPad (0x9) on outputs with synch 8,9 / 10,11 / 12,13 / 14,15 (H; th… | ours: done in code</title></rect>
-<rect x="650.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x1d: IdentifyDevice::Do (H) | ours: done in code</title></rect>
-<rect x="663.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x1e: kPropCRToSPDIF (0x59) (H) | ours: done in code</title></rect>
-<rect x="676.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x1f: kPropSRCActive (0x3b), input IOType 2 (S/PDIF) (H) | ours: done in code</title></rect>
-<rect x="689.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x22: kPropMixInSource, output synch 0x18 (H) | ours: done in code</title></rect>
-<rect x="702.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x23: kPropMixToMono, output synch 0x18 (H) | ours: done in code</title></rect>
-<rect x="715.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x24: kPropMixInSource, output synch 0x1a (H) | ours: done in code</title></rect>
-<rect x="728.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x32: kPropPad (0x9) on outputs synch 0,1 = output reference level (H) | ours: done in code</title></rect>
-<rect x="598.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x3d: error -0x12 | ours: done in code</title></rect>
-<rect x="611.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x3f: kPropMixInSource, output synch 0x1c = HP1 source; value-1 unless 0 or 7… | ours: done in code</title></rect>
-<rect x="624.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x40: same, synch 0x1e = HP2 source (H) | ours: done in code</title></rect>
-<rect x="637.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x42: kPropFuncSwitchMode (0xf9), mode &lt;= 5 (H) | ours: done in code</title></rect>
-<rect x="650.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x43: kPropDimAttenuation (0xfa): 7 if &gt; 0x3b else round(att/8.5) (H) | ours: done in code</title></rect>
-<rect x="663.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params &gt; 0x8a: silently ignored | ours: done in code</title></rect>
-<rect x="676.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params B8: param 1 | ours: done in code</title></rect>
-<rect x="689.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params B10: param 3 | ours: done in code</title></rect>
-<rect x="702.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params B11: param 4 | ours: done in code</title></rect>
-<rect x="715.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 7: gain lanes for inputs 4-7 (same layout as word 3). On the x4 [7:0] read… | ours: done in code</title></rect>
-<rect x="728.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 12-15: ADAT 1-4 (12, 13) and 5-8 (14, 15) | ours: done in code</title></rect>
-<rect x="598.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 16: S/PDIF L/R | ours: done in code</title></rect>
-<rect x="611.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 19-20: aux 1 and aux 2 returns L/R (12-bit) | ours: done in code</title></rect>
-<rect x="624.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 22-25: virtual 1-8 meters | ours: done in code</title></rect>
+<rect x="611.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#2ea043"><title>Mixer params 22-25: virtual 1-8 meters | ours: verified on hardware</title></rect>
+<rect x="624.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#2ea043"><title>Mixer params 38, 39: validity guards ( = skip the snapshot) | ours: verified on hardware</title></rect>
+<rect x="637.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x02: CRMonitorLevel on HP-class outputs, synch-0x1b &lt; 3 (H) | ours: done in code</title></rect>
+<rect x="650.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x04: kPropMixInSource (0x37), CR output (H) | ours: done in code</title></rect>
+<rect x="663.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x05: kPropMixInSource, output synch 2 (H) | ours: done in code</title></rect>
+<rect x="676.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x06: kPropMixToMono, output synch 2: value bit 0 = mono (H) | ours: done in code</title></rect>
+<rect x="689.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x07: kPropMixInSource, output synch 4 (H) | ours: done in code</title></rect>
+<rect x="702.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x08: kPropMixToMono, output synch 4 (H) | ours: done in code</title></rect>
+<rect x="715.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x09: error -0x12 | ours: done in code</title></rect>
+<rect x="728.0" y="277.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x0a: CMxAuxBus MixToMono, aux bus 1 (M) | ours: done in code</title></rect>
+<rect x="598.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x0e: error -0x12 | ours: done in code</title></rect>
+<rect x="611.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x0f: CMxAuxBus MixToMono, aux bus 2 (M) | ours: done in code</title></rect>
+<rect x="624.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x13: kPropClipHold via CMxRoot::UpdateHardwareState () (H) | ours: done in code</title></rect>
+<rect x="637.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x14: kPropPeakHold () (H) | ours: done in code</title></rect>
+<rect x="650.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x19-0x1c: kPropPad (0x9) on outputs with synch 8,9 / 10,11 / 12,13 / 14,15 (H; th… | ours: done in code</title></rect>
+<rect x="663.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x1d: IdentifyDevice::Do (H) | ours: done in code</title></rect>
+<rect x="676.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x1e: kPropCRToSPDIF (0x59) (H) | ours: done in code</title></rect>
+<rect x="689.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x1f: kPropSRCActive (0x3b), input IOType 2 (S/PDIF) (H) | ours: done in code</title></rect>
+<rect x="702.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x22: kPropMixInSource, output synch 0x18 (H) | ours: done in code</title></rect>
+<rect x="715.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x23: kPropMixToMono, output synch 0x18 (H) | ours: done in code</title></rect>
+<rect x="728.0" y="290.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x24: kPropMixInSource, output synch 0x1a (H) | ours: done in code</title></rect>
+<rect x="598.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x32: kPropPad (0x9) on outputs synch 0,1 = output reference level (H) | ours: done in code</title></rect>
+<rect x="611.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x3d: error -0x12 | ours: done in code</title></rect>
+<rect x="624.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x3f: kPropMixInSource, output synch 0x1c = HP1 source; value-1 unless 0 or 7… | ours: done in code</title></rect>
+<rect x="637.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x40: same, synch 0x1e = HP2 source (H) | ours: done in code</title></rect>
+<rect x="650.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x42: kPropFuncSwitchMode (0xf9), mode &lt;= 5 (H) | ours: done in code</title></rect>
+<rect x="663.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x43: kPropDimAttenuation (0xfa): 7 if &gt; 0x3b else round(att/8.5) (H) | ours: done in code</title></rect>
+<rect x="676.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 0x46: kPropTalkbackOn (0x110) (H) | ours: done in code</title></rect>
+<rect x="689.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params &gt; 0x8a: silently ignored | ours: done in code</title></rect>
+<rect x="702.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params B8: param 1 | ours: done in code</title></rect>
+<rect x="715.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params B10: param 3 | ours: done in code</title></rect>
+<rect x="728.0" y="303.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params B11: param 4 | ours: done in code</title></rect>
+<rect x="598.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 7: gain lanes for inputs 4-7 (same layout as word 3). On the x4 [7:0] read… | ours: done in code</title></rect>
+<rect x="611.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 12-15: ADAT 1-4 (12, 13) and 5-8 (14, 15) | ours: done in code</title></rect>
+<rect x="624.0" y="316.0" width="11.5" height="11.5" rx="1" fill="#1b4d29"><title>Mixer params 16: S/PDIF L/R | ours: done in code</title></rect>
 <rect x="637.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params A3: SetOtherParam(param=b, value=c) (+0x38); a is ignored | ours: partial or being built</title></rect>
 <rect x="650.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x07: kPropImpedance (0xa) via ConvertImpedanceToHWCode (H) | ours: partial or being built</title></rect>
 <rect x="663.0" y="316.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x08: kPropCustomIntegratedPreamp (0xb1/0xb4): custom (Unison) preamp on (M) | ours: partial or being built</title></rect>
@@ -1279,10 +1279,10 @@
 <rect x="663.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x13: direct-output route (kPropDirectOutputMonitorMixEnable 0xcd path, Clear… | ours: partial or being built</title></rect>
 <rect x="676.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x16: span info (kPropDSPSpanning) (H) | ours: partial or being built</title></rect>
 <rect x="689.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x21: device mode word: PushDeviceMode (kPropMultiUnitOrder 0x80, TOSLINKType… | ours: partial or being built</title></rect>
-<rect x="702.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x46: kPropTalkbackOn (0x110) (H) | ours: partial or being built</title></rect>
-<rect x="715.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x64: trim-sync / setAllCorrectionsEnable (M) | ours: partial or being built</title></rect>
-<rect x="728.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x67: kPropSpeakerCorrectionMode (0x143) / BassMgrEnable (0x16f) (M) | ours: partial or being built</title></rect>
-<rect x="598.0" y="342.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x6a: UpdateADCDelayComp (H) | ours: partial or being built</title></rect>
+<rect x="702.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x64: trim-sync / setAllCorrectionsEnable (M) | ours: partial or being built</title></rect>
+<rect x="715.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x67: kPropSpeakerCorrectionMode (0x143) / BassMgrEnable (0x16f) (M) | ours: partial or being built</title></rect>
+<rect x="728.0" y="329.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 0x6a: UpdateADCDelayComp (H) | ours: partial or being built</title></rect>
+<rect x="598.0" y="342.0" width="11.5" height="11.5" rx="1" fill="url(#hatch-dark)"><title>Mixer params 19-20: aux 1 and aux 2 returns L/R (12-bit) | ours: partial or being built</title></rect>
 <rect x="611.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#31363e"><title>Mixer params A1: SetBusEnable(a=bus, b=enable) (+0x20) | ours: not done</title></rect>
 <rect x="624.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#31363e"><title>Mixer params A6: GetMixerParam (SEL1xx, ) | ours: not done</title></rect>
 <rect x="637.0" y="342.0" width="11.5" height="11.5" rx="1" fill="#31363e"><title>Mixer params 0x14: kPropHiZ (0xb), host write only when kPropInputJackSensingDisabled (0x1… | ours: not done</title></rect>
@@ -1451,7 +1451,7 @@
 <rect x="780.7" y="155.0" width="11.5" height="11.5" rx="1" fill="#31363e"><title>HW interface I05: DSP n: 5n+4 | ours: not done</title></rect>
 <rect x="793.7" y="155.0" width="11.5" height="11.5" rx="1" fill="#31363e"><title>HW interface I10: one-shot auto-mask | ours: not done</title></rect>
 <text x="755.7" y="184.3" class="l">Mixer Engine</text>
-<text x="914.1" y="184.3" class="c" text-anchor="end">68/99</text>
+<text x="914.1" y="184.3" class="c" text-anchor="end">67/99</text>
 <rect x="754.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine I1: Preamp gain (preamps/0/Gain, GainTapered, inputs 0-3) | ours: verified on hardware</title></rect>
 <rect x="766.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine I2: 48V (preamps/0/48V) | ours: verified on hardware</title></rect>
 <rect x="778.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine I3: IP 0x01 | ours: verified on hardware</title></rect>
@@ -1462,68 +1462,68 @@
 <rect x="838.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine I12: Route mask and level per input channel (IP 0x13 / 0x16) | ours: verified on hardware</title></rect>
 <rect x="850.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine M1: Input fader (FaderLevel, Tapered) | ours: verified on hardware</title></rect>
 <rect x="862.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine M3: Mute | ours: verified on hardware</title></rect>
-<rect x="874.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine S2: Input → CUE1/CUE2 send gain (sends/2,3) | ours: verified on hardware</title></rect>
-<rect x="886.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine S3: Input → CUE3/CUE4 send gain (sends/4,5, in the x4 map; active only when… | ours: verified on hardware</title></rect>
-<rect x="898.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O1: Monitor level (outputs/18/CRMonitorLevel, Tapered) | ours: verified on hardware</title></rect>
-<rect x="754.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O2: Monitor mute, mono | ours: verified on hardware</title></rect>
-<rect x="766.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O3: Dim on / dim level / DimAttenuation | ours: verified on hardware</title></rect>
-<rect x="778.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O4: Monitor source (MixInSource mon/cue1/cue2) | ours: verified on hardware</title></rect>
-<rect x="790.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O10: Headphone source (MixInSource cue1/cue2) | ours: verified on hardware</title></rect>
-<rect x="802.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O12: CUE mono (outputs/14,15/MixToMono) | ours: verified on hardware</title></rect>
-<rect x="814.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O15: Alt monitors (AltMonEnabled, AltMonTrim on 4 outputs, AltMonSelection,… | ours: verified on hardware</title></rect>
-<rect x="826.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine D8: Clock locked | ours: verified on hardware</title></rect>
-<rect x="838.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine D9: Clock master, multi-unit order, peer-to-peer latency (ClockMasterHwId,… | ours: verified on hardware</title></rect>
-<rect x="850.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine D10: Buffer size (/BufferSize) | ours: verified on hardware</title></rect>
-<rect x="862.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine E4: Device online, name, serial, versions, DeviceTypeID, analog board | ours: verified on hardware</title></rect>
-<rect x="874.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine P1: Plugin inserts (inputs/N/effects/N/*: 192 + 4 preamp + 8 aux entries) | ours: verified on hardware</title></rect>
-<rect x="886.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine H7: Device list, online/offline, firmware compatibility, assign devices to… | ours: verified on hardware</title></rect>
-<rect x="898.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine I8: HiZ jack detect (preamps/0/HiZ, inputs 0-1) | ours: done in code</title></rect>
-<rect x="754.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine I14: PGA disabled in line mode (x8p) | ours: done in code</title></rect>
-<rect x="766.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine I19: Front-panel selection (SelectedOnFront, word 0 bits 26-27) | ours: done in code</title></rect>
-<rect x="778.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M2: Pan / Pan2 | ours: done in code</title></rect>
-<rect x="790.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M4: Solo | ours: done in code</title></rect>
-<rect x="802.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M6: Stereo-linked input drive | ours: done in code</title></rect>
-<rect x="814.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M8: Input level meters | ours: done in code</title></rect>
-<rect x="826.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M10: Peak/Clip hold, clear (/ClipHold, /PeakHold, ClearPeak...) | ours: done in code</title></rect>
-<rect x="838.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M11: /MeterPulse heartbeat | ours: done in code</title></rect>
-<rect x="850.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S1: Input → AUX1/AUX2 send gain (inputs/N/sends/0,1/Gain) | ours: done in code</title></rect>
-<rect x="862.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S4: Send pan (aux sends) | ours: done in code</title></rect>
+<rect x="874.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine S1: Input → AUX1/AUX2 send gain (inputs/N/sends/0,1/Gain) | ours: verified on hardware</title></rect>
+<rect x="886.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine S2: Input → CUE1/CUE2 send gain (sends/2,3) | ours: verified on hardware</title></rect>
+<rect x="898.7" y="188.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine S3: Input → CUE3/CUE4 send gain (sends/4,5, in the x4 map; active only when… | ours: verified on hardware</title></rect>
+<rect x="754.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine S7: AUX return fader / mute (auxs/N/FaderLevel, Mute) | ours: verified on hardware</title></rect>
+<rect x="766.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O1: Monitor level (outputs/18/CRMonitorLevel, Tapered) | ours: verified on hardware</title></rect>
+<rect x="778.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O2: Monitor mute, mono | ours: verified on hardware</title></rect>
+<rect x="790.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O3: Dim on / dim level / DimAttenuation | ours: verified on hardware</title></rect>
+<rect x="802.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O4: Monitor source (MixInSource mon/cue1/cue2) | ours: verified on hardware</title></rect>
+<rect x="814.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O10: Headphone source (MixInSource cue1/cue2) | ours: verified on hardware</title></rect>
+<rect x="826.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O12: CUE mono (outputs/14,15/MixToMono) | ours: verified on hardware</title></rect>
+<rect x="838.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine O15: Alt monitors (AltMonEnabled, AltMonTrim on 4 outputs, AltMonSelection,… | ours: verified on hardware</title></rect>
+<rect x="850.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine D8: Clock locked | ours: verified on hardware</title></rect>
+<rect x="862.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine D9: Clock master, multi-unit order, peer-to-peer latency (ClockMasterHwId,… | ours: verified on hardware</title></rect>
+<rect x="874.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine D10: Buffer size (/BufferSize) | ours: verified on hardware</title></rect>
+<rect x="886.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine E4: Device online, name, serial, versions, DeviceTypeID, analog board | ours: verified on hardware</title></rect>
+<rect x="898.7" y="200.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine P1: Plugin inserts (inputs/N/effects/N/*: 192 + 4 preamp + 8 aux entries) | ours: verified on hardware</title></rect>
+<rect x="754.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Mixer Engine H7: Device list, online/offline, firmware compatibility, assign devices to… | ours: verified on hardware</title></rect>
+<rect x="766.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine I8: HiZ jack detect (preamps/0/HiZ, inputs 0-1) | ours: done in code</title></rect>
+<rect x="778.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine I14: PGA disabled in line mode (x8p) | ours: done in code</title></rect>
+<rect x="790.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine I19: Front-panel selection (SelectedOnFront, word 0 bits 26-27) | ours: done in code</title></rect>
+<rect x="802.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M2: Pan / Pan2 | ours: done in code</title></rect>
+<rect x="814.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M4: Solo | ours: done in code</title></rect>
+<rect x="826.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M6: Stereo-linked input drive | ours: done in code</title></rect>
+<rect x="838.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M8: Input level meters | ours: done in code</title></rect>
+<rect x="850.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M10: Peak/Clip hold, clear (/ClipHold, /PeakHold, ClearPeak...) | ours: done in code</title></rect>
+<rect x="862.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine M11: /MeterPulse heartbeat | ours: done in code</title></rect>
 <rect x="874.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S6: Pre/post fader (SendPostFader, HPnSendPostFader, PostFaderOverride) | ours: done in code</title></rect>
-<rect x="886.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S7: AUX return fader / mute (auxs/N/FaderLevel, Mute) | ours: done in code</title></rect>
-<rect x="898.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S9: AUX → CUE sends (auxs/N/sends/M/Gain) | ours: done in code</title></rect>
-<rect x="754.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S11: Cue bus count (/CueBusCount) | ours: done in code</title></rect>
-<rect x="766.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O5: Monitor output pad / OutputRef (outputs/18/Pad) | ours: done in code</title></rect>
-<rect x="778.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O6: Line-out pads (outputs/0-3/Pad) | ours: done in code</title></rect>
-<rect x="790.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O7: Mirror monitor to digital (MirrorsToDigital) | ours: done in code</title></rect>
-<rect x="802.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O9: Headphone level (outputs/19,20/CRMonitorLevel) | ours: done in code</title></rect>
-<rect x="814.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O13: CUE mix on/off (MixInSource cue/mon) | ours: done in code</title></rect>
-<rect x="826.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O19: Speaker correction / HP correction (SupportsSpeakerCorrection, ...Headp… | ours: done in code</title></rect>
-<rect x="838.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O20: Identify (LED blink) | ours: done in code</title></rect>
-<rect x="850.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D1: TOSLINK output type (TOSLinkOutput) | ours: done in code</title></rect>
-<rect x="862.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D2: TOSLINK input type (/devices/0/TOSLink) | ours: done in code</title></rect>
-<rect x="874.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D4: S/PDIF SRC (inputs/12,13/SRConvert) | ours: done in code</title></rect>
-<rect x="886.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D5: Sample rate (/SampleRate) | ours: done in code</title></rect>
-<rect x="898.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D6: Clock source (/ClockSource) | ours: done in code</title></rect>
-<rect x="754.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D7: Clock-source list and names (ClockSourceListChanged, device-advertised… | ours: done in code</title></rect>
-<rect x="766.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D16: Func switch modes (FuncSwitchMode, x8p) | ours: done in code</title></rect>
-<rect x="778.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine T1: Talkback on/off (/TalkbackOn) | ours: done in code</title></rect>
-<rect x="790.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine T2: Hardware TALKBACK button | ours: done in code</title></rect>
-<rect x="802.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine T4: Talkback level (trim) | ours: done in code</title></rect>
-<rect x="814.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine E1: Monitor and AUX bus meters (words 18-20, 12-bit) | ours: done in code</title></rect>
-<rect x="826.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine E3: DSP load (TotalDSPLoad, TotalPGMLoad, TotalMEMLoad) | ours: done in code</title></rect>
-<rect x="838.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine P6: Sessions (/Session, kPropSessionFile, ModifiedSessions, new/open/save/s… | ours: done in code</title></rect>
-<rect x="850.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine P7: Snapshots (kPropSnapshot, PrimedSnapshot, save/move/delete/import/expor… | ours: done in code</title></rect>
-<rect x="862.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine P9: Undo/redo (kPropUndoRedo, UndoRecording) | ours: done in code</title></rect>
-<rect x="874.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H1: Persistence of mixer state | ours: done in code</title></rect>
-<rect x="886.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H2: Push whole tree at connect | ours: done in code</title></rect>
-<rect x="898.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H3: Metering computation | ours: done in code</title></rect>
-<rect x="754.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H4: DSP load reporting | ours: done in code</title></rect>
-<rect x="766.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H6: Sleep/wake | ours: done in code</title></rect>
-<rect x="778.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H9: Rate change orchestration | ours: done in code</title></rect>
-<rect x="790.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine I11: Knob position / selected param (PreampInputKnobSteps, PreampGainCustomD… | ours: partial or being built</title></rect>
-<rect x="802.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine I17: Unison / custom integrated preamp (CustomIntegratedPreamp*, readback wo… | ours: partial or being built</title></rect>
-<rect x="814.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine M5: SoloSafe / Isolate / RemoteSolo / SoloClear | ours: partial or being built</title></rect>
-<rect x="826.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine M9: Post-fader and send meters | ours: partial or being built</title></rect>
+<rect x="886.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S9: AUX → CUE sends (auxs/N/sends/M/Gain) | ours: done in code</title></rect>
+<rect x="898.7" y="212.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine S11: Cue bus count (/CueBusCount) | ours: done in code</title></rect>
+<rect x="754.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O5: Monitor output pad / OutputRef (outputs/18/Pad) | ours: done in code</title></rect>
+<rect x="766.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O6: Line-out pads (outputs/0-3/Pad) | ours: done in code</title></rect>
+<rect x="778.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O7: Mirror monitor to digital (MirrorsToDigital) | ours: done in code</title></rect>
+<rect x="790.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O9: Headphone level (outputs/19,20/CRMonitorLevel) | ours: done in code</title></rect>
+<rect x="802.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O13: CUE mix on/off (MixInSource cue/mon) | ours: done in code</title></rect>
+<rect x="814.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O19: Speaker correction / HP correction (SupportsSpeakerCorrection, ...Headp… | ours: done in code</title></rect>
+<rect x="826.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine O20: Identify (LED blink) | ours: done in code</title></rect>
+<rect x="838.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D1: TOSLINK output type (TOSLinkOutput) | ours: done in code</title></rect>
+<rect x="850.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D2: TOSLINK input type (/devices/0/TOSLink) | ours: done in code</title></rect>
+<rect x="862.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D4: S/PDIF SRC (inputs/12,13/SRConvert) | ours: done in code</title></rect>
+<rect x="874.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D5: Sample rate (/SampleRate) | ours: done in code</title></rect>
+<rect x="886.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D6: Clock source (/ClockSource) | ours: done in code</title></rect>
+<rect x="898.7" y="224.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D7: Clock-source list and names (ClockSourceListChanged, device-advertised… | ours: done in code</title></rect>
+<rect x="754.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine D16: Func switch modes (FuncSwitchMode, x8p) | ours: done in code</title></rect>
+<rect x="766.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine T1: Talkback on/off (/TalkbackOn) | ours: done in code</title></rect>
+<rect x="778.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine T2: Hardware TALKBACK button | ours: done in code</title></rect>
+<rect x="790.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine T4: Talkback level (trim) | ours: done in code</title></rect>
+<rect x="802.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine E1: Monitor and AUX bus meters (words 18-20, 12-bit) | ours: done in code</title></rect>
+<rect x="814.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine E3: DSP load (TotalDSPLoad, TotalPGMLoad, TotalMEMLoad) | ours: done in code</title></rect>
+<rect x="826.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine P6: Sessions (/Session, kPropSessionFile, ModifiedSessions, new/open/save/s… | ours: done in code</title></rect>
+<rect x="838.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine P7: Snapshots (kPropSnapshot, PrimedSnapshot, save/move/delete/import/expor… | ours: done in code</title></rect>
+<rect x="850.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine P9: Undo/redo (kPropUndoRedo, UndoRecording) | ours: done in code</title></rect>
+<rect x="862.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H1: Persistence of mixer state | ours: done in code</title></rect>
+<rect x="874.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H2: Push whole tree at connect | ours: done in code</title></rect>
+<rect x="886.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H3: Metering computation | ours: done in code</title></rect>
+<rect x="898.7" y="236.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H4: DSP load reporting | ours: done in code</title></rect>
+<rect x="754.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H6: Sleep/wake | ours: done in code</title></rect>
+<rect x="766.7" y="248.3" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Mixer Engine H9: Rate change orchestration | ours: done in code</title></rect>
+<rect x="778.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine I11: Knob position / selected param (PreampInputKnobSteps, PreampGainCustomD… | ours: partial or being built</title></rect>
+<rect x="790.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine I17: Unison / custom integrated preamp (CustomIntegratedPreamp*, readback wo… | ours: partial or being built</title></rect>
+<rect x="802.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine M5: SoloSafe / Isolate / RemoteSolo / SoloClear | ours: partial or being built</title></rect>
+<rect x="814.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine M9: Post-fader and send meters | ours: partial or being built</title></rect>
+<rect x="826.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine S4: Send pan (aux sends) | ours: partial or being built</title></rect>
 <rect x="838.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine S8: AUX bus MixToMono, effects, LLM | ours: partial or being built</title></rect>
 <rect x="850.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine D3: Converter mode (0x20/0x28/0x30), multi-unit role bits [2:0], order [7:6… | ours: partial or being built</title></rect>
 <rect x="862.7" y="248.3" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Mixer Engine D14: IO routes and IO map presets (IOMapPreset, inputroutes/*, outputroutes/… | ours: partial or being built</title></rect>
@@ -1874,7 +1874,7 @@
 <rect x="1091.1" y="207.9" width="10.5" height="10.5" rx="1" fill="#31363e"><title>DSP+firmware R91: v1 count from FPGA_REV[31:28] table {1,2,4,1} | ours: not done</title></rect>
 <rect x="1103.1" y="207.9" width="10.5" height="10.5" rx="1" fill="#31363e"><title>DSP+firmware K06: DSP interrupt vectors | ours: not done</title></rect>
 <text x="920.1" y="241.9" class="l">Model types</text>
-<text x="1022.1" y="241.9" class="c" text-anchor="end">22/51</text>
+<text x="1022.1" y="241.9" class="c" text-anchor="end">23/51</text>
 <rect x="919.1" y="245.9" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Model types Apollo x8p: DONE (triage 2026-10-11, was PARTIAL: plan H4 224de41 + O5 1c1d3c5 (pre… | ours: verified on hardware</title></rect>
 <rect x="931.1" y="245.9" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Model types F01: Mixer class, type id per model | ours: verified on hardware</title></rect>
 <rect x="943.1" y="245.9" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Model types F02: Preamp count | ours: verified on hardware</title></rect>
@@ -1888,16 +1888,16 @@
 <rect x="943.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Model types F43: Firmware major / minimum version check | ours: verified on hardware</title></rect>
 <rect x="955.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Model types F46: PCIe device-type identification | ours: verified on hardware</title></rect>
 <rect x="967.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#2ea043"><title>Model types F47: DSP count per model | ours: verified on hardware</title></rect>
-<rect x="979.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F08: S/PDIF vs AES/EBU | ours: done in code</title></rect>
-<rect x="991.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F09: TOSLink settable in/out and route visibility | ours: done in code</title></rect>
-<rect x="1003.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F12: Default TOSLink type | ours: done in code</title></rect>
-<rect x="919.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F13: Digital mirror availability | ours: done in code</title></rect>
-<rect x="931.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F14: Clock-source set and default | ours: done in code</title></rect>
-<rect x="943.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F16: Per-input AUX1/2 + CUE1-4 sends, 2 child meters | ours: done in code</title></rect>
-<rect x="955.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F18: Preamp controls past input 4 | ours: done in code</title></rect>
-<rect x="967.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F22: Output reference level (Pad) | ours: done in code</title></rect>
-<rect x="979.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F25: Line PGA disable | ours: done in code</title></rect>
-<rect x="991.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Model types F04: Talkback support flag | ours: partial or being built</title></rect>
+<rect x="979.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F04: Talkback support flag | ours: done in code</title></rect>
+<rect x="991.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F08: S/PDIF vs AES/EBU | ours: done in code</title></rect>
+<rect x="1003.1" y="257.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F09: TOSLink settable in/out and route visibility | ours: done in code</title></rect>
+<rect x="919.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F12: Default TOSLink type | ours: done in code</title></rect>
+<rect x="931.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F13: Digital mirror availability | ours: done in code</title></rect>
+<rect x="943.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F14: Clock-source set and default | ours: done in code</title></rect>
+<rect x="955.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F16: Per-input AUX1/2 + CUE1-4 sends, 2 child meters | ours: done in code</title></rect>
+<rect x="967.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F18: Preamp controls past input 4 | ours: done in code</title></rect>
+<rect x="979.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F22: Output reference level (Pad) | ours: done in code</title></rect>
+<rect x="991.1" y="269.9" width="10.5" height="10.5" rx="1" fill="#1b4d29"><title>Model types F25: Line PGA disable | ours: done in code</title></rect>
 <rect x="1003.1" y="269.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Model types F07: Desktop flag | ours: partial or being built</title></rect>
 <rect x="919.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Model types F10: Virtual cap and ADAT 5-8 hidden at 88.2/96 kHz | ours: partial or being built</title></rect>
 <rect x="931.1" y="281.9" width="10.5" height="10.5" rx="1" fill="url(#hatch-dark)"><title>Model types F11: ADAT channel count at 176.4/192 kHz and the output side | ours: partial or being built</title></rect>
