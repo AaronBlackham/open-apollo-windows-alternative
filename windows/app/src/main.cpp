@@ -1005,7 +1005,8 @@ static void LiveStrips(std::wstring &j, Slot &u)
     }
     APOLLO_STRIPS_INFO s;
     memcpy(&s, buf.data(), sizeof(s));
-    bool perInput = ret >= sizeof(APOLLO_STRIPS_INFO);  /* version 2: the per-input arrays */
+    /* version 2 and up: the per-input arrays (an older driver answers v2/v3, shorter than this build's structure) */
+    bool perInput = ret >= APOLLO_STRIPS_INFO_V2_SIZE;
 
     Appendf(j, L",\"strips\":{\"version\":%lu,\"state\":%lu,\"flags\":%lu,\"enable\":%lu,\"mask\":%lu,",
             perInput ? s.Version : 1ul, s.State, s.Flags, s.Enable, s.Mask);
@@ -2022,6 +2023,32 @@ static void HandleUiJson(const std::wstring &json)
     }
     if (diaghost::Owns(cmd)) {
         diaghost::Save(RatePost, APP_VERSION);      /* [Diag] one folder for a fault report (diag_host.h) */
+        return;
+    }
+    if (cmd == L"driver-switch") {
+        /* [Switch] apollo-helper disconnect / connect in its own console window (it elevates and asks per unit): next to
+           this exe in an install, installer\helper\bin in the source tree */
+        bool toUa = json.find(L"\"to\":\"ua\"") != std::wstring::npos;
+        wchar_t exe[MAX_PATH];
+        std::wstring dir, helper;
+        if (GetModuleFileNameW(nullptr, exe, MAX_PATH)) {
+            dir = exe;
+            dir = dir.substr(0, dir.find_last_of(L'\\'));
+        }
+        for (const std::wstring &c : { dir + L"\\apollo-helper.exe", dir + L"\\..\\..\\installer\\helper\\bin\\apollo-helper.exe" }) {
+            if (GetFileAttributesW(c.c_str()) != INVALID_FILE_ATTRIBUTES) { helper = c; break; }
+        }
+        std::wstring j = L"{\"type\":\"driver-switch\",\"ok\":";
+        if (helper.empty()) {
+            j += L"false,\"why\":\"apollo-helper.exe is not installed next to Apollo Control\"}";
+        } else {
+            HINSTANCE r = ShellExecuteW(g_hwnd, L"open", helper.c_str(), toUa ? L"disconnect" : L"connect", dir.c_str(), SW_SHOWNORMAL);
+            bool ok = (INT_PTR)r > 32;
+            AppLog(L"driver switch to %s: %s", toUa ? L"UA's driver" : L"the Apollo driver", ok ? L"helper started" : L"helper did not start");
+            j += ok ? L"true,\"why\":\"The switch window is open: answer it there (administrator rights, then which units).\"}"
+                    : L"false,\"why\":\"the helper did not start\"}";
+        }
+        PostJson(std::move(j));
         return;
     }
     if (cmd == L"agg-get") {

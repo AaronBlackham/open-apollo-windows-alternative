@@ -33,6 +33,7 @@
 #include "clock_plan.h"         /* [Clock] clock sources, digital formats, the front panel per model */
 #include "..\include\apollo_clock.h"  /* [Clock] GET/SET_CLOCK, GET/SET_PANEL */
 #include "..\include\apollo_events.h" /* [Events] WAIT_EVENTS and the event kinds */
+#include "dsp_status.h"                /* [DSP] reply status words by name, for the log */
 
 #define APOLLO_POOL_TAG     'lopA'
 #define APOLLO_MAX_DSPS     8
@@ -93,10 +94,11 @@ typedef struct _APOLLO_RING {
  * their DMA payload (page 0) and reply descriptors (page 1) in one preallocated common buffer.
  * Slots are touched only under DevLock; waits happen with DevLock released.
  */
-#define XACT_SLOTS          16
+#define APOLLO_STRIP_SLOTS  (APOLLO_STRIP_INPUTS + APOLLO_STRIP_VIRTUALS)  /* [Virtual] strips.c: 0-7 Mic, 8-15 VIRTUAL 1-8 */
+#define XACT_SLOTS          20      /* [Virtual] a pass holds 16 PREPAREs (8 Mic + 8 Virtual) and its START */
 #define XACT_PAGE           0x1000u
 #define XACT_BYTES          (2 * XACT_PAGE)
-#define XACT_ENTS_MAX       32
+#define XACT_ENTS_MAX       64      /* [Virtual] the START of 8 Mic + 8 Input Strips: 4 entries each */
 #define XACT_RX_MAX         2
 
 typedef enum _XACT_STATE {
@@ -145,6 +147,9 @@ typedef struct _APOLLO_STRIPS {
     ULONG           Dsp;            /* StripDsp, 0..3 */
     ULONG           MixerBatch;     /* MixerInitBatch: APOLLO_MIXER_BATCH_* */
     ULONG           Probe;          /* StripProbe: strip_plan.h STRIP_PROBE_OFF/MEASURE_ONLY/REPAIR */
+    ULONG           VMask;          /* [Virtual] StripVirtualMask as the model and the pools take it (bit n-1 = VIRTUAL n) */
+    ULONG           VMaskAsked;     /* [Virtual] the registry value */
+    ULONG           VLayoutWhy;     /* [Virtual] 0, or the pool check's code that refused VMaskAsked (VMask is 0 then) */
 
     /* State (DevLock) */
     ULONG           State;          /* APOLLO_STRIPS_STATE_* */
@@ -177,11 +182,15 @@ typedef struct _APOLLO_STRIPS {
     ULONG           PhantomState;   /* APOLLO_STRIPS_PHANTOM_* */
     ULONG           PhantomMask;
     ULONG           RoutesSent;
-    UCHAR           StripState[APOLLO_STRIP_INPUTS];    /* APOLLO_STRIP_NONE/QUEUED/TAKEN */
-    BOOLEAN         StripStarted[APOLLO_STRIP_INPUTS];  /* its SYNCH went out: stop it at D0 exit */
-    ULONG           StripHeader[APOLLO_STRIP_INPUTS];
-    ULONG           StripAckMs[APOLLO_STRIP_INPUTS];
-    ULONG           BusOwner[APOLLO_STRIP_INPUTS];      /* DSP that mixes input i's bus (0 = default) */
+    /*
+     * Per strip slot (strip_plan.h): 0-7 the Mic strips (preamp i, bus i), [Virtual] 8-15 the Input Strips on
+     * VIRTUAL 1-8 (bus 0x18-0x1F). GET_STRIPS reports 0-7 as before and 8-15 in its version 4 part.
+     */
+    UCHAR           StripState[APOLLO_STRIP_SLOTS];     /* APOLLO_STRIP_NONE/QUEUED/TAKEN */
+    BOOLEAN         StripStarted[APOLLO_STRIP_SLOTS];   /* its SYNCH went out: stop it at D0 exit */
+    ULONG           StripHeader[APOLLO_STRIP_SLOTS];
+    ULONG           StripAckMs[APOLLO_STRIP_SLOTS];
+    ULONG           BusOwner[APOLLO_STRIP_SLOTS];       /* DSP that mixes slot k's bus (0 = default) */
     /* The live probe (strips.c StripsProbe, docs/STRIPS.md 10.9) */
     ULONG           ProbeDead;      /* strip inputs whose record slot read exact zero, last measurement */
     ULONG           ProbeMeasured;  /* measurements made since the bring-up */
@@ -207,7 +216,7 @@ typedef struct _APOLLO_STRIPS {
     ULONG           PostBoot[APOLLO_MAX_DSPS];      /* boot words after this start's bring-up */
     STRIP_RECORD    Rec;            /* found at this start */
     STRIP_RECORD    Cur;            /* kept by this start */
-    ULONG           PlanScratch[384];                 /* strip_plan.h STRIP_PLAN, under StripLock */
+    ULONG           PlanScratch[576];                 /* strip_plan.h STRIP_PLAN (64 entries), under StripLock */
     UCHAR           Blob[6336];     /* verified module records (APOLLO_STRIP_MODULES_BYTES) */
     APOLLO_XACT     Xact[XACT_SLOTS];
 } APOLLO_STRIPS;
@@ -655,6 +664,8 @@ _IRQL_requires_(PASSIVE_LEVEL)
 VOID     ApolloStripsUploadProven(_In_ PDEVICE_CONTEXT Ctx);
 VOID     ApolloStripsMixerInitBatch(_In_ PDEVICE_CONTEXT Ctx);    /* DevLock, ApolloMixerInit */
 BOOLEAN  ApolloStripsRateRearm(_In_ PDEVICE_CONTEXT Ctx);         /* [Rate] DevLock, after a rate change */
+ULONG    ApolloStripsVirtualBuses(_In_ PDEVICE_CONTEXT Ctx);      /* [Virtual] mixer buses of the Virtual strips (bit 0x18+n-1) */
+ULONG    ApolloStripsBusSlot(_In_ ULONG Bus);                     /* [Virtual] cues.c: the strip slot that mixes Bus, or 16 */
 EVT_WDF_WORKITEM                         ApolloEvtStripWork;
 
 /* ---- plugin.c: UAD plug-in hosting, phase P0 (docs/PLUGINS.md 2.1; include\apollo_plugin.h) ---- */

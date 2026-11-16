@@ -4,9 +4,8 @@
 // The demo's plug-ins are invented and their previews are drawn placeholders: nothing from a UAD install is in these.
 // [Sess] Then the session list per theme (session-<theme>.png): three saved sessions, the current one edited since its
 // save, the autosaved last state. node shots.js <folder> sessions takes only those.
-// Classic (the default look) at 1240 x 860, a fresh config as a new user sees it: node shots.js <folder> classic writes
-// classic-*.png only (the x8p side of the strips, the Twin X side, filled chains with the AUX strips, an insert's
-// parameter view, the style guide, Settings > Appearance, the session list).
+// Classic (the default look), a fresh config as a new user sees it: node shots.js <folder> classic writes classic-*.png
+// at 1240 x 860 and classic-1536-*.png at 1536 x 864 (1.25 scale) only (see classicShots).
 const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const path = require('path');
 const fs = require('fs');
@@ -15,49 +14,93 @@ const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.htm
 fs.mkdirSync(out, { recursive: true });
 
 async function classicShots(browser) {
+  const errors = [], files = [];
+  /* [Classic] the console layout at 1240 x 860 (classic-*.png) and at 1536 x 864 with 1.25 scale, the owner's 1080p at
+     125 % (classic-1536-*.png): the strips, filled chains with the AUX returns, the browser opened from an empty insert,
+     the INPUTS view, an insert's parameter view; at 1240 also the Twin X side, the style guide, Settings, sessions */
+  for (const [w, h, dpr, pre] of [[1240, 860, 1, ''], [1536, 864, 1.25, '1536-']]) {
+    const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+    page.on('pageerror', e => errors.push(e.message));
+    const shot = async (name, settle = 300) => {
+      await page.waitForTimeout(settle);
+      await page.evaluate(() => document.getElementById('toasts').replaceChildren());
+      files.push(path.join(out, `classic-${pre}${name}.png`));
+      await page.screenshot({ path: files[files.length - 1] });
+    };
+    const small = !pre;
+    await page.goto(ui + '?view=control');               /* no saved config: the default look */
+    await page.evaluate(() => document.fonts.ready);
+    await page.mouse.move(5, 500);
+    await shot('control', 1500);                         /* meters settle */
+    if (small) {
+      await page.evaluate(() => { document.getElementById('inputs').scrollLeft = 1e5; });
+      await shot('control-twinx');
+      await page.evaluate(() => { document.getElementById('inputs').scrollLeft = 0; });
+    }
+    await page.evaluate(() => {
+      Plug.demoFill();
+      setAuxOpen(true);
+      Aux.setSend(0, 0, 0, 'level', -12); Aux.setSend(0, 0, 1, 'level', -20); Aux.setSend(0, 1, 0, 'level', -30); setSend(0, 0, 'level', -16, 0);
+    });
+    await page.mouse.move(5, 500);
+    await shot('control-inserts', 600);
+    await page.locator('#inputs .ins-slot[data-unit="0"][data-ch="4"][data-n="0"]').click();
+    await shot('control-browser', 400);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { setAuxOpen(false); document.querySelector('#clViewCol .seg button:nth-child(2)').click(); });
+    await page.mouse.move(5, 500);
+    await shot('control-inputs-view', 400);
+    await page.evaluate(() => document.querySelector('#clViewCol .seg button:nth-child(1)').click());
+    await page.locator('#inputs .ins-slot[data-unit="0"][data-ch="0"][data-n="1"]').click();
+    await page.mouse.move(5, 500);
+    await shot('control-params', 400);
+    if (small) {
+      await page.evaluate(() => { Plug.openDrawer(null); showView('styleguide'); });
+      await shot('styleguide', 500);
+      await page.evaluate(() => { document.getElementById('view-styleguide').scrollTop = 1e5; });
+      await shot('styleguide-2');
+      await page.evaluate(() => { showView('settings'); const l = document.querySelector('.look-list'); if (l) l.closest('.panel').scrollIntoView(); });
+      await shot('settings');
+      await page.evaluate(() => { showView('control'); Sess.open(); });
+      await shot('sessions', 500);
+      await page.evaluate(() => Sess.close(false));
+    }
+    await page.close();
+  }
+  return { files, errors };
+}
+
+/* [Clock] the Device view's clock and digital I/O panel (clockui.js) in Classic and Studio, the demo's x8p, then the Twin X:
+   node shots.js <folder> device writes device-classic.png, device-studio.png, device-twinx-<look>.png */
+async function deviceShots(browser) {
   const page = await browser.newPage({ viewport: { width: 1240, height: 860 } });
   const errors = [], files = [];
   page.on('pageerror', e => errors.push(e.message));
-  const shot = async (name, settle = 300) => {
-    await page.waitForTimeout(settle);
-    await page.evaluate(() => document.getElementById('toasts').replaceChildren());
-    files.push(path.join(out, `classic-${name}.png`));
-    await page.screenshot({ path: files[files.length - 1] });
-  };
-  await page.goto(ui + '?view=control');                 /* no saved config: the default look */
+  await page.goto(ui + '?view=device');
   await page.evaluate(() => document.fonts.ready);
-  await page.mouse.move(5, 500);
-  await shot('control', 1500);                           /* meters settle */
-  await page.evaluate(() => { document.getElementById('inputs').scrollLeft = 1e5; });
-  await shot('control-twinx');
-  await page.evaluate(() => {
-    document.getElementById('inputs').scrollLeft = 0;
-    Plug.demoFill();
-    setAuxOpen(true);
-    Aux.setSend(0, 0, 0, 'level', -12); Aux.setSend(0, 0, 1, 'level', -20); Aux.setSend(0, 1, 0, 'level', -30);
-  });
-  await page.mouse.move(5, 500);
-  await shot('control-inserts', 600);
-  await page.locator('#inputs .ins-slot[data-unit="0"][data-ch="0"][data-n="1"]').click();
-  await page.mouse.move(5, 500);
-  await shot('control-params', 400);
-  await page.evaluate(() => { Plug.openDrawer(null); setAuxOpen(false); showView('styleguide'); });
-  await shot('styleguide', 500);
-  await page.evaluate(() => { document.getElementById('view-styleguide').scrollTop = 1e5; });
-  await shot('styleguide-2');
-  await page.evaluate(() => { showView('settings'); const l = document.querySelector('.look-list'); if (l) l.closest('.panel').scrollIntoView(); });
-  await shot('settings');
-  await page.evaluate(() => { showView('control'); Sess.open(); });
-  await shot('sessions', 500);
-  await page.evaluate(() => Sess.close(false));
+  for (const [unit, name] of [[0, ''], [1, 'twinx-']]) {
+    for (const look of ['classic', 'studio']) {
+      await page.evaluate(([l, u]) => {
+        setLook(l);
+        selectUnit(u);
+        showView('device');
+        document.getElementById('devClock').closest('.panel').scrollIntoView({ block: 'start' });
+      }, [look, unit]);
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(500);
+      await page.evaluate(() => document.getElementById('toasts').replaceChildren());
+      files.push(path.join(out, `device-${name}${look}.png`));
+      await page.screenshot({ path: files[files.length - 1] });
+    }
+  }
   await page.close();
   return { files, errors };
 }
 
 (async () => {
   const browser = await chromium.launch();
-  if (process.argv[3] === 'classic') {
-    const r = await classicShots(browser);
+  if (process.argv[3] === 'classic' || process.argv[3] === 'device') {
+    const r = await (process.argv[3] === 'device' ? deviceShots : classicShots)(browser);
     await browser.close();
     console.log(r.files.join('\n'));
     if (r.errors.length) console.log('ERRORS:\n' + r.errors.join('\n'));

@@ -149,6 +149,8 @@ function defaultConfig() {
        for configs from before the looks (migrateLooks). */
     appearance: { theme: 'dark', look: 'classic', followSystem: false, accent: 'look', scale: 100, scanlines: false },
     plb: { closed: false },
+    /* [Classic] the Classic look's strip view (overview, inputs, inserts, sends) and its control room column (themes/classic) */
+    classic: { view: 'overview', ctrlRoom: true },
     bridge: { std: 'vu' },
     auxStrips: { open: false },        /* [Ins] the console layouts show the AUX 1 / AUX 2 strips (the master's AUX button) */             /* [Themes] Studio's meter bridge: vu, ppm or k14 */            /* [Plug-ins] the Control view's plug-in browser collapsed */
     /* closeToTray counts once the user set it (closeToTraySet); until then the window closes to the tray while Apollo Control
@@ -162,6 +164,8 @@ function defaultConfig() {
     unitPrefs: {},                     /* unit id -> newUnitPrefs(): another unit's names and Hi-Z load */
     talkbackDim: true,                 /* [Monitor] dim the monitor while talkback is on */
     mixes: {},                         /* [Monitor] mixKey -> newMix(): what the units cannot report (ALT, cues) */
+    /* [Clock] the front panels' monitor link (clockui.js): monitor = the speaker unit's id, '' = off */
+    panelLink: { monitor: '', level: true, mute: true, dim: true, mono: false, talkDim: true },
   };
 }
 
@@ -248,7 +252,7 @@ function merge(base, loaded) {
       if (Array.isArray(l)) base.presets = l.filter(p => p && typeof p.name === 'string' && p.state && Array.isArray(p.state.inputs));
     } else if (key === 'unitPrefs') {
       if (l && typeof l === 'object' && !Array.isArray(l)) {
-        for (const [id, p] of Object.entries(l)) base.unitPrefs[id] = merge(newUnitPrefs(), p);
+        for (const [id, p] of Object.entries(l)) base.unitPrefs[id] = Clock.keepPrefs(merge(newUnitPrefs(), p), p);   /* [Clock] + clock, digital */
       }
     } else if (key === 'mixes') {
       if (l && typeof l === 'object' && !Array.isArray(l)) {
@@ -1027,6 +1031,7 @@ function onHostMessage(m) {
     case 'error': onHostError(m); break;
     case 'plugins': if (!S.demo) Plug.onState(m); break;          /* [Plug-ins] plugins.js */
     case 'plugin-list': if (!S.demo) Plug.onList(m); break;
+    case 'plugin-setup': if (!S.demo) Plug.onSetup(m); break;     /* [PlugSetup] Set up plug-ins (a release install) */
     case 'plugin-result':
       if (m.op === 'session') Sess.onHost(m);                  /* [Sess] a session's chains handed to the engine */
       else if (!S.demo) Plug.onResult(m);
@@ -1037,6 +1042,10 @@ function onHostMessage(m) {
     case 'rate': if (!S.demo) onRate(m); break;                   /* [Rate] */
     case 'params': if (!S.demo) onParams(m); break;               /* [Params] */
     case 'event': if (!S.demo) onDriverEvent(m); break;           /* [Events] */
+    case 'driver-switch':                                          /* [Switch] */
+      if (m.ok) toast(m.why || 'The driver switch window is open: follow it there.', 'info', 8000);
+      else toast(`Not started: ${m.why || 'error'}`, 'bad', 8000);
+      break;
     case 'diag-result':                                            /* [Diag] */
       if (m.ok) toast(`Diagnostics saved (${m.files} files): ${m.dir}`, 'info', 8000);
       else toast(`Diagnostics not saved: ${m.why || 'error'}`, 'bad');
@@ -1044,6 +1053,7 @@ function onHostMessage(m) {
     case 'rate-result': if (!S.demo) onRateResult(m); break;
     case 'measure-result': Sig.onMeasure(m); break;            /* [Themes] Lab's Avium Measure hand-off */
     case 'endpoints': case 'endpoints-result': if (!S.demo) Endpoints.onHost(m); break;   /* [Endpoints] endpoints.js */
+    case 'clock': case 'clock-result': case 'panel': case 'panel-link': if (!S.demo) Clock.onHost(m); break;   /* [Clock] clockui.js */
     case 'tray':                               /* the tray menu acts on the selected unit, like M and D */
       if (m.action === 'mute') setMon('mute', !S.mon.mute);
       if (m.action === 'dim') setMon('dim', !S.mon.dim);
@@ -1159,6 +1169,7 @@ function setUnitList(list) {
   }
   if (S.demo) demoUnits();
   Units.onUnits(prev);
+  Clock.onUnits();                     /* [Clock] arrivals: clock and panel state, the saved clock and formats, the monitor link */
   syncUnit();
   renderUnits();
   for (let idx = 1; idx < MAX_UNITS; idx++) syncMixApply(idx);    /* [Monitor] a unit whose id just arrived */
@@ -2404,6 +2415,7 @@ function renderSegHead(idx) {
   sg.gonebar.hidden = !sg.gone;
   if (sg.gone) put(sg.goneTxt, `DISCONNECTED${sg.goneAt ? ` ${sg.goneAt.toTimeString().slice(0, 5)}` : ''}`);
   sg.node.dataset.live = !sg.gone && !unitReadOnly(idx) && (S.demo || connected(idx)) ? '1' : '0';
+  Clock.head(idx, sg);                 /* [Clock] the clock badge, the talkback strip's no-signal note (clockui.js) */
 }
 
 function renderSegHeads() { for (const idx of segs.keys()) renderSegHead(idx); }
@@ -3619,6 +3631,7 @@ function renderDevice() {
   document.getElementById('devFlags').replaceChildren(
     ...FLAG_CHIPS.map(([f, label]) => el('span', { class: 'chip' + ((flags & f) ? ' on' : ''), text: label })));
   renderDeviceRate();
+  Clock.renderDevice();                /* [Clock] clock source and digital I/O of the focused unit (clockui.js) */
   renderParams();
 }
 
@@ -3930,6 +3943,21 @@ function setRow(title, desc, control) {
     control);
 }
 
+/* [Switch] Settings > Driver: the host starts apollo-helper disconnect / connect in its own window (it elevates, asks per
+   unit and waits until nothing plays); reply {"type":"driver-switch","ok","why"}. */
+async function driverSwitch(to) {
+  if (S.demo || !host) { toast('Switching drivers needs the installed app and its helper: not in the demo.', 'warn'); return; }
+  const ua = to === 'ua';
+  const ok = await dialog({
+    title: ua ? 'Switch your Apollo units to UA\'s driver?' : 'Connect your Apollo units to the Apollo driver?',
+    body: ua ? 'Apollo Control loses the units until you connect them again. A window asks for administrator rights, then asks which units to switch. ' +
+      'Close audio apps that use the units first.'
+      : 'A window asks for administrator rights, then asks which units to switch. Close UA\'s apps and anything that plays through the units first.',
+    confirm: ua ? 'Switch to UA\'s driver' : 'Connect',
+  });
+  if (ok) send(JSON.stringify({ cmd: 'driver-switch', to }));
+}
+
 function renderSettings() {
   const root = document.getElementById('settings');
   if (!root) return;
@@ -4088,7 +4116,16 @@ function renderSettings() {
     el('span', { class: 'desc', text: `Apollo Control ${appVersion}, for the apollo.sys open driver. Settings are saved in %APPDATA%\\Avium\\ApolloControl\\config.json.` }),
     el('div', {}, el('button', { class: 'btn', onclick: resetSettings }, 'Reset all settings')));
 
-  root.replaceChildren(inputsPanel, safety, Plug.settingsPanel(), Endpoints.panel(), meters, appearance, windowPanel, presets, keys, about);
+  /* [Switch] the way back to UA's driver and to this one again (apollo-helper disconnect / connect, app/src/main.cpp) */
+  const driverPanel = el('div', { class: 'panel' },
+    el('div', { class: 'sect-title', text: 'Driver' }),
+    el('span', { class: 'desc', text: 'Universal Audio\'s own software (its firmware updates, UA Console) needs your units on UA\'s driver. ' +
+      'Switch them back here; the Apollo driver stays installed and Connect brings them back. Both ask for administrator rights ' +
+      'and wait until nothing plays on the units.' }),
+    el('div', { class: 'set-row' },
+      el('button', { class: 'btn', type: 'button', onclick: () => driverSwitch('ua') }, 'Switch units to UA\'s driver'),
+      el('button', { class: 'btn', type: 'button', onclick: () => driverSwitch('apollo') }, 'Connect units to the Apollo driver')));
+  root.replaceChildren(inputsPanel, safety, Plug.settingsPanel(), Endpoints.panel(), driverPanel, meters, appearance, windowPanel, presets, keys, about);
   Endpoints.ask();                     /* [Endpoints] Windows audio: the host's rows (at most every 3 s) */
   document.getElementById('view-settings').scrollTop = keepScroll;
 }
@@ -4353,6 +4390,7 @@ function currentLook() {
   return a.followSystem && !window.matchMedia('(prefers-color-scheme: dark)').matches ? 'day' : id;
 }
 
+let deskOn = null;                     /* [Classic] the pack desk that is on (applyAppearance) */
 function applyAppearance() {
   const rootEl = document.documentElement, id = currentLook(), L = LOOKS.find(l => l.id === id) || LOOKS[0];
   rootEl.dataset.look = id;
@@ -4371,6 +4409,12 @@ function applyAppearance() {
   /* layer 2, composition: the pack's arrangement of the Control view (console, hud, panels, rows, focus, cards) */
   const vc = document.getElementById('view-control');
   if (vc) vc.dataset.comp = (Skin.manifest().layout || {}).composition || 'console';
+  /* [Classic] a pack's own desk pieces (renderers.js desk: Classic's View column and strip cue sends): on() each time the
+     look is applied while its pack is on, off() when another pack takes over; packs without one are untouched */
+  const desk = Skin.r('desk');
+  if (deskOn && deskOn !== desk) deskOn.off();
+  deskOn = desk && desk.on ? desk : null;
+  if (deskOn) deskOn.on();
   for (const sg of segs.values()) renderSegHead(sg.idx);
   Sess.onTheme();                      /* [Sess] the session list in this theme's layout */
   const z = cfg.appearance.scale / 100;

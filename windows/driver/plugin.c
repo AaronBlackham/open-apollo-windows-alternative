@@ -1554,12 +1554,11 @@ static NTSTATUS PlugCatGet(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H,
 static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H, _In_ ULONG D,
                               _Outptr_result_maybenull_ PLUG_LEDGER **Out)
 {
-    static const ULONG kPer[4] = { 0, STRIP_POOL1_PER_STRIP, STRIP_POOL2_PER_STRIP, STRIP_POOL3_PER_STRIP };
     const STRIP_MODEL *model = PlugStripModel(Ctx);
     APOLLO_STRIPS *s = &Ctx->Strips;
     PLUG_DSP *d = PlugSyncDsp(Ctx, H, D);
     ULONG w = ApolloDspWindow(D), size[4], base[4], scr[4], regs[11], p, err;
-    CHAR booked[80];
+    CHAR booked[112];
 
     *Out = NULL;
     booked[0] = '\0';
@@ -1598,9 +1597,12 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
             err = PLUG_EINVAL;
         } else {
             /* pools 1-3 raised to max(register, the Mic strip's 0x1C0 / 0x80 / 0) and kept there as the
-               ledger's floor (PlugLedgerStripScratch), then the strips' room (review P0 finding 1) */
-            err = PlugLedgerBookStrips(d->Ledger, STRIP_CODE_WORDS, kPer, model != NULL ? model->LayoutStrips : STRIP_PLAN_INPUTS,
-                                       d->StripBook);
+               ledger's floor (PlugLedgerStripScratch), then the strips' room (review P0 finding 1);
+               [Virtual] the room includes this start's Virtual Input Strips, right below the Mic strips' */
+            ULONG room[4];
+
+            StripPlanRoom(model != NULL ? model->LayoutStrips : STRIP_PLAN_INPUTS, s->VMask, room);
+            err = PlugLedgerBookStripRoom(d->Ledger, STRIP_CODE_WORDS, room, d->StripBook);
         }
         if (err == PLUG_OK && (d->StripBook[0].Base != APOLLO_STRIP_CODE_BASE ||
                                d->StripBook[1].Base + d->StripBook[1].Words != STRIP_TOP1 ||
@@ -1611,8 +1613,8 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
     }
     if (err == PLUG_OK && D == s->Dsp) {
         /* [P7] the unit's own strips: x8p 8, Twin X 2 */
-        (VOID)RtlStringCbPrintfA(booked, sizeof(booked), " (strip room booked: code 0xe0000+994, the %lu strips at the pool tops)",
-                                 model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS);
+        (VOID)RtlStringCbPrintfA(booked, sizeof(booked), " (strip room booked: code 0xe0000+994, the %lu strips + Virtual 0x%02lx at the pool tops)",
+                                 model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS, s->VMask);
     }
     ApolloLogU(Ctx, "plugins: DSP %lu pools size %08x %08x %08x %08x base %08x %08x %08x %08x scratch %08x %08x %08x: %s%s",
                D, size[0], size[1], size[2], size[3], base[0], base[1], base[2], base[3], scr[1], scr[2], scr[3],
@@ -2159,8 +2161,11 @@ static NTSTATUS PlugUpload(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST *H,
         if (!PlugUploadReplyOk(Reply, &E->Bill)) {
             status = STATUS_REQUEST_NOT_ACCEPTED;
             d->RepliesBad++;
-            ApolloLogU(Ctx, "plugins: DSP %lu refused module 0x%03lx (kind %lu arch %lu, %lu bytes) at 0x%05lx: reply %08x %08x %08x %08x",
-                       Dsp, E->Bill.Id, E->Bill.Kind, E->Bill.Arch, E->Len, Dest, Reply[0], Reply[1], Reply[2], Reply[3]);
+            CHAR why[64];
+
+            ApolloLogU(Ctx, "plugins: DSP %lu refused module 0x%03lx (kind %lu arch %lu, %lu bytes) at 0x%05lx: reply %08x %08x %08x %08x %s",
+                       Dsp, E->Bill.Id, E->Bill.Kind, E->Bill.Arch, E->Len, Dest, Reply[0], Reply[1], Reply[2], Reply[3],
+                       ApolloDspReplyText(Reply, why, sizeof(why)));
             PlugQuarantine(Ctx, H, Dsp, "an upload was not accepted", status);
         } else {
             d->RepliesOk++;

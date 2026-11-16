@@ -9,6 +9,8 @@ if not exist "%EWDK%\BuildEnv\SetupBuildEnv.cmd" (
     exit /b 1
 )
 call "%EWDK%\BuildEnv\SetupBuildEnv.cmd" amd64 >nul
+rem SetupBuildEnv turns echo back on: off again, so the build log shows only what the steps print
+@echo off
 set ROOT=%~dp0..
 
 echo === sat-test (playback ring saturating add) ===
@@ -57,6 +59,11 @@ if exist "%ROOT%\dsp\build.cmd" (
 if exist "%ROOT%\app\build.cmd" (
     echo === apollo-control ===
     call "%ROOT%\app\build.cmd" || exit /b 1
+)
+rem [PlugSetup] the plug-in setup's offline self-test (pins, hosts, no-UAD stop, lock, cancel; no download)
+if exist "%ROOT%\plugins\tools\setup-plugins.ps1" (
+    echo === plug-in setup self-test ^(Set up UAD plug-ins, plugins\tools\setup-plugins.ps1^) ===
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\plugins\tools\setup-plugins.ps1" -SelfTest || exit /b 1
 )
 echo === tools manifest (SHA-256 for the elevated scripts, tools\phase1\safe-tools.ps1) ===
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\write-manifest.ps1" || exit /b 1

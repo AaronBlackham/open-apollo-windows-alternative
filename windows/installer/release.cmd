@@ -7,7 +7,8 @@ rem
 rem   1. Copies the source folders tools\build-all.cmd needs (driver include app asio tools dsp installer third_party
 rem      docs) into <release folder>\src. Never copied: build outputs (bin, obj, driver\x64, installer\out), logs,
 rem      per-PC captures (*.defaults.json, *.used, *.aggconfig.bin), tools\bin, and the folders outside that list
-rem      (builds, reference, ua-files, plugins with its bundles, p1, store, downloads, work and specs).
+rem      (builds, reference, ua-files, plugins with its bundles, p1, store, downloads, work and specs). Of plugins only
+rem      plugins\tools is copied ([PlugSetup]: the plug-in setup's and the mapper's source code).
 rem   2. Copies the Inno Setup this source tree already fetched (installer\tools\inno-6.7.4): nothing is downloaded.
 rem   3. Puts release-nosign.targets there as Directory.Build.targets: the WDK test-signs nothing in that tree.
 rem   4. Runs tools\build-all.cmd there (every offline suite runs), then installer\build.cmd there in release mode:
@@ -72,6 +73,13 @@ for %%D in (driver include app asio tools dsp installer third_party docs LICENSE
         echo robocopy failed on %%D
         goto fail
     )
+)
+rem [PlugSetup] plugins\tools only: the plug-in setup's and the mapper's source (stage.ps1 takes source files only).
+rem Never bundles, store, specs, downloads, work, p1 or .venv: they hold or come from the developer's UAD install.
+robocopy "%SRC%\plugins\tools" "%REL%\src\plugins\tools" /E /NFL /NDL /NJH /NJS /NP /XD __pycache__ /XF *.pyc *.log >nul
+if errorlevel 8 (
+    echo robocopy failed on plugins\tools
+    goto fail
 )
 robocopy "%SRC%\installer\tools\inno-%INNO_VER%" "%REL%\src\installer\tools\inno-%INNO_VER%" /E /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (

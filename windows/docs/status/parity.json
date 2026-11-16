@@ -9195,7 +9195,7 @@
   "behaviour": "CDeviceManager::PauseDevice / ResumeDevice",
   "upstream": "blocked",
   "ours": "partial",
-  "evidence": "D0 exit stops engine/transport, ASIO host asked to reset; no pause/resume events [ahead]",
+  "evidence": "D0 exit stops engine/transport, ASIO host asked to reset; WAIT_EVENTS posts LEAVING before and STAGE connected after (events.c)",
   "n": 45,
   "key": "Lifecycle #45"
  },
@@ -9514,8 +9514,8 @@
   "id": "R61",
   "behaviour": "Map status word 1 to error codes (table above)",
   "upstream": "done",
-  "ours": "partial",
-  "evidence": "a mismatching reply is refused and logged with its words; no status-word error table",
+  "ours": "done",
+  "evidence": "a refused reply is logged with its words and its status decoded as the kext maps it (driver/dsp_status.h ApolloDspReplyText: 0xF001xxxx/0xF002xxxx -> kext result -48..-79)",
   "n": 22,
   "key": "DSP+firmware #22"
  },
@@ -9674,8 +9674,8 @@
   "id": "H08",
   "behaviour": "DSP status/message classes 0xF001xxxx, 0xF002xxxx",
   "upstream": "done",
-  "ours": "notdone",
-  "evidence": "0xF001xxxx / 0xF002xxxx DSP status/message classes not decoded",
+  "ours": "done",
+  "evidence": "DSP status classes 0xF001xxxx / 0xF002xxxx recognised and named in the refusal log lines (driver/dsp_status.h)",
   "n": 38,
   "key": "DSP+firmware #38"
  },

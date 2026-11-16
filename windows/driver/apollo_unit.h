@@ -58,7 +58,8 @@
 #define APOLLO_PARAM_STRIP_ADOPT            16  /* [Warm] strips.c: keep Live strips at the D0 exit, adopt them warm */
 #define APOLLO_PARAM_STRIP_WARM_REBUILD     17  /* [Warm] strips.c: build again at a warm start proven ours */
 #define APOLLO_PARAM_STRIP_WARM_PLUGINS     18  /* [Warm] strips.c/plugin.c: plug-ins on adopted or rebuilt warm strips */
-#define APOLLO_PARAM_COUNT                  19
+#define APOLLO_PARAM_STRIP_VIRTUAL_MASK     19  /* [Virtual] strips.c: Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13) */
+#define APOLLO_PARAM_COUNT                  20
 
 /* Where a value came from (APOLLO_UNIT.Source, the driver log letter) */
 #define APOLLO_SRC_DEFAULT          0   /* D: built-in default of the model */
@@ -132,6 +133,11 @@ static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
            acknowledged upload proves the warm session takes uploads, an unanswered one quarantines it (power cycle).
            0 = plug-ins wait for a power cycle after every warm start (the rule before this value). */
         { "StripWarmPlugins",        L"StripWarmPlugins",        1, 0, 0, 1 },
+        /* [Virtual] docs/STRIPS.md 13 (Nov 16 2026). Bit n-1: the plain Input Strip (0x83E) on VIRTUAL n, built with the Mic
+           strips in the same pass (StripsEnable 1, its StripSteps), so the Console mixes and records what plays into that
+           Virtual channel; its bus 0x18 + n - 1 then takes monitor-mix, cue and aux sends. The x8p has VIRTUAL 1-8, the
+           Twin X 1-4. 0 on every model until it is proven on hardware (tools\phase1\step-virtual.ps1). */
+        { "StripVirtualMask",        L"StripVirtualMask",        0, 0, 1, 0 },
     };
 
     return (Id >= 0 && Id < APOLLO_PARAM_COUNT) ? &t[Id] : &t[APOLLO_PARAM_MODE];

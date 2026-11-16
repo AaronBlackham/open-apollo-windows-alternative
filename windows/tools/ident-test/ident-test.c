@@ -451,11 +451,24 @@ static void TestParams(void)
           ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_WARM_REBUILD) == 1 &&
           ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_WARM_REBUILD) == 0,
           "[Warm] StripWarmPlugins: x8p 1, Twin X 1, others 0; StripWarmRebuild x8p 1, others 0");
+    /* [Virtual] docs/STRIPS.md 13: no Virtual Input Strip on any model until proven on hardware; hex in the log */
+    CHECK(ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_VIRTUAL_MASK) == 0 &&
+          ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_STRIP_VIRTUAL_MASK) == 0 &&
+          ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_VIRTUAL_MASK) == 0 &&
+          wcscmp(ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->NameW, L"StripVirtualMask") == 0 &&
+          strcmp(ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->Name, "StripVirtualMask") == 0 &&
+          ApolloParamDef(APOLLO_PARAM_STRIP_VIRTUAL_MASK)->Hex && APOLLO_PARAM_STRIP_VIRTUAL_MASK == 19 &&
+          APOLLO_PARAM_COUNT == 20, "[Virtual] StripVirtualMask: id 19, 0 on every model, logged in hex");
+    CHECK(u.Value[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == 0 && u.Source[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == APOLLO_SRC_DEFAULT,
+          "[Virtual] x8p default StripVirtualMask 0 (built-in)");
     {
-        int i;
+        int i, j;
 
         for (i = 0; i < APOLLO_PARAM_COUNT; i++) {
             CHECK(ApolloParamDef(i)->Name != NULL && ApolloParamDef(i)->NameW != NULL, "param %d has no name", i);
+            for (j = 0; j < i; j++) {
+                CHECK(_stricmp(ApolloParamDef(i)->Name, ApolloParamDef(j)->Name) != 0, "params %d and %d share a name", j, i);
+            }
         }
     }
 

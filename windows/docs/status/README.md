@@ -12,7 +12,7 @@ port on Nov 15 2026, updated Nov 16; `evidence` in `parity.json` says where each
 
 | | open-apollo (Oct 11) | Windows port (Nov 16) |
 |---|---|---|
-| Done in code or verified | 739 of 1015 (72.8%) | 685 of 1015 (67.5%) |
+| Done in code or verified | 739 of 1015 (72.8%) | 687 of 1015 (67.7%) |
 | Tagged verified on hardware | 14 | 472 |
 | Models verified | Apollo Twin X Gen 2, Apollo x4, Apollo x8p | Apollo Twin X (Gen 1), Apollo x8p |
 | UAD plug-ins live on the Apollo | 124 | 4 |
@@ -32,7 +32,7 @@ so the hardware row partly compares how each project records proof.
 | User client | 63 | 29 | 42 | 26 | 7 | 10 | 4 |
 | Windows+USB | 56 | 32 | 32 | 22 | 8 | 16 | 0 |
 | Lifecycle | 55 | 52 | 49 | 38 | 1 | 4 | 1 |
-| DSP+firmware | 51 | 46 | 38 | 33 | 2 | 11 | 0 |
+| DSP+firmware | 51 | 46 | 40 | 33 | 1 | 10 | 0 |
 | Model types | 51 | 43 | 22 | 13 | 12 | 17 | 0 |
 | Device mgr | 43 | 15 | 30 | 12 | 6 | 7 | 0 |
 | Transport+clock | 42 | 40 | 34 | 32 | 6 | 2 | 0 |
@@ -58,7 +58,7 @@ port has done or verified.
 - **Services** (1): Services reads kext state through the same user client as the engine (I
 - **Windows PCIe** (1): _setSampleClock(src, rate): rate 1..6 else assert; cache FRAME_CFG (C01
 
-## Open on our side (184)
+## Open on our side (182)
 
 Behaviours open-apollo has done that this port has not, or only partly.
 
@@ -70,7 +70,7 @@ Behaviours open-apollo has done that this port has not, or only partly.
 - **User client** (5): LoadFirmware; GetSessionInfo; GetBusInfo; SetNotificationParams
 - **Windows+USB** (14): LoadFirmware; SetDriverParameter; EnableCLI; SendCLICommand
 - **Lifecycle** (3): SetOutputMute 0x6140; DSP error vectors; SetOutputMute
-- **DSP+firmware** (9): _intrCallback 0x7d9c -> _serviceMessageFIFO 0x93de; _errorCallback 0x804e -> _dispatchErrorEvent 0x9526; ResetDSP() 0x93b8; Map status word 1 to error codes (table above)
+- **DSP+firmware** (7): _intrCallback 0x7d9c -> _serviceMessageFIFO 0x93de; _errorCallback 0x804e -> _dispatchErrorEvent 0x9526; ResetDSP() 0x93b8; Message FIFO drain
 - **Model types** (21): DONE; DONE (triage 2026-10-11, was PARTIAL: mixer-engine/hardware_usb.py (pla; DONE (triage 2026-10-11, was MISSING: plan H8/O4 5daaecf/29204e7: publi; Talkback support flag
 - **Device mgr** (2): client pause + 0x264/0x265; fan-out of the codes in §7
 - **Transport+clock** (7): _handleNotificationInterrupt / _notifyIntrCallback; _handleNotificationInterrupt (bits 0/1); CDeviceManager::SetAudioAdditionalLatency (SEL164); SetOutputDelayComp / WriteAudioOutputData / GetOutputDelayComp

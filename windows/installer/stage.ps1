@@ -81,6 +81,21 @@ if (Test-Path -LiteralPath (Join-Path $Build 'package\apollo.inf')) {
 $map['apollo-helper.exe']   = Need $Helper
 $map['sign-local.ps1']      = Need (Join-Path $PSScriptRoot 'sign-local.ps1')
 $map['apollo-control.exe']  = Need (Join-Path $root 'app\bin\apollo-control.exe')
+# [PlugSetup] UAD plug-ins on a release install: the parameter planner Apollo Control starts (next to the exe, where
+# plugin_engine.h HelperStart looks) and the setup's code in plugin-setup\tools (setup-plugins.ps1, the vendored
+# open-apollo mapper and our ports: GPL source). Only source files: no UA data, no maps, no downloads, no Python.
+$map['plughelper.py']       = Need (Join-Path $root 'tools\plugin-host\plughelper.py')
+$ptools = Join-Path $root 'plugins\tools'
+$null = Need (Join-Path $ptools 'setup-plugins.ps1')
+$srcExt = @('.py', '.ps1', '.json', '.md', '.txt', '.conf')
+foreach ($f in @(Get-ChildItem -LiteralPath $ptools -Recurse -File)) {
+    $rel = $f.FullName.Substring($ptools.Length + 1)
+    if ($rel -match '(^|\\)__pycache__\\' -or $f.Extension -eq '.pyc') { continue }
+    if ($srcExt -notcontains $f.Extension.ToLowerInvariant() -and $f.Name -ne 'LICENSE') {
+        throw "plugins\tools\$rel is not a source file: only code and its text files go into plugin-setup\tools"
+    }
+    $map['plugin-setup\tools\' + $rel] = $f.FullName
+}
 $map['driver\apollo.inf']   = Need (Join-Path $pkg 'apollo.inf')
 $map['driver\apollo.sys']   = Need (Join-Path $pkg 'apollo.sys')
 # driver\apollo.cat is made below, unsigned, by Inf2Cat (never copied from the build)

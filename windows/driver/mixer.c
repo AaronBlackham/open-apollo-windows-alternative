@@ -164,7 +164,8 @@ NTSTATUS ApolloSetInputParam(_In_ PDEVICE_CONTEXT Ctx, _In_ PAPOLLO_INPUT_PARAM 
 NTSTATUS ApolloSetMonitorParam(_In_ PDEVICE_CONTEXT Ctx, _In_ PAPOLLO_MONITOR_PARAM P)
 {
     APOLLO_MON_WRITE w;
-    int r = ApolloMonEncode(ApolloMonModelFor(Ctx->Ident.Model), P->Param, P->Value, &w);
+    /* [Virtual] the Virtual buses whose Input Strip this unit builds take mix, cue and aux sends too */
+    int r = ApolloMonEncodeEx(ApolloMonModelFor(Ctx->Ident.Model), ApolloStripsVirtualBuses(Ctx), P->Param, P->Value, &w);
 
     if (r == APOLLO_MON_BAD_VALUE) {
         return STATUS_INVALID_PARAMETER;

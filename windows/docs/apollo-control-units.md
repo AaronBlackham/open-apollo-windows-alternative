@@ -212,6 +212,31 @@ driver). `licensed` is null while the licence is unknown (hosting off, no answer
 false) show in the browser's notes and mark the slot (a toast when the Control view is not shown); the drawer shows a
 waiting or failed insert's reason with Try again. Tests: `app\tests\plugins.js`.
 
+**[PlugSetup] Set up plug-ins (Nov 16 2026, a release install).** Global, no unit. UI to host: `plug-setup-state` (sent
+with hello and when the Control view shows; a unit that hosts for this program answers its licence query first),
+`plug-setup-start` `{all}` (false: the plug-ins the present units' licence answers admit, true: every plug-in
+open-apollo can map; the host passes `-Authorized all` anyway when no unit has answered) and `plug-setup-cancel`.
+Host to UI, whenever it changes (each second while a setup runs):
+
+```json
+{"type":"plugin-setup","offered":true,"available":true,"uad":true,"dir":"C:\\Users\\...\\AppData\\Local\\Avium\\ApolloPlugins",
+ "inUse":"","configured":"","dev":false,"ready":false,"running":true,"licensed":37,"licUnits":1,"mappable":119,"cpus":8,
+ "hosting":true,"why":"",
+ "status":{"state":"running","phase":"map","text":"...","percent":42,"done":3,"total":12,"eta":300,"code":"","error":"",
+   "summary":"","modules":"","mode":"licensed","log":"...\\setup\\setup.log",
+   "phases":[{"id":"check","label":"Checking this PC","state":"done","detail":"..."}]}}
+```
+
+`offered`: no other maps folder is in use or set (a developer layout, `dev`, or a folder set in Settings is left alone);
+`available`: the setup script is installed next to the exe; `uad`: UAD's plug-in folder and `UAD2SDK.dll` exist (by
+name); `ready`: maps and their Python are in use; `licensed`: how many render ids the units' answers admit (-1: no
+unit answered); `mappable`: how many of open-apollo's known-good plug-ins the UAD install has; `status`: the script's
+`setup\status.json` (state running, done, failed, cancelled, or `stopped` when nobody runs it any more; `code` nouad,
+network, hash, space, python, packages, specs, store, licence, map, modules, cancelled). The browser shows a box while
+plug-ins are not set up (or a setup runs or stopped) and Settings a row; both open the explanation dialog before
+`plug-setup-start`. Without maps, `plug-hosting` `{on}` now turns hosting on without modules (so the licence answer can
+choose what the setup maps). Tests: `app\tests\plugin-setup.js`.
+
 ### 1.6 [Rate] Sample rate (44.1-192 kHz), per unit and on the combined device
 
 The host side is `app/src/rate_host.h` (routed from `main.cpp`, two marked hunks); the driver side is
@@ -612,7 +637,11 @@ Built Nov 15 2026 in `builds\work-clock`, offline checks only, **nothing of it r
 (clock source, digital formats), `driver/panel.c` (front panel, monitor link), `driver/clock_plan.h` (the models, the
 rules, the evidence), `include/apollo_clock.h` (IOCTL 0x53-0x56). Host: `app/src/clock_host.h`, routed from `main.cpp`
 (three marked hunks: the include, the `clock-` / `digital-` / `panel-` route, `PollUnit` in the worker's pass).
-apollo-diag: `clock`, `digital`, `panel`, `talkback`. The UI is not built yet: this section is what it implements.
+apollo-diag: `clock`, `digital`, `panel`, `talkback`. UI built Nov 16 2026: `app/ui/clockui.js` (the Device view's "Clock and
+digital I/O" panel, each segment head's clock badge, the talkback strip's note, the Units & routing "Monitor link" panel;
+hooks marked `[Clock]` in `app.js`, `units.js`, `index.html`, `app.css`), checks in `app\tests\clock.js` (stub host and demo).
+Not built from 1.10.4: the front panel's fields replacing the readback decoding, the combined monitor level in the master
+section, and "Dim on talkback" handing over from `cfg.talkbackDim` to the link's `talkDim`.
 
 #### 1.10.1 What each unit has
 
@@ -901,6 +930,68 @@ Load session: <name> per session), Day `plain` (plain words, 44 px buttons), Arc
 slots with LOAD / SAVE / ERASE, an AUTO slot for the last state, an empty slot to save into). Every layout has the same
 actions and accessible names; the current session, edited, waiting and the last state are words, never colour alone.
 In the demo (no host) sessions live in the browser's storage, never in the host's folder.
+
+### 1.12 Nov 16 2026: outputs, driver events, parameters, undo, copy, diagnostics
+
+Built and installed Nov 16 (driver 6.55.42.311 and later); parity rows in `docs/status/parity.json`.
+
+#### 1.12.1 [Out] Output and front-panel settings (`app/ui/outputs.js`, `driver/monitor_plan.h`)
+
+Monitor params, one `monitor\t<name>\t<value>[\t<slot>]` each, kept in `cfg.mixes[<unit>].out` and sent again once per
+connection after the ALT outputs (`savedMixOut`, through `Outs.applyOut`); nothing reads back.
+
+| name | value | x8p | Twin X Gen 1 | mailbox |
+|---|---|---|---|---|
+| `linepad1`..`linepad4` | 0 +4 dBu, 1 -10 dBV (Line 1-2 .. 7-8) | yes | no (refused, 50) | S0 bit 28+n |
+| `monref` | the same, monitor outputs | yes | yes | S11 bit 4 |
+| `digmirror` | 0/1, monitor to S/PDIF | yes | no | S6 bit 10 |
+| `fcn` | 0 none, 2 mono, 3 dim, 4 talkback | yes | no | S13 [15:13] |
+| `cliphold` / `peakhold` | 0-5 / 0-4 (none, 1, 3, 5, 10 s, infinite) | yes | yes | S1 [30:28] / [15:13] |
+| `aux1mono` / `aux2mono` | 0/1 | yes | yes | S6 / S7 [9:8] |
+| `identify` | 0-7 (the UI blinks 1 and 2 for 4 s, then 0) | yes | yes | S6 [13:11] |
+
+The Outputs card in the monitor column shows what the focused model has. A value out of range answers 87, a control the
+model lacks 50 (shown inline like the other refusals).
+
+#### 1.12.2 [Events] The driver's event channel (`include/apollo_events.h`, `driver/events.c`)
+
+`IOCTL_APOLLO_WAIT_EVENTS` (0x59, user level): a per-unit ring of 32 events; a wait with nothing newer than its
+`AfterSeq` is parked until the next event (NOWAIT answers at once). Kinds: STAGE, LEAVING (D0 exit, removal, update:
+close the handle), RATE, CLOCK, PANEL, DSP_FAULT (a quarantine), ENGINE_LOST, PARAMS. The host's event pump (`main.cpp
+EventPumpMain`) keeps one overlapped handle per unit, closed with the slot's handle on every removal notice, primes it
+with a NOWAIT read (old ring entries are never posted) and posts `{"type":"event","unit":<slot>,"seq","kind","a","b",
+"reset"}` for every kind but PANEL. The UI toasts `dsp-fault` and `engine-lost` and asks for the rate after `rate` and
+`clock`. apollo-diag: `events [seconds]`.
+
+#### 1.12.3 [Params] Driver Parameters at run time (`include/apollo_params.h`, `driver/params.c`)
+
+`GET_PARAMS` (0x57, user level): every per-unit Parameter as this start runs it, its source (D default, U unit key,
+M model key, G legacy global, X forced by Mode), the model default and what `Units\<key>` holds now (pending = applies at
+the next start). `SET_PARAM` (0x58, administrators): writes or removes `Units\<key>\<name>` for the next start. The
+host's `params-get {unit?}` answers `{"type":"params",...}`; the Device view shows a read-only table. apollo-diag:
+`params`, `param <name> <value>|--remove` (elevated).
+
+#### 1.12.4 [Undo] Undo and redo (`app/ui/undo.js`)
+
+Per unit: a baseline at the last quiet moment (`Sess.undoPart`: the session part without plug-ins, rate, names or
+identity); a change this app sends (`hwSend`) opens a step, committed 0.7 s after the last send of a run if the state
+differs; while nothing is changed here the baseline follows the unit once a second, so the front panel, readback and a
+connect's replay never become steps. Undo applies the step through the session paths (`Sess.undoApply`) and never
+switches 48V on. Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, the header's two buttons; 50 steps per unit. Checks: `app/tests/undo.js`.
+
+#### 1.12.5 [Copy] Channel copy and paste (`app/ui/chcopy.js`)
+
+Right-click a strip's number or name: Copy, Paste. The preamp (never 48V on), the monitor-mix level, pan and mute, the
+cue sends and the aux sends; across units too; one undo step.
+
+#### 1.12.6 [Diag] Save diagnostics, the app log, crash dumps (`app/src/diag_host.h`, `main.cpp`)
+
+`{"cmd":"diag-save"}` writes `%LOCALAPPDATA%\Avium\ApolloControl\diagnostics\<date-time>\` (driver log; per unit the
+identity, readback, events, rate, clock, panel and parameters; Apollo Control's config, plugins.json, plughelper.log,
+apollo-control.log and the newest crash dump; the scripts' logs in a source tree) and opens it; reply `diag-result`.
+`apollo-control.log` (same folder's parent, 1 MiB then `.1`) records start and quit, units arriving and leaving, refused
+settings and driver events. An unhandled exception writes a minidump to `crashes\` (the last 10 kept). Nothing is sent
+anywhere.
 
 ### 1.3 UI to host: `agg-get`, `agg-set`
 

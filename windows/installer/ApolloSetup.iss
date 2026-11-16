@@ -61,12 +61,14 @@ UsedUserAreasWarning=no
 [Messages]
 WindowsVersionNotSupported=The Apollo open driver needs 64-bit Windows 11, version 22H2 (build 22621) or later, on an x64 PC.
 WelcomeLabel2=This installs the Apollo open driver {#DriverVer}, a TEST build of an open-source driver for the Universal Audio Apollo x8p and Apollo Twin X Gen 1 (Thunderbolt): Windows sound devices, an ASIO driver and the Apollo Control app.%n%nThe driver is not signed by Microsoft. Setup signs it on this PC with a certificate made for this PC only, and Windows loads it only in test mode, with Secure Boot off. Setup explains each system change before making it.%n%nYou choose which of your units move to this driver. Gen 2 units and every other Universal Audio device stay on UA's driver.%n%nBefore you continue, close programs that use your Apollo: DAWs, music players, Apollo Control.
-FinishedLabelNoIcons=Setup has finished installing [name].%n%nNot in this release:%n- UAD plug-ins. Hosting them needs a developer setup (a Python environment and plug-in maps built from your own UAD install, see docs\PLUGINS.md in the source), so Apollo Control shows plug-ins as unavailable.%n- Anything made by Universal Audio. The mic preamp input strips use modules copied from your own UAD install (apollo-diag strips install).%n- Gen 2 units and other models: they stay on UA's driver.
-FinishedLabel=Setup has finished installing [name]. Start Apollo Control from the Start menu (Avium Apollo).%n%nNot in this release:%n- UAD plug-ins. Hosting them needs a developer setup (a Python environment and plug-in maps built from your own UAD install, see docs\PLUGINS.md in the source), so Apollo Control shows plug-ins as unavailable.%n- Anything made by Universal Audio. The mic preamp input strips use modules copied from your own UAD install (apollo-diag strips install).%n- Gen 2 units and other models: they stay on UA's driver.
-FinishedRestartLabel=Windows must restart to finish (test mode, or a unit's driver switch, takes effect then). Restart now?%n%nNot in this release: UAD plug-ins (they need a developer setup with Python and plug-in maps built from your own UAD install, so Apollo Control shows them as unavailable); anything made by Universal Audio (the mic preamp strips use modules copied from your own UAD install); Gen 2 units and other models (they stay on UA's driver).
+FinishedLabelNoIcons=Setup has finished installing [name].%n%nUAD plug-ins are optional: "Set up UAD plug-ins" in Apollo Control (the plug-in browser, or Settings) downloads a private Python and its packages (about 42 MB from python.org and PyPI, each file checked against a pinned SHA-256) and maps the plug-ins of your own UAD install, read offline. Nothing is sent to Universal Audio.%n%nNot in this release:%n- Anything made by Universal Audio. The mic preamp input strips and the plug-ins use modules copied from your own UAD install, on this PC.%n- Gen 2 units and other models: they stay on UA's driver.
+FinishedLabel=Setup has finished installing [name]. Start Apollo Control from the Start menu (Avium Apollo).%n%nUAD plug-ins are optional: "Set up UAD plug-ins" in the Start menu (or in Apollo Control: the plug-in browser, or Settings) downloads a private Python and its packages (about 42 MB from python.org and PyPI, each file checked against a pinned SHA-256) and maps the plug-ins of your own UAD install, read offline. Nothing is sent to Universal Audio.%n%nNot in this release:%n- Anything made by Universal Audio. The mic preamp input strips and the plug-ins use modules copied from your own UAD install, on this PC.%n- Gen 2 units and other models: they stay on UA's driver.
+FinishedRestartLabel=Windows must restart to finish (test mode, or a unit's driver switch, takes effect then). Restart now?%n%nUAD plug-ins are optional: "Set up UAD plug-ins" in the Start menu or in Apollo Control maps the plug-ins of your own UAD install (it downloads a private Python, about 42 MB). Not in this release: anything made by Universal Audio (the mic preamp strips and the plug-ins use modules copied from your own UAD install); Gen 2 units and other models (they stay on UA's driver).
 
 [Tasks]
 Name: autostart; Description: "Start Apollo Control when I sign in (it sits in the notification area)"; Flags: unchecked
+; [PlugSetup] opens "Set up UAD plug-ins" (plugin-setup\tools\setup-plugins.ps1) as you, in a window, when Setup is done
+Name: setupplugins; Description: "Set up UAD plug-in hosting after install (a window explains it first: about 42 MB of downloads from python.org and PyPI, then your UAD plug-ins are mapped, read offline)"; Flags: unchecked
 
 [Dirs]
 Name: "{app}\state"
@@ -83,7 +85,11 @@ Type: files; Name: "{group}\Connect x8p to Apollo driver.lnk"
 [Icons]
 Name: "{group}\Apollo Control"; Filename: "{app}\apollo-control.exe"; WorkingDir: "{app}"; Comment: "Mixer, monitor, cues, preamps and outputs of your Apollo units"
 Name: "{group}\Connect Apollo units"; Filename: "{app}\apollo-helper.exe"; Parameters: "connect"; WorkingDir: "{app}"; IconFilename: "{app}\apollo-control.exe"; Comment: "Switch a connected Apollo x8p or Twin X Gen 1 from UA's driver to the Apollo driver (asks for administrator rights)"
+Name: "{group}\Switch Apollo units back to UA's driver"; Filename: "{app}\apollo-helper.exe"; Parameters: "disconnect"; WorkingDir: "{app}"; IconFilename: "{app}\apollo-control.exe"; Comment: "Use Universal Audio's own driver again (for UA's firmware updates or UA Console); the Apollo driver stays installed, Connect Apollo units switches back (asks for administrator rights)"
 Name: "{group}\Uninstall Apollo driver"; Filename: "{uninstallexe}"; Comment: "Put your Apollo units back on UA's driver and remove the Apollo driver"
+; [PlugSetup] the same setup Apollo Control runs, in a window: it explains, asks, shows progress; runs as you (no elevation
+; except one prompt for the driver's module store while plug-in hosting is on)
+Name: "{group}\Set up UAD plug-ins"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\plugin-setup\tools\setup-plugins.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\apollo-control.exe"; Comment: "Map the UAD plug-ins of your own UAD install for Apollo Control (downloads a private Python, about 42 MB; never contacts Universal Audio)"
 
 [Registry]
 ; The same value Apollo Control's own "start with Windows" switch writes, so the switch in the app shows it.
@@ -96,6 +102,9 @@ Filename: "{app}\apollo-control.exe"; Description: "Open Apollo Control"; Flags:
 Type: filesandordirs; Name: "{app}\state"
 ; Strip modules apollo-diag copied from the UAD install (UA's bytes: they leave with the driver).
 Type: filesandordirs; Name: "{sys}\drivers\ApolloStrips"
+; [PlugSetup] Plug-in modules Apollo Control copied from the user's maps (UA's bytes too). The maps themselves stay in each
+; user's %LOCALAPPDATA%\Avium\ApolloPlugins (installer\README.md says how to remove them).
+Type: filesandordirs; Name: "{sys}\drivers\ApolloModules"
 Type: dirifempty; Name: "{app}"
 
 [Code]
@@ -931,6 +940,25 @@ begin
                App + '\tools.');
 end;
 
+{ [PlugSetup] The task "Set up UAD plug-in hosting after install": the Start-menu shortcut, opened as the user who started
+  Setup (never elevated: everything it makes goes to that user's profile). It explains and asks before it downloads. }
+procedure StartPluginSetup;
+var
+  Lnk: String;
+  RC: Integer;
+begin
+  Lnk := ExpandConstant('{group}\Set up UAD plug-ins.lnk');
+  if Silent then
+    AddSummary('UAD plug-ins: not set up in a silent install. Run "Set up UAD plug-ins" from the Start menu.')
+  else if not FileExists(Lnk) then
+    AddSummary('UAD plug-ins: the "Set up UAD plug-ins" shortcut is missing, so the setup did not start.')
+  else if ShellExecAsOriginalUser('open', Lnk, '', ExpandConstant('{app}'), SW_SHOWNORMAL, ewNoWait, RC) then
+    AddSummary('UAD plug-ins: the setup opened in its own window. It explains what it downloads and asks before it starts; ' +
+               'run "Set up UAD plug-ins" from the Start menu again any time (it continues where it stopped).')
+  else
+    AddSummary('UAD plug-ins: the setup did not open (' + SysErrorMessage(RC) + '). Run "Set up UAD plug-ins" from the Start menu.');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -938,6 +966,8 @@ begin
   else if CurStep = ssPostInstall then
   begin
     InstallDriverAndSettings;
+    if WizardIsTaskSelected('setupplugins') then
+      StartPluginSetup;
     if RestartNeeded then
       AddSummary('Restart Windows to finish (Setup asks on the last page).');
     if ResultsPage <> nil then

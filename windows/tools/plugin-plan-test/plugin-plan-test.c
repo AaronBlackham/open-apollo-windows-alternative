@@ -396,6 +396,48 @@ static void TestLedgerStrips(void)
     CHECK(u[0].Free == 0x4000 - 994 && u[0].Largest == 0x4000 - 994 - 2, "code: 15390 free, 15388 largest");
     CHECK(PlugLedgerIdle(&L, PLUG_ID_STRIPS) && !PlugLedgerIdle(&L, 0), "idle but for the strips");
     CHECK(LedgerInvariant(&L), "invariant after booking");
+
+    /*
+     * [Virtual] docs/STRIPS.md 13: plugin.c books StripPlanRoom (the Mic strips plus StripVirtualMask's Input Strips) through
+     * PlugLedgerBookStripRoom. Without Virtual strips that is PlugLedgerBookStrips' booking exactly; with them one block per
+     * pool still ends at the top and holds every Input Strip block, so no plug-in reservation can land on one.
+     */
+    {
+        static PLUG_LEDGER L3, L4;
+        PLUG_LEASE s3[4], s4[4], a;
+        ULONG room[4], vm, v, ok2 = 1, a2[STRIP_PLAN_ROWS];
+        PLUG_USAGE u3[4];
+
+        StripPlanRoom(8, 0, room);
+        CHECK(PlugLedgerInit(&L3, kBase, kSize, kScr) == PLUG_OK && PlugLedgerBookStripRoom(&L3, STRIP_CODE_WORDS, room, s3) == PLUG_OK &&
+              memcmp(s3, s, sizeof(s3)) == 0, "virtual: no Virtual strip: the same booking as PlugLedgerBookStrips (8 Mic strips)");
+        for (j = 1; j < 4; j++)
+            CHECK(s3[j].Base == s[j].Base && s3[j].Words == s[j].Words, "virtual: pool %lu booked as before", j);
+        for (vm = 0x01; vm <= 0xFF && ok2; vm = (vm << 1) | 1) {
+            StripPlanRoom(8, vm, room);
+            ok2 = PlugLedgerInit(&L4, kBase, kSize, kScr) == PLUG_OK &&
+                  PlugLedgerBookStripRoom(&L4, STRIP_CODE_WORDS, room, s4) == PLUG_OK && LedgerInvariant(&L4);
+            for (j = 1; ok2 && j < 4; j++)
+                ok2 = s4[j].Base + s4[j].Words == top[j] && s4[j].Words == room[j];
+            for (v = 0; ok2 && v < 8; v++) {
+                if (!(vm & (1u << v)))
+                    continue;
+                ok2 = StripPlanVirtualAddrs(8, v, a2) == 0;
+                for (j = 0; ok2 && j < STRIP_PLAN_VROWS; j++) {
+                    ULONG p = g_StripVRows[j].Pool;
+                    ok2 = a2[j] >= s4[p].Base && a2[j] + g_StripVRows[j].Dwords <= s4[p].Base + s4[p].Words;
+                }
+            }
+            /* the largest plug-in reservation of each pool stays below the booked room */
+            PlugLedgerUsage(&L4, u3);
+            for (j = 1; ok2 && j < 4; j++) {
+                ok2 = PlugLedgerReserve(&L4, j, u3[j].Largest, 0, 0, &a) == PLUG_OK && a.Base + a.Words <= s4[j].Base;
+                (void)PlugLedgerRelease(&L4, &a, NULL);
+            }
+        }
+        CHECK(ok2, "virtual: x8p with VIRTUAL 1, 1-2, ..., 1-8: one block per pool from the top, every Input Strip block inside "
+                   "it, the largest plug-in reservation below it");
+    }
 }
 
 /*

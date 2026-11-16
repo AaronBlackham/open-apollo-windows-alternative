@@ -10,9 +10,11 @@ node "%~dp0cues.js" %1 || exit /b 1
 node "%~dp0mix.js" %1 || exit /b 1
 node "%~dp0correction.js" %1 || exit /b 1
 node "%~dp0plugins.js" %1 || exit /b 1
+node "%~dp0plugin-setup.js" %1 || exit /b 1
 node "%~dp0looks.js" %1 || exit /b 1
 node "%~dp0rate.js" %1 || exit /b 1
 node "%~dp0signatures.js" %1 || exit /b 1
 node "%~dp0endpoints.js" %1 || exit /b 1
 node "%~dp0sessions.js" %1 || exit /b 1
 node "%~dp0undo.js" %1 || exit /b 1
+node "%~dp0clock.js" %1 || exit /b 1

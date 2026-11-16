@@ -54,6 +54,9 @@ DEFINE_GUID(GUID_DEVINTERFACE_APOLLO,
                                               NumPreamps 2; GET_STRIPS reports its input strips */
 /* [Clock] still 8 (every layout here unchanged; GET_ENDPOINTS rows may carry the new APOLLO_EP_FLAG_SILENT):
    clock source, digital formats, front panel and monitor link are apollo_clock.h, codes 0x53-0x56, own version */
+/* [Virtual] still 8: GET_STRIPS grows at its end (its own Version 4, the Virtual Input Strips; a shorter buffer gets
+   version 3 or 2 as before), and SET_MONITOR_PARAM's mix, cue and aux codes take the buses 0x18-0x1F (VIRTUAL 1-8)
+   on a unit whose StripVirtualMask builds their strips */
 
 #define FILE_DEVICE_APOLLO          0x8A70u     /* unsigned: << 16 overflows int */
 #define APOLLO_CTL(fn, access) \
@@ -400,6 +403,9 @@ typedef struct _APOLLO_MIXER_SETTING {
 #define APOLLO_MON_CUE_MUTE(c)      (0x3000u | ((c) << 8))          /* 0/1: the cue's sends go out as 0.0 */
 #define APOLLO_MON_SEND_OFF     (-121)
 #define APOLLO_MON_BUS_TALKBACK 0x0A
+/* [Virtual] VIRTUAL n (1-8) = bus 0x18 + n - 1, for the mix, cue and aux codes, on a unit whose registry StripVirtualMask
+   has bit n-1 (the driver builds its Input Strip; GET_STRIPS version 4 VirtualMask); refused (invalid parameter) elsewhere */
+#define APOLLO_MON_BUS_VIRTUAL(n)   (0x18u + (ULONG)(n) - 1u)
 /*
  * [Mix] The monitor mix (what the monitor outputs play): per bus, param 0 of the same DSP bus coefficients,
  * cached and re-sent by the driver like the sends. Until the host sets a bus the unit keeps its own default
@@ -603,6 +609,8 @@ typedef struct _APOLLO_READBACK {
 #define APOLLO_STRIP_MODULE_SLOTS       5   /* EB DA A5 C2 12B */
 #define APOLLO_STRIPS_WHY_CHARS         96
 #define APOLLO_STRIP_INPUTS             8   /* preamps 1-8 */
+#define APOLLO_STRIP_VIRTUALS           8   /* [Virtual] VIRTUAL 1-8 (Input Strips, GET_STRIPS version 4) */
+#define APOLLO_STRIP_VIRTUAL_BUS0       0x18    /* DSP input = mixer bus of VIRTUAL 1 (VIRTUAL n = 0x18 + n - 1) */
 
 #define APOLLO_STRIP_NONE               0   /* per input: nothing sent */
 #define APOLLO_STRIP_QUEUED             1   /* its transaction published, not proven taken */
@@ -675,9 +683,24 @@ typedef struct _APOLLO_STRIPS_INFO {
     ULONG   RecordBuiltDate;    /* when they were built: (days since 2007-01-01 << 12) + minute of day, UTC */
     ULONG   RecordPlugins;      /* plug-in instances on the strip DSP at the last write */
     LONG    RecordStatus;       /* NTSTATUS of the last record read or write */
+    /*
+     * Version 4 [Virtual]: the Input Strips on the Virtual inputs (docs/STRIPS.md 13). A driver fills as much of the
+     * structure as the caller's buffer holds, down to the version 3 size (APOLLO_STRIPS_INFO_V3_SIZE), then 2.
+     * VIRTUAL n is index n-1 below; its DSP input and mixer bus is VirtualBus0 + n - 1.
+     */
+    ULONG   VirtualMask;        /* the Virtual strips this start builds or adopted (bit n-1 = VIRTUAL n) */
+    ULONG   VirtualAsked;       /* registry StripVirtualMask */
+    ULONG   VirtualLayoutWhy;   /* 0, or the pool check's code (8 + pool: no room) that refused VirtualAsked */
+    ULONG   VirtualBus0;        /* APOLLO_STRIP_VIRTUAL_BUS0 */
+    ULONG   VStripState[APOLLO_STRIP_VIRTUALS];     /* APOLLO_STRIP_NONE/QUEUED/TAKEN */
+    ULONG   VStripStarted[APOLLO_STRIP_VIRTUALS];   /* 1 = its SYNCH went out */
+    ULONG   VStripHeader[APOLLO_STRIP_VIRTUALS];    /* instance header address on the strip DSP */
+    ULONG   VStripAckMs[APOLLO_STRIP_VIRTUALS];     /* its PREPARE: publish to taken */
+    ULONG   VBusOwner[APOLLO_STRIP_VIRTUALS];       /* DSP that mixes VIRTUAL n's bus (0 = default) */
 } APOLLO_STRIPS_INFO, *PAPOLLO_STRIPS_INFO;
 
 #define APOLLO_STRIPS_INFO_V2_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, Adopt))
+#define APOLLO_STRIPS_INFO_V3_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, VirtualMask))
 
 /* Version 3: Adopt (= driver\strip_adopt.h STRIP_ADOPT_*) */
 #define APOLLO_STRIPS_ADOPT_NONE            0   /* not a warm start, or strips off */

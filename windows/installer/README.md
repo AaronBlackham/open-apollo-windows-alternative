@@ -29,11 +29,12 @@ The text for the GitHub release is [RELEASE-NOTES.md](RELEASE-NOTES.md).
 
 ## What is not in this release
 
-- **UAD plug-ins.** Hosting them on the Apollo DSPs needs a developer setup: a Python environment and plug-in maps
-  built from your own UAD install (`docs\PLUGINS.md` in the source). Setup installs none of that, so Apollo Control
-  shows plug-ins as unavailable.
+- **A Python runtime or plug-in maps.** UAD plug-in hosting is optional and set up after install, per user, from
+  Apollo Control or the Start menu (section "UAD plug-ins", below). Setup bundles none of it: no Python, no wheels,
+  no maps.
 - **Anything made by Universal Audio.** No UA file is in the installer. The input-strip modules come from your own
-  UAD install (`apollo-diag strips install`, as above), at install time, on your PC.
+  UAD install (`apollo-diag strips install`, as above), at install time, on your PC; the plug-ins' modules and maps
+  come from it when you set up plug-ins.
 - **Other units.** Gen 2 units and other Apollo models are never switched.
 - **A Microsoft signature.** The driver runs in test mode only.
 
@@ -46,6 +47,8 @@ Setup says the same on its last page.
 | Path | What |
 |---|---|
 | `apollo-control.exe`, `ui\` | Apollo Control (WebView2 app; runs as the normal user) |
+| `plughelper.py` | Apollo Control's plug-in parameter planner (runs in the per-user Python that "Set up UAD plug-ins" installs) |
+| `plugin-setup\tools\` | "Set up UAD plug-ins": `setup-plugins.ps1`, `setup_plugins.py`, open-apollo's vendored mapper (GPL-2.0) and our ports (`install_panels.py`, `oa_assets_dsp.py`, `oa_offline.py`); source only |
 | `apollo-helper.exe` | the installer's own helper (below); also behind the "Connect Apollo units" shortcut |
 | `sign-local.ps1` | signs the driver on this PC (below) |
 | `driver\apollo.inf`, `apollo.sys`, `apollo.cat` | the driver package: unsigned in the download, signed on this PC |
@@ -136,11 +139,14 @@ certificate from the stores `state\cert-record.txt` says Setup added it to, and 
        unit (connected or remembered) is installed from are removed.
    11. Put your default devices back where Windows moved them (three passes over about 8 seconds).
    12. If UAD is installed: `apollo-diag strips install`. Otherwise a note that the mics need UA's modules.
-   13. Start-menu shortcuts: **Apollo Control**, **Connect Apollo units**, **Uninstall Apollo driver**; the sign-in
-       entry if chosen.
+   13. Start-menu shortcuts: **Apollo Control**, **Connect Apollo units**, **Set up UAD plug-ins**, **Uninstall
+       Apollo driver**; the sign-in entry if chosen.
+   14. With the task **Set up UAD plug-in hosting after install** (unticked by default): the **Set up UAD plug-ins**
+       shortcut opens as the user who started Setup (never elevated), in its own window. It explains and asks before
+       it downloads anything. Not in a silent install.
 10. **Results.** What each step did, one line per unit, in plain words (the full log is `%TEMP%\Setup Log *.txt`).
-11. **Finished.** Asks to restart if test signing was just turned on or a switch needs one, and says plainly what is
-    not in this release (plug-ins, UA files, other units).
+11. **Finished.** Asks to restart if test signing was just turned on or a switch needs one, says how UAD plug-ins are
+    set up, and says plainly what is not in this release (UA files, other units).
 
 ### "Connect Apollo units" (Start menu)
 
@@ -200,11 +206,67 @@ Unknown keys are errors. `test_units` parses the release's own `defaults.json` a
 6. `regsvr32 /u` the ASIO DLL.
 7. Remove the per-PC certificates listed in `state\local-cert.txt` (`apollo-helper cert remove-local`); for an
    install from before Nov 16 2026, `driver\apollo.cer` from the stores `state\cert-record.txt` lists.
-8. Remove the files, `state\` and `%SystemRoot%\System32\drivers\ApolloStrips`.
+8. Remove the files, `state\`, `%SystemRoot%\System32\drivers\ApolloStrips` and `...\ApolloModules` (the plug-ins'
+   modules, if plug-in hosting was used).
 9. Offer to turn test signing off (default **No**: leave it on). Yes offers to suspend BitLocker for the restart first.
 
 Afterwards power-cycle each unit so UA's software starts it fresh. Your Apollo Control settings
-(`%APPDATA%\Avium\ApolloControl`) are kept.
+(`%APPDATA%\Avium\ApolloControl`) are kept, and so are the plug-in maps and the private Python of anyone who set up
+plug-ins (`%LOCALAPPDATA%\Avium\ApolloPlugins`, about 230 MB plus the maps): delete that folder to remove them. It
+holds data made from your UAD install: never share it.
+
+## UAD plug-ins (optional, set up after install)
+
+Hosting UAD plug-ins on the Apollo DSPs needs, on each PC and for each Windows user, a private Python with four
+packages, open-apollo's panel specs, a module store read from your own UAD install, and a map of each plug-in (made by
+running the plug-in's own code in an x86-64 emulator). **Set up UAD plug-ins** does all of it, from three places that
+run the same script (`plugin-setup\tools\setup-plugins.ps1`): Apollo Control's plug-in browser (a box while plug-ins
+are not set up), Apollo Control's Settings (Plug-in hosting, UAD plug-in setup), and the Start-menu shortcut (a
+console window; Setup's optional task opens it after install). Apollo Control explains it in a dialog first, runs the
+script hidden at below-normal priority, shows its progress, offers Cancel, and lists each plug-in as soon as it is
+mapped.
+
+| Step | What |
+|---|---|
+| Check | 64-bit Windows; UA's UAD install (`Program Files\Universal Audio\Powered Plugins\UAD-2 Powered Plugins` and `System32\UAD2SDK.dll`, by file name only); 700 MB free. Without UAD it stops here: "No UAD install found", nothing downloaded |
+| Python | Python 3.13.17, the 64-bit embeddable package from www.python.org, unpacked into `python\` (its `._pth` removed so the mapper's own scripts run; `PYTHONHOME` pins it, so no other Python on the PC is used) |
+| Packages | pip 26.2.2 runs from its wheel, offline, and installs numpy 2.5.4, unicorn 2.1.4, capstone 5.0.9 and pefile 2024.8.26 from the downloaded wheels (`--no-index --require-hashes --only-binary :all: --no-deps`) |
+| Mapper code | `plugin-setup\tools\` copied to `tools\` (files that changed only) |
+| Panel specs | open-apollo-panels 2026.10.20 from its GitHub release, downloaded by the script (Windows checks GitHub's certificate: a fresh Windows fetches that root on demand, which Python's own download could not) and checked against the pinned SHA-256 `10f24b1d...c3d0`; then `tools\install_panels.py --from` checks it again and installs the specs |
+| Module store | `tools\oa_assets_dsp.py dsp` and `strips` read the plug-in DLLs as bytes (nothing is loaded or run) into `store\` |
+| Plug-ins to map | the plug-ins your units license (Apollo Control hands over the render ids their licence answers admit), or every plug-in open-apollo can map when no unit has answered (plug-in hosting off, no unit connected) |
+| Mapping | `python -m plugin_mapper` with absolute paths into `bundles\`, CPU threads less one at a time |
+| Modules | while plug-in hosting is on: one administrator prompt, `apollo-control.exe --plugin-admin` copies the maps' verified modules into `System32\drivers\ApolloModules` (what Settings, Install modules does). With hosting off, turning it on copies them |
+
+Downloads (each checked against the SHA-256 in `setup-plugins.ps1` before it is used; nothing else is downloaded, and
+never from a Universal Audio domain):
+
+| File | From | Bytes | SHA-256 | Hash source |
+|---|---|---|---|---|
+| `python-3.13.17-embed-amd64.zip` | www.python.org/ftp/python/3.13.17/ | 11,441,267 | `9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38` | python.org release page for 3.13.17 |
+| `pip-26.2.2-py3-none-any.whl` | files.pythonhosted.org | 1,819,850 | `fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70` | PyPI (also on python.org's 3.13.17 page) |
+| `numpy-2.5.4-cp313-cp313-win_amd64.whl` | files.pythonhosted.org | 12,566,113 | `8b4d2fd2d34e5f8c9235ee787de5631a37a28402b15cb80814df973d2be54129` | PyPI |
+| `unicorn-2.1.4-cp37-abi3-win_amd64.whl` | files.pythonhosted.org | 15,943,079 | `d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5` | PyPI |
+| `capstone-5.0.9-py3-none-win_amd64.whl` | files.pythonhosted.org | 1,273,459 | `732cedbbb56d42e723f14d7af6387f1454194a820b4b96b56d1e53f865ef85d0` | PyPI |
+| `pefile-2024.8.26-py3-none-any.whl` | files.pythonhosted.org | 74,766 | `76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f` | PyPI |
+| `open-apollo-panels-2026.10.20.tar.gz` | github.com (open-apollo-panels release) | 1,007,696 | `10f24b1db43151ce2ad9066c8874666be5c8e94dd64285e31e3c9839107ac3d0` | open-apollo's `configs\plugin-panels.conf` |
+
+About 42 MB in all. None of it is bundled: Setup is about 3 MB, and Python and the wheels (already compressed
+archives) would add about 42 MB for a feature many users never turn on. What Setup does carry is the code
+(`plugin-setup\tools\`, 91 files, 3.1 MB, about 0.3 MB in Setup).
+
+Everything goes to `%LOCALAPPDATA%\Avium\ApolloPlugins` (Apollo Control finds it there): `python\`, `tools\`,
+`downloads\`, `specs\`, `store\`, `bundles\`, `work\`, `setup\` (`status.json` for Apollo Control, `setup.log`).
+Never Program Files, the install folder or the registry. A second run continues: finished steps are checked and
+skipped, the mapper keeps every map and every plug-in that failed with the same files. Run it again after a UAD
+update or after you buy or demo a plug-in.
+
+Times measured on the developer PC (Nov 16 2026, i9-12900H, fast link): downloads 3 s; Python and packages 20 s; panel
+specs 6 s; module store 13 s (229 DLLs of UAD 12.0.0.602, 971 modules); one plug-in on one idle worker 9 s (AMS
+RMX16) to 28 s (Precision De-Esser); a rerun with everything in place 4 s. With 16 workers busy a plug-in takes about
+5 times longer, a few take several minutes, and the Capitol and Hitsville Chambers 15 to 18 minutes each. Disk:
+about 230 MB before maps; maps are mostly under 1 MB a plug-in, the two Chambers about 200 MB each (every plug-in:
+about 560 MB).
 
 ## Command line
 

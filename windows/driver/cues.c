@@ -55,6 +55,9 @@ C_ASSERT(APOLLO_MP_CUE_SEND(3, 0x0A) == APOLLO_MON_CUE_SEND(3, 0x0A) && APOLLO_M
          APOLLO_MP_CUE_MUTE(2) == APOLLO_MON_CUE_MUTE(2) && APOLLO_CUE_SEND_OFF == APOLLO_MON_SEND_OFF &&
          APOLLO_MON_TALKBACK_BUS == APOLLO_MON_BUS_TALKBACK);
 C_ASSERT(APOLLO_MON_BUSES == 32 && APOLLO_STRIP_INPUTS <= APOLLO_MON_BUSES);
+/* [Virtual] VIRTUAL 1-8 = buses 0x18-0x1F, inside the 32-bit bus masks; the encoder's and the GET_STRIPS numbering agree */
+C_ASSERT(APOLLO_MON_VIRTUAL_BUS0 == APOLLO_STRIP_VIRTUAL_BUS0 && APOLLO_STRIP_VIRTUAL_BUS0 + APOLLO_STRIP_VIRTUALS <= APOLLO_MON_BUSES &&
+         APOLLO_MON_BUS_VIRTUAL(1) == APOLLO_MON_VIRTUAL_BUS(1) && APOLLO_MON_VIRTUAL_BUSES == (0xFFul << APOLLO_STRIP_VIRTUAL_BUS0));
 C_ASSERT(APOLLO_MP_MIX_LEVEL(0x0A) == APOLLO_MON_MIX_LEVEL(0x0A) && APOLLO_MP_MIX_PAN(7) == APOLLO_MON_MIX_PAN(7) &&
          APOLLO_MP_MIX_MUTE(1) == APOLLO_MON_MIX_MUTE(1) && APOLLO_MP_MIX_SOLO(0) == APOLLO_MON_MIX_SOLO(0) &&
          APOLLO_MP_MIX_MUTE_ALL == APOLLO_MON_MIX_MUTE_ALL && APOLLO_MIX_SUB == 0);
@@ -69,10 +72,12 @@ C_ASSERT(APOLLO_MON_AUX_RETURN_BUS(1) < APOLLO_MON_BUSES && APOLLO_MON_AUX_BUSES
 /*
  * The DSP that mixes Bus: its strip's DSP once that strip runs (strips.c BusOwner), else DSP 0; DSP 0 for
  * anything unusable (oa:driver/ua_dsp.c ua_dsp_bus_owner). A quarantined strip DSP gets nothing more.
+ * [Virtual] An ANALOG bus is its Mic strip's slot, a VIRTUAL bus (0x18-0x1F) its Input Strip's (strips.c).
  */
 static ULONG CuesOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus)
 {
-    ULONG d = (Bus < APOLLO_STRIP_INPUTS) ? Ctx->Strips.BusOwner[Bus] : 0;
+    ULONG slot = ApolloStripsBusSlot(Bus);
+    ULONG d = (slot < APOLLO_STRIP_SLOTS) ? Ctx->Strips.BusOwner[slot] : 0;
 
     if (d == 0 || d >= Ctx->NumDsps || d >= APOLLO_MAX_DSPS || !Ctx->Cmd[d].Allocated || !Ctx->Cmd[d].Live) {
         return 0;
@@ -507,6 +512,53 @@ ULONG ApolloCuesAuxOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Aux, _In_ ULONG Ds
  * [Mix] The monitor-mix buses the host set go first (a muted or solo-silenced input is 0.0 before any cue
  * send), in the same pass.
  */
+/*
+ * [BusEnable] The DSP output buses the model mixes, switched ON on every DSP at each connect: {0x001C0003, bus, 1, 0},
+ * bus = 0 the monitor mix, 1 CUE 1, 2 CUE 2, 3 AUX 1, 4 AUX 2, 5 CUE 3, 6 CUE 4 (the same index as the bus coefficient's
+ * sub-param). UA's kext keeps a 7-entry cache that starts "all enabled" and sends only changes (CUAD2DeviceMixer::
+ * SetBusEnable; oa:driver/ua_dsp.c ua_dsp_set_bus_enable), so a unit that UA's own mixer engine ran last may come to us
+ * with buses it switched off: upstream sends the first request for every bus for that reason. Nov 16 2026 on the x8p,
+ * right after UA's engine had run it: a 0 dB send of VIRTUAL 1 into AUX 1 left AUX 1's record slots exact zero.
+ * CUE 3/4 only on a model with four cues (Console turns them off at 176.4 kHz and up: left as the DSP has them then).
+ */
+static VOID CuesBusEnableAll(_In_ PDEVICE_CONTEXT Ctx)
+{
+    const APOLLO_MON_MODEL *m = ApolloMonModelFor(Ctx->Ident.Model);
+    ULONG d, b, sent = 0, full = 0, buses = 0;
+
+    if (m == 0) {
+        return;
+    }
+    buses = 0x1Ful;                                     /* monitor, CUE 1, CUE 2, AUX 1, AUX 2 */
+    if (m->Cues >= 4 && Ctx->SampleRate < 176400) {
+        buses |= (1ul << 5) | (1ul << 6);               /* CUE 3, CUE 4 */
+    }
+    for (d = 0; d < Ctx->NumDsps && d < APOLLO_MAX_DSPS; d++) {
+        PAPOLLO_RING cmd = &Ctx->Cmd[d];
+
+        if (!cmd->Allocated || !cmd->Live || (Ctx->Strips.Quarantined && d == Ctx->Strips.Dsp)) {
+            continue;
+        }
+        if (!NT_SUCCESS(ApolloRingRefresh(Ctx, cmd))) {
+            return;
+        }
+        for (b = 0; b < 7; b++) {
+            if ((buses & (1ul << b)) == 0) {
+                continue;
+            }
+            if (ApolloRingFreeSlots(cmd) < 2) {
+                full++;
+                continue;
+            }
+            ApolloRingWrite(cmd, APOLLO_DSP_CMD_BUS_ENABLE, b, 1, 0);
+            sent++;
+        }
+        ApolloRingDoorbell(Ctx, cmd);
+    }
+    ApolloLogU(Ctx, "mix: DSP buses 0x%02lx enabled on %lu DSP(s) (%lu command(s)%s)", buses, Ctx->NumDsps, sent,
+               full ? ", some skipped: ring full" : "");
+}
+
 VOID ApolloCuesReplay(_In_ PDEVICE_CONTEXT Ctx)
 {
     ULONG c, b, n = 0, failed = 0, mixN = 0, mixFailed = 0;
@@ -515,6 +567,13 @@ VOID ApolloCuesReplay(_In_ PDEVICE_CONTEXT Ctx)
     if (!CuesReady(Ctx)) {
         return;
     }
+    /*
+     * [BusEnable] NOT sent: Nov 16 2026 on both units, {0x001C0003, b, 1, 0} for b 0-6 (x8p) / 0-4 (Twin X) on every DSP
+     * at the connect left EVERY record slot of both units exact zero (VIRTUAL 1, MON, the mic inputs) until a power
+     * cycle; the build before, without it, recorded VIRTUAL 1 at -30 dBFS and the monitor mix at -33 dBFS. The bus
+     * groups or the value's meaning on these kinds are not what oa:driver/ua_dsp.c assumes. Kept for the record only.
+     */
+    (VOID)CuesBusEnableAll;
     for (b = 0; b < APOLLO_MON_BUSES; b++) {
         if ((Ctx->Cues.Mix.Set & (1ul << b)) == 0) {
             continue;

@@ -33,6 +33,11 @@
    equal APOLLO_TESTED_FW_RELEASE / APOLLO_TESTED_FPGA_REV in apollo_ioctl.h. */
 #define APOLLO_X8P_TESTED_FW        0x0B0FD613u     /* 11.15.54803 */
 #define APOLLO_X8P_TESTED_FPGA      0xA241C5ACu
+/* The Twin X Gen 1's: what its unit has run on this driver since gate G3 (Nov 14-16 2026). Both are also the newest
+   firmware Universal Audio ships for these models in UAD 12.0.0.602: the version word at offset 0x10 of
+   FirmwareUpdateRene_8.bin is 11.15.54803 and of every FirmwareUpdateDuoLavern*.bin 11.15.51635 (checked Nov 16 2026). */
+#define APOLLO_TWINX_TESTED_FW      0x0B0FC9B3u     /* 11.15.51635 */
+#define APOLLO_TWINX_TESTED_FPGA    0xA70EA929u
 
 /* Models this driver accepts (APOLLO_IDENT.Model) */
 #define APOLLO_MODEL_NONE           0
@@ -324,7 +329,7 @@ static __inline int ApolloFwTested(int Model, unsigned long FwRelease, unsigned 
         unsigned long   FpgaRev;
     } t[] = {
         { APOLLO_MODEL_X8P, APOLLO_X8P_TESTED_FW, APOLLO_X8P_TESTED_FPGA },     /* Aaron's x8p */
-        /* Apollo Twin X Gen 1: add its row only after gate G3 passes on Aaron's unit. */
+        { APOLLO_MODEL_TWINX, APOLLO_TWINX_TESTED_FW, APOLLO_TWINX_TESTED_FPGA },   /* his Twin X Gen 1, G3-G7 */
     };
     unsigned int i;
 

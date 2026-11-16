@@ -17,6 +17,11 @@
  * 538-563 (header, captured 48 kHz parameters), 579-601 (start words), 610-705 (words),
  * ua_plugin_upload.c:114-160 (memspec).
  *
+ * [Virtual] (Nov 16 2026, docs/STRIPS.md 13) The plain Input Strip (pluginId 0x83E) on the Virtual inputs,
+ * after the "Virtual Input Strips" section below: a pass is then every Mic PREPARE, every Virtual PREPARE,
+ * and ONE START for all of them (the "plan mask" Pm: bits 0-7 Mic, 8-15 VIRTUAL 1-8). Every function
+ * above that section is unchanged (strip-plan-test's golden digests).
+ *
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #pragma once
@@ -25,8 +30,9 @@
 #define STRIP_PLAN_INPUTS       8       /* preamps 1-8 = DSP inputs (synch) 0-7 on the x8p */
 #define STRIP_PLAN_PREPARE_ENTS 13      /* 10 zero-fills + 3 DMA refs */
 #define STRIP_PLAN_START_ENTS   4       /* per input: SYNCH, span, span, route */
-#define STRIP_PLAN_ENTS_MAX     (STRIP_PLAN_START_ENTS * STRIP_PLAN_INPUTS)    /* 32 */
+#define STRIP_PLAN_ENTS_MAX     (STRIP_PLAN_START_ENTS * STRIP_PLAN_INPUTS)    /* 32: a Mic-only transaction */
 #define STRIP_PLAN_PAYLOAD_MAX  96      /* dwords: memspec 19 + header 9 + parameters 55 = 83 */
+#define STRIP_PLAN_ENT_SLOTS    64      /* [Virtual] entries a plan holds: the START of 8 Mic + 8 Input Strips */
 
 #define STRIP_CMD_ZERO          0x00080004u     /* {cmd, addr, 0, dwords} */
 #define STRIP_CMD_SYNCH         0x001F0004u     /* {cmd, 0x20 << 16 | synch, header (0 = stop), 0} */
@@ -216,9 +222,9 @@ typedef struct _STRIP_PLAN_ENT {
 } STRIP_PLAN_ENT;
 
 typedef struct _STRIP_PLAN {
-    ULONG           Addr[STRIP_PLAN_ROWS];
+    ULONG           Addr[STRIP_PLAN_ROWS];      /* [Virtual] an Input Strip uses rows 0-5 (the rest 0) */
     ULONG           N;
-    STRIP_PLAN_ENT  Ent[STRIP_PLAN_ENTS_MAX];
+    STRIP_PLAN_ENT  Ent[STRIP_PLAN_ENT_SLOTS];  /* a Mic-only plan never has more than STRIP_PLAN_ENTS_MAX */
     ULONG           Len;                        /* payload dwords used */
     ULONG           Payload[STRIP_PLAN_PAYLOAD_MAX];
     ULONG           Err;
@@ -251,22 +257,25 @@ static __inline void StripPlanAddrs(ULONG Input, ULONG Addr[STRIP_PLAN_ROWS])
 }
 
 /*
- * The memspec (ua_memspec_compile with descriptors {0, 1}): row 0 has no link; row 1 (the
- * sub-plugin's first row) links into the head's rows, rows 2-9 into the sub-plugin's own rows.
- * Each pair stores a block's address at word `offset` of its target row. 19 words; 0 on error.
+ * The memspec (ua_memspec_compile with descriptors {0, 1}) of N rows: row 0 has no link; row 1 (the
+ * sub-plugin's first row) links into the head's rows, rows 2..N-1 into the sub-plugin's own rows.
+ * Each pair stores a block's address at word `offset` of its target row. 2N-1 words; 0 on error.
+ * [Virtual] Rows = g_StripRows (the Mic strip, 19 words) or g_StripVRows (the Input Strip, 11).
  */
-static __inline ULONG StripPlanMemspec(const ULONG Addr[STRIP_PLAN_ROWS],
-                                       ULONG Words[2 * STRIP_PLAN_ROWS - 1])
+static __inline ULONG StripPlanMemspecOf(const STRIP_ROW *Rows, ULONG N, const ULONG *Addr, ULONG *Words)
 {
     ULONG m = 0, j;
 
-    Words[m++] = STRIP_OP(STRIP_OP_MEMSPEC, 2 * STRIP_PLAN_ROWS - 1);
-    for (j = 1; j < STRIP_PLAN_ROWS; j++) {
+    if (N < 2) {
+        return 0;
+    }
+    Words[m++] = STRIP_OP(STRIP_OP_MEMSPEC, 2 * N - 1);
+    for (j = 1; j < N; j++) {
         ULONG tgtFirst = (j == 1) ? 0 : 1;
-        ULONG tgtCount = (j == 1) ? 1 : STRIP_PLAN_ROWS - 1;
-        ULONG t = g_StripRows[j].Link >> 24, off = g_StripRows[j].Link & 0xFFFFFF;
+        ULONG tgtCount = (j == 1) ? 1 : N - 1;
+        ULONG t = Rows[j].Link >> 24, off = Rows[j].Link & 0xFFFFFF;
 
-        if (t >= tgtCount || off >= g_StripRows[tgtFirst + t].Dwords || (Addr[j] & 1)) {
+        if (t >= tgtCount || off >= Rows[tgtFirst + t].Dwords || (Addr[j] & 1)) {
             return 0;
         }
         Words[m++] = Addr[tgtFirst + t] + off;
@@ -275,11 +284,18 @@ static __inline ULONG StripPlanMemspec(const ULONG Addr[STRIP_PLAN_ROWS],
     return m;
 }
 
+/* The Mic strip's memspec: 19 words; 0 on error. */
+static __inline ULONG StripPlanMemspec(const ULONG Addr[STRIP_PLAN_ROWS],
+                                       ULONG Words[2 * STRIP_PLAN_ROWS - 1])
+{
+    return StripPlanMemspecOf(g_StripRows, STRIP_PLAN_ROWS, Addr, Words);
+}
+
 static __inline void StripPlanInline(STRIP_PLAN *P, ULONG W0, ULONG W1, ULONG W2, ULONG W3)
 {
     STRIP_PLAN_ENT *e;
 
-    if (P->Err || P->N >= STRIP_PLAN_ENTS_MAX || (W0 & 0x80000000u)) {
+    if (P->Err || P->N >= STRIP_PLAN_ENT_SLOTS || (W0 & 0x80000000u)) {
         P->Err = 1;
         return;
     }
@@ -299,7 +315,7 @@ static __inline ULONG *StripPlanDma(STRIP_PLAN *P, ULONG Dwords)
     STRIP_PLAN_ENT *e;
     ULONG *w;
 
-    if (P->Err || P->N >= STRIP_PLAN_ENTS_MAX || Dwords == 0 ||
+    if (P->Err || P->N >= STRIP_PLAN_ENT_SLOTS || Dwords == 0 ||
         Dwords > STRIP_PLAN_PAYLOAD_MAX - P->Len) {
         P->Err = 1;
         return 0;
@@ -490,6 +506,301 @@ static __inline ULONG StripPassStep(ULONG Mask, ULONG Steps, ULONG K, ULONG *Inp
 }
 
 /*
+ * ---- [Virtual] Virtual Input Strips (Nov 16 2026, docs/STRIPS.md 13) ----
+ *
+ * A DAW (or Windows) plays into VIRTUAL 1-8; on the DSP those are inputs (synch) 0x18-0x1F, and "without a
+ * strip on their DSP input the Console's Virtual channels mix nothing and record silence"
+ * (oa:driver/ua_strips.c:19-25). Their strip is the plain Input Strip, pluginId 0x83E, run by the Mic
+ * strip's A5 and C2 modules (resident already: the same five uploads), with six private blocks.
+ * Port of oa:driver/ua_strips.c:385-412 (ua_strip_input_rows, ua_strip_input_m0), 713-745
+ * (ua_strip_build_input), 990-1009 (the planner: the Virtual strips after every Mic strip), 766-789
+ * (first_virtual 0x18 on every model with strips).
+ *
+ * Placement (this driver's fixed layout, docs/STRIPS.md D6): Mic input i keeps slot i of the room the model
+ * books for its Mic strips (LayoutStrips: x8p 8, Twin X 2); VIRTUAL n sits in Virtual slot n-1 directly
+ * below that room, top-down per pool, so the strip DSP's ledger (plugin.c) books one contiguous block per
+ * pool. With every Mic strip of the model built, that is open-apollo's packing word for word (it puts the
+ * Input Strips after every Mic strip, ua_strip_priv_addrs).
+ *
+ * A pass is ONE ordered list of "slots": 0-7 the Mic strips (preamp i), 8-15 the Input Strips (VIRTUAL
+ * slot-7). Pm, the plan mask, has bit k for slot k (= StripMask | StripVirtualMask << 8): every PREPARE
+ * (Mic first, then Virtual), then ONE START (SYNCH, span, span, route for each, in slot order). No strip
+ * runs while any strip's memory is written (docs/STRIPS.md 10.8). A Pm of 0..0xFF gives exactly the
+ * Mic-only functions' words (strip-plan-test).
+ */
+#define STRIP_PLAN_VIRTUALS     8u      /* VIRTUAL 1-8 */
+#define STRIP_PLAN_VROWS        6u      /* Input Strip: instance header, m0, c0-c3 */
+#define STRIP_PLAN_SLOTS        16u     /* a pass's strips: 0-7 Mic, 8-15 Virtual */
+#define STRIP_SLOT_VIRTUAL0     8u      /* slot of VIRTUAL 1 */
+#define STRIP_VIRTUAL_SYNCH0    0x18u   /* DSP input (synch) of VIRTUAL 1 = its mixer bus; every model's FirstVirtual */
+#define STRIP_PLAN_VPREPARE_ENTS 9u     /* 6 zero-fills + 3 DMA refs */
+#define STRIP_PLUGIN_INPUT      0x83Eu  /* pluginId of the Input Strip */
+#define STRIP_DW_VM0            0x01Eu
+#define STRIP_DW_VC             0x100u  /* the captured commons: the capacity m0 word 5 selects */
+#define STRIP_VM0_WORDS         9u
+#define STRIP_VPOOL1_PER_STRIP  (STRIP_DW_HDR + STRIP_DW_VM0)  /* 0x26 */
+#define STRIP_VPOOL2_PER_STRIP  0u
+#define STRIP_VPOOL3_PER_STRIP  (4u * STRIP_DW_VC)              /* 0x400 */
+#define STRIP_PM_MIC            0x00FFu
+#define STRIP_PM_VIRTUAL        0xFF00u
+
+/* ua_strips.c:394-412: descriptor 0 = row 0 (head), descriptor 1 = rows 1-5 (the Input sub-plugin) */
+static const STRIP_ROW g_StripVRows[STRIP_PLAN_VROWS] = {
+    { 1, STRIP_DW_HDR, 0xFFFFFFFFu },   /* instance header */
+    { 1, STRIP_DW_VM0, 0x00000006u },   /* m0 -> header[6] */
+    { 3, STRIP_DW_VC,  0x0000000Eu },   /* c0 -> m0[0x0e] */
+    { 3, STRIP_DW_VC,  0x0000000Fu },   /* c1 -> m0[0x0f] */
+    { 3, STRIP_DW_VC,  0x00000006u },   /* c2 -> m0[0x06] */
+    { 3, STRIP_DW_VC,  0x00000007u },   /* c3 -> m0[0x07] */
+};
+
+/*
+ * ua_strips.c:405-412: the captured Input Strip parameters (oa:tools/uausb/solo-usb-init.json params.input),
+ * written as one {0x0014000B, m0, ...} command: word 0 is the WRITE's skip mask (the values land on m0 words
+ * 0, 1, 2, 4, 5, 16, 22, 25, never on the link words 6, 7, 0x0e, 0x0f), the last value 0.004f. 48 kHz values;
+ * upstream writes them at every rate (no rate rule is known), and so does this port.
+ */
+static const ULONG g_StripVM0[STRIP_VM0_WORDS] = {
+    0x00df7fe4, 0x40000000, 0x00000001, 0x00000001, 0x00000004, 0x00000100,
+    0x000000c8, 0x3a888889, 0x3b83126f,
+};
+
+static __inline ULONG StripPlanPm(ULONG Mask, ULONG VMask)
+{
+    return (Mask & STRIP_PM_MIC) | ((VMask & 0xFFu) << 8);
+}
+
+/* The DSP input (= the mixer bus) of slot Slot: preamp i -> i, VIRTUAL n -> 0x18 + n - 1. */
+static __inline ULONG StripSlotSynch(ULONG Slot)
+{
+    return (Slot < STRIP_SLOT_VIRTUAL0) ? Slot : STRIP_VIRTUAL_SYNCH0 + ((Slot - STRIP_SLOT_VIRTUAL0) & 7u);
+}
+
+/* The slot whose strip mixes bus Bus (DSP input), or STRIP_PLAN_SLOTS: none. */
+static __inline ULONG StripBusSlot(ULONG Bus)
+{
+    if (Bus < STRIP_PLAN_INPUTS) {
+        return Bus;
+    }
+    if (Bus >= STRIP_VIRTUAL_SYNCH0 && Bus < STRIP_VIRTUAL_SYNCH0 + STRIP_PLAN_VIRTUALS) {
+        return STRIP_SLOT_VIRTUAL0 + (Bus - STRIP_VIRTUAL_SYNCH0);
+    }
+    return STRIP_PLAN_SLOTS;
+}
+
+/*
+ * VIRTUAL V+1's six private addresses (Addr[6..9] = 0): below the room of MicSlots Mic strips, slot after
+ * slot, top-down in each pool. 0, or 1 for V or MicSlots out of range (Addr all 0).
+ */
+static __inline ULONG StripPlanVirtualAddrs(ULONG MicSlots, ULONG V, ULONG Addr[STRIP_PLAN_ROWS])
+{
+    ULONG cur[4], s, j;
+
+    for (j = 0; j < STRIP_PLAN_ROWS; j++) {
+        Addr[j] = 0;
+    }
+    if (V >= STRIP_PLAN_VIRTUALS || MicSlots > STRIP_PLAN_INPUTS) {
+        return 1;
+    }
+    cur[0] = 0;
+    cur[1] = g_StripTop[1] - MicSlots * STRIP_POOL1_PER_STRIP;
+    cur[2] = g_StripTop[2] - MicSlots * STRIP_POOL2_PER_STRIP;
+    cur[3] = g_StripTop[3] - MicSlots * STRIP_POOL3_PER_STRIP;
+    for (s = 0; s <= V; s++) {
+        for (j = 0; j < STRIP_PLAN_VROWS; j++) {
+            ULONG p = g_StripVRows[j].Pool & 3;
+
+            cur[p] -= g_StripVRows[j].Dwords;
+            Addr[j] = cur[p];
+        }
+    }
+    return 0;
+}
+
+/* Slot Slot's private addresses (Mic rows 0-9, or the Input Strip's 0-5). 0, or 1 for a slot out of range. */
+static __inline ULONG StripPlanSlotAddrs(ULONG Slot, ULONG MicSlots, ULONG Addr[STRIP_PLAN_ROWS])
+{
+    ULONG j;
+
+    if (Slot < STRIP_SLOT_VIRTUAL0) {
+        StripPlanAddrs(Slot, Addr);
+        return 0;
+    }
+    if (Slot < STRIP_PLAN_SLOTS) {
+        return StripPlanVirtualAddrs(MicSlots, Slot - STRIP_SLOT_VIRTUAL0, Addr);
+    }
+    for (j = 0; j < STRIP_PLAN_ROWS; j++) {
+        Addr[j] = 0;
+    }
+    return 1;
+}
+
+/*
+ * The PREPARE transaction for VIRTUAL V+1 (ua_strip_build_input's stages 2-5, nothing started): zero-fills of
+ * its six blocks (stage 2), the 11-word memspec (3), the header {0x00140009, hdr, 0x24, 0x40000000, 1, 1, 0x22,
+ * 1, 0x83E} (4), the m0 parameters {0x0014000B, m0, g_StripVM0} (5). Each DMA command is its own DMA_REF, as
+ * ua_strip_dma packs them. Returns 0, or nonzero on a planner error.
+ */
+static __inline ULONG StripPlanPrepareVirtual(ULONG V, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
+{
+    const ULONG *a = P->Addr;
+    ULONG j, *w;
+
+    StripPlanReset(P);
+    if (StripPlanVirtualAddrs(MicSlots, V, P->Addr) != 0) {
+        P->Err = 1;
+        return P->Err;
+    }
+    Steps = StripPlanSteps(Steps);
+    if (Steps < STRIP_STEP_ZERO) {
+        return 0;
+    }
+    for (j = 0; j < STRIP_PLAN_VROWS; j++) {
+        StripPlanInline(P, STRIP_CMD_ZERO, a[j], 0, g_StripVRows[j].Dwords);
+    }
+    if (Steps < STRIP_STEP_MEMSPEC) {
+        return P->Err;
+    }
+    w = StripPlanDma(P, 2 * STRIP_PLAN_VROWS - 1);
+    if (w != 0 && StripPlanMemspecOf(g_StripVRows, STRIP_PLAN_VROWS, a, w) != 2 * STRIP_PLAN_VROWS - 1) {
+        P->Err = 1;
+    }
+    if (Steps < STRIP_STEP_HEADER) {
+        return P->Err;
+    }
+    /* ua_strip_build_header(x, addr[0], UA_STRIP_PLUGIN_INPUT) */
+    w = StripPlanDma(P, 9);
+    if (w != 0) {
+        w[0] = STRIP_OP(STRIP_OP_WRITE, 9);
+        w[1] = a[0];
+        w[2] = 0x24;
+        w[3] = 0x40000000u;
+        w[4] = 1;
+        w[5] = 1;
+        w[6] = 0x22;
+        w[7] = 1;
+        w[8] = STRIP_PLUGIN_INPUT;
+    }
+    if (Steps < STRIP_STEP_PARAMS) {
+        return P->Err;
+    }
+    /* ua_strip_build_block(x, addr[1], ua_strip_input_m0, 9) */
+    w = StripPlanDma(P, 2 + STRIP_VM0_WORDS);
+    if (w != 0) {
+        w[0] = STRIP_OP(STRIP_OP_WRITE, 2 + STRIP_VM0_WORDS);
+        w[1] = a[1];
+        for (j = 0; j < STRIP_VM0_WORDS; j++) {
+            w[2 + j] = g_StripVM0[j];
+        }
+    }
+    return P->Err;
+}
+
+/* Slot Slot's PREPARE at Rate (the Mic strip's rate words; the Input Strip's are the same at every rate). */
+static __inline ULONG StripPlanPrepareSlot(ULONG Slot, ULONG MicSlots, ULONG Steps, ULONG Rate, STRIP_PLAN *P)
+{
+    if (Slot < STRIP_SLOT_VIRTUAL0) {
+        return StripPlanPrepareRate(Slot, Steps, Rate, P);
+    }
+    if (Slot >= STRIP_PLAN_SLOTS || StripRampOf(Rate) == 0) {
+        StripPlanReset(P);
+        P->Err = 1;
+        return P->Err;
+    }
+    return StripPlanPrepareVirtual(Slot - STRIP_SLOT_VIRTUAL0, MicSlots, Steps, P);
+}
+
+/*
+ * The START transaction for every slot in Pm (Mic input 1 first, then VIRTUAL 1, ...), up to stage Steps: per
+ * slot SYNCH {0x001F0004, 0x20 << 16 | synch, header, 0} (stage 6), then span none twice and the route word
+ * (stage 7; ua_strip_build_start: the same words for both kinds). Inline only, at most 64 entries. A Pm of
+ * 0..0xFF gives StripPlanStart's entries. Returns 0, or nonzero on a planner error.
+ */
+static __inline ULONG StripPlanStartPm(ULONG Pm, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
+{
+    ULONG addr[STRIP_PLAN_ROWS], k, synch;
+
+    StripPlanReset(P);
+    Steps = StripPlanSteps(Steps);
+    if (Pm & ~((1u << STRIP_PLAN_SLOTS) - 1)) {
+        P->Err = 1;
+        return P->Err;
+    }
+    if (Steps < STRIP_STEP_SYNCH) {
+        return 0;
+    }
+    for (k = 0; k < STRIP_PLAN_SLOTS; k++) {
+        if (!(Pm & (1u << k))) {
+            continue;
+        }
+        if (StripPlanSlotAddrs(k, MicSlots, addr) != 0) {
+            P->Err = 1;
+            return P->Err;
+        }
+        synch = StripSlotSynch(k);
+        StripPlanInline(P, STRIP_CMD_SYNCH, (STRIP_SYNCH_MONO << 16) | synch, addr[0], 0);
+        if (Steps >= STRIP_STEP_INPUT) {
+            StripPlanInline(P, STRIP_CMD_INPUT, synch, STRIP_INPUT_SPAN, STRIP_SPAN_NONE);
+            StripPlanInline(P, STRIP_CMD_INPUT, synch, STRIP_INPUT_SPAN, STRIP_SPAN_NONE);
+            StripPlanInline(P, STRIP_CMD_INPUT, synch, STRIP_INPUT_ROUTE, STRIP_ROUTE_NONE);
+        }
+    }
+    return P->Err;
+}
+
+/*
+ * The pass over Pm: transaction K is STRIP_XACT_PREPARE (*Slot) for every slot in Pm, ascending (every Mic
+ * strip, then every Virtual one), then one STRIP_XACT_START at SYNCH or beyond, then STRIP_XACT_END. A Pm of
+ * 0..0xFF gives StripPassStep's list.
+ */
+static __inline ULONG StripPassStepPm(ULONG Pm, ULONG Steps, ULONG K, ULONG *Slot)
+{
+    ULONG k, n = 0;
+
+    *Slot = 0;
+    Steps = StripPlanSteps(Steps);
+    Pm &= (1u << STRIP_PLAN_SLOTS) - 1;
+    if (Steps < STRIP_STEP_ZERO || Pm == 0) {
+        return STRIP_XACT_END;
+    }
+    for (k = 0; k < STRIP_PLAN_SLOTS; k++) {
+        if (!(Pm & (1u << k))) {
+            continue;
+        }
+        if (n == K) {
+            *Slot = k;
+            return STRIP_XACT_PREPARE;
+        }
+        n++;
+    }
+    return (K == n && Steps >= STRIP_STEP_SYNCH) ? STRIP_XACT_START : STRIP_XACT_END;
+}
+
+/* Virtual slots the room must hold for VMask: VIRTUAL n has its fixed place, so up to the highest one. */
+static __inline ULONG StripVirtualSlots(ULONG VMask)
+{
+    ULONG n = 0, v;
+
+    for (v = 0; v < STRIP_PLAN_VIRTUALS; v++) {
+        if (VMask & (1u << v)) {
+            n = v + 1;
+        }
+    }
+    return n;
+}
+
+/* Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Virtual slots of VMask. */
+static __inline void StripPlanRoom(ULONG MicSlots, ULONG VMask, ULONG Room[4])
+{
+    ULONG v = StripVirtualSlots(VMask);
+
+    Room[0] = 0;
+    Room[1] = STRIP_POOL1_PER_STRIP * MicSlots + STRIP_VPOOL1_PER_STRIP * v;
+    Room[2] = STRIP_POOL2_PER_STRIP * MicSlots + STRIP_VPOOL2_PER_STRIP * v;
+    Room[3] = STRIP_POOL3_PER_STRIP * MicSlots + STRIP_VPOOL3_PER_STRIP * v;
+}
+
+/*
  * ---- The live probe and its repair ladder (docs/STRIPS.md 10.9) ----
  *
  * Eight strips on DSP 1 left inputs 1, 2, 5, 6, 7 at exact digital zero and 3, 4, 8 live;
@@ -639,7 +950,8 @@ typedef struct _STRIP_MODEL {
     ULONG           Inputs;             /* preamp inputs that can get a strip: 1..Inputs */
     ULONG           MaskAllowed;        /* StripMask is ANDed with this */
     ULONG           FirstSynch;         /* DSP input of analog input 1 (0: the words above) */
-    ULONG           FirstVirtual;       /* DSP input of VIRTUAL 1 (no Input Strips are built; the record) */
+    ULONG           FirstVirtual;       /* DSP input of VIRTUAL 1 (0x18: STRIP_VIRTUAL_SYNCH0, the Input Strips' words) */
+    ULONG           VirtualAllowed;     /* [Virtual] StripVirtualMask is ANDed with this (bit n = VIRTUAL n+1) */
     ULONG           DspDefault;         /* StripDsp when absent or not allowed */
     ULONG           DspAllowed;         /* bit d: DSP d may host the strips (and d < the unit's DSP count) */
     ULONG           LayoutStrips;       /* the pool check reserves room for this many strips */
@@ -653,8 +965,9 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
     static const STRIP_MODEL t[2] = {
         {
             /* docs/STRIPS.md 2.1-2.4: 8 preamps, DSP 1 (0-3 allowed), measured pools fit 8 strips;
-               record slots 0-7 = MIC/LINE/HIZ 1-2, MIC/LINE 3-4, LINE 5-8 (the same combo jacks) */
-            STRIP_MODEL_X8P, "Apollo x8p", 8, 0xFF, 0, 0x18, 1, 0x0F, 8,
+               record slots 0-7 = MIC/LINE/HIZ 1-2, MIC/LINE 3-4, LINE 5-8 (the same combo jacks).
+               [Virtual] VIRTUAL 1-8 (oa:devices/apollo-x8p.json synch_in 24-31, no virtual_max) */
+            STRIP_MODEL_X8P, "Apollo x8p", 8, 0xFF, 0, 0x18, 0xFF, 1, 0x0F, 8,
             { 0x0EB, 0x0DA, 0x0A5, 0x0C2, 0x12B },
             { 0x0001, 0x0002, 0x0103, 0x0104, 0x0305, 0x0306, 0x0307, 0x0308 },
         },
@@ -666,8 +979,9 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
              * for its 2 strips (its DSP 1 pools fit 8 at G3: tops 0x9D1B8 / 0xC6FFE / 0x08FFE000);
              * record slots 0/1 = 0x0001/0x0002 MIC/LINE/HIZ 1-2 (the G3 descriptor). No talkback
              * strip (module 0xC9, no captured recipe): TALKBACK 1-2 stay silent.
+             * [Virtual] VIRTUAL 1-4 (oa:devices/apollo-twin-x.json virtual_max 4; VIRTUAL 1-4 play and record).
              */
-            STRIP_MODEL_TWINX, "Apollo Twin X (Gen 1)", 2, 0x03, 0, 0x18, 1, 0x03, 2,
+            STRIP_MODEL_TWINX, "Apollo Twin X (Gen 1)", 2, 0x03, 0, 0x18, 0x0F, 1, 0x03, 2,
             { 0x0EB, 0x0DA, 0x0A5, 0x0C2, 0x12B },
             { 0x0001, 0x0002, 0, 0, 0, 0, 0, 0 },
         },
@@ -675,7 +989,7 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
     ULONG i;
 
     for (i = 0; i < 2; i++) {
-        if (t[i].Model == Model && t[i].FirstSynch == 0) {
+        if (t[i].Model == Model && t[i].FirstSynch == 0 && t[i].FirstVirtual == STRIP_VIRTUAL_SYNCH0) {
             return &t[i];
         }
     }
@@ -686,6 +1000,12 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
 static __inline ULONG StripModelMask(const STRIP_MODEL *M, ULONG Mask)
 {
     return (M != 0) ? (Mask & M->MaskAllowed) : 0;
+}
+
+/* [Virtual] StripVirtualMask as the model takes it (VIRTUAL inputs it does not have are dropped). */
+static __inline ULONG StripModelVirtualMask(const STRIP_MODEL *M, ULONG VMask)
+{
+    return (M != 0) ? (VMask & M->VirtualAllowed & 0xFFu) : 0;
 }
 
 /* StripDsp as the model takes it: an allowed DSP the unit has, else the default. */
@@ -728,11 +1048,29 @@ static __inline ULONG StripRouteDsps(ULONG NumDsps, ULONG Dsp)
  * all ones); 2 code pool not at 0xE0000; 3 code pool too small; 4+p pool p's top is not the
  * recipe's (or wraps); 8+p no room in pool p. Size/Base/Scr are the raw registers (Scr[0] unused).
  */
+static __inline ULONG StripPlanLayoutCheckRoom(const ULONG Size[4], const ULONG Base[4], const ULONG Scr[4],
+                                               const ULONG Room[4], ULONG CodeWords);
+
 static __inline ULONG StripPlanLayoutCheck(const ULONG Size[4], const ULONG Base[4], const ULONG Scr[4],
                                            ULONG Strips, ULONG CodeWords)
 {
-    static const ULONG kScratch[4] = { 0, 0x1C0u, 0x80u, 0 };   /* the Mic strip's AllocInfo */
     static const ULONG kPerStrip[4] = { 0, STRIP_POOL1_PER_STRIP, STRIP_POOL2_PER_STRIP, STRIP_POOL3_PER_STRIP };
+    ULONG room[4], p;
+
+    for (p = 0; p < 4; p++) {
+        room[p] = kPerStrip[p] * Strips;
+    }
+    return StripPlanLayoutCheckRoom(Size, Base, Scr, room, CodeWords);
+}
+
+/*
+ * [Virtual] The same check with the room each pool must hold above its scratch given in words (StripPlanRoom: the
+ * model's Mic strips plus the Virtual strips of StripVirtualMask). The same codes: 8+p = no room in pool p.
+ */
+static __inline ULONG StripPlanLayoutCheckRoom(const ULONG Size[4], const ULONG Base[4], const ULONG Scr[4],
+                                               const ULONG Room[4], ULONG CodeWords)
+{
+    static const ULONG kScratch[4] = { 0, 0x1C0u, 0x80u, 0 };   /* the Mic strip's AllocInfo */
     ULONG p;
 
     for (p = 0; p < 4; p++) {
@@ -759,7 +1097,7 @@ static __inline ULONG StripPlanLayoutCheck(const ULONG Size[4], const ULONG Base
             if (top - start < CodeWords) return 3;
         } else {
             if (top != g_StripTop[p]) return 4 + p;
-            if (floorAddr > top || top - floorAddr < kPerStrip[p] * Strips) return 8 + p;
+            if (floorAddr > top || top - floorAddr < Room[p]) return 8 + p;
         }
     }
     return 0;

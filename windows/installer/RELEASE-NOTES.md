@@ -24,12 +24,11 @@ not for you: Setup leaves those on UA's driver.
   outputs of both units, sessions, and undo.
 * **Input strips** on the mic/line inputs, using modules Setup copies from your own UAD software install (see
   below).
+* **UAD plug-ins on the Apollo DSPs (optional, test stage).** The plug-ins your unit licenses, run on its DSP from
+  your own UAD install. They need a one-time setup after install: see "Set up UAD plug-ins" below.
 
 ## What does not work in this release
 
-* **UAD plug-ins.** Hosting UAD plug-ins on the Apollo DSPs needs a developer setup: a Python environment and plug-in
-  maps built from your own UAD install (see docs/PLUGINS.md in the source). The installer includes none of that, so
-  Apollo Control shows plug-ins as unavailable.
 * **Gen 2 units and other Apollo models.** They are never switched and stay on UA's driver.
 * **Secure Boot.** The driver cannot run with Secure Boot on (no Microsoft signature).
 
@@ -88,13 +87,44 @@ time you connect a unit for the first time.
 
 The first time the input strips start, a unit may need one power cycle (off for ten seconds, then on).
 
+## Set up UAD plug-ins (optional)
+
+To run UAD plug-ins on your Apollo's DSPs, Apollo Control first maps the plug-ins of your own UAD install, once per
+Windows user. Start it from any of these:
+
+* Apollo Control, the plug-in browser on the Control view: **Set up plug-ins** (shown while plug-ins are not set up).
+* Apollo Control, Settings, Plug-in hosting: **Set up plug-ins**.
+* The Start menu: **Set up UAD plug-ins** (a window that explains, asks and shows progress). Setup's optional task
+  "Set up UAD plug-in hosting after install" opens it for you.
+
+What it does, after it has explained all of this and you agreed:
+
+* Downloads about 42 MB: Python 3.13.17 (64-bit, embeddable package) from python.org, and pip, numpy, unicorn, capstone
+  and pefile from PyPI. Each file is checked against a SHA-256 fixed in the setup before it is used. It also takes
+  open-apollo's plug-in panel specs (about 1 MB) from GitHub, checked the same way. Nothing else is downloaded.
+* Reads your UAD install offline: the plug-in files are read as bytes, and plug-in code runs only inside an emulator.
+  It never contacts Universal Audio and starts no Universal Audio program.
+* Maps the plug-ins your units license. If no unit has answered yet (plug-in hosting off, or no unit connected), it
+  maps every plug-in open-apollo knows; to map only the licensed ones, turn plug-in hosting on first (Settings).
+* Keeps everything in `%LOCALAPPDATA%\Avium\ApolloPlugins`: about 230 MB, plus the maps (mostly under 1 MB per
+  plug-in; the Capitol and Hitsville Chambers about 200 MB each).
+* With plug-in hosting on, asks once for administrator rights at the end to copy the plug-ins' DSP modules into the
+  driver's module store. With hosting off, turning it on later does that.
+
+Preparing takes a few minutes; mapping takes about 1 to 3 minutes per plug-in, several at once, in the background at
+low priority. Every plug-in open-apollo knows takes half an hour or more on a typical PC. If it stops, start it again:
+it continues where it stopped. Run it again after a UAD update or after you buy or demo a plug-in.
+
+Without UA's UAD software installed, the setup stops at once with "No UAD install found" and downloads nothing.
+
 ## Uninstall and go back to UA's driver
 
 1. Close every program that uses your Apollo units.
 2. Open Settings, Apps, Installed apps, find "Apollo open driver" and choose Uninstall (or use **Uninstall Apollo
    driver** in the Start menu).
 3. The uninstaller moves your units back to UA's driver, removes the Apollo driver, the ASIO driver, the certificate
-   Setup made, the program files and the input strip modules, and puts your default sound devices back.
+   Setup made, the program files, the input strip modules and the plug-ins' modules, and puts your default sound
+   devices back.
 4. It asks whether to turn test signing off. Choose Yes to leave test mode (it offers to suspend BitLocker for that
    restart first), or No to keep it.
 5. Power-cycle each unit (off for ten seconds, then on) so UA's software starts it fresh. Restart Windows if asked.
@@ -104,7 +134,9 @@ UA's driver must be installed (UA Connect or the UAD software) for the units to 
 left with no driver until you install UA's software, and with a Twin X on this driver the uninstaller stops before
 removing anything and says so: install UA's software first, then uninstall again.
 
-Your Apollo Control settings stay in `%APPDATA%\Avium\ApolloControl`; delete that folder if you do not want them.
+Your Apollo Control settings stay in `%APPDATA%\Avium\ApolloControl`; delete that folder if you do not want them. If
+you set up UAD plug-ins, the private Python and the plug-in maps stay in `%LOCALAPPDATA%\Avium\ApolloPlugins`; delete
+that folder to remove them. It holds data made from your UAD install: keep it to yourself.
 
 To move a single unit back to UA's driver and keep the other on this driver, run this in an administrator command
 prompt, then power-cycle that unit:

@@ -798,6 +798,12 @@ speakers: a started chain is heard there at once.
   otherwise they wait with the driver's reason (`dsp.ownWhy`) and "power-cycle the x8p".
 - **Settings, Plug-in hosting**: Turn on / Turn off (an administrator prompt each time), Install modules,
   the maps folder.
+- **[PlugSetup] Set up plug-ins** (Nov 16 2026, a release install without this developer layout): the browser's box and
+  a Settings row explain, then run `plugins\tools\setup-plugins.ps1`, which builds `%LOCALAPPDATA%\Avium\ApolloPlugins`
+  (a private Python 3.13.17 with the four pinned packages, the specs, the module store from the user's own UAD install,
+  the maps of the plug-ins the units license, the modules through `--plugin-admin` while hosting is on). Hosting can now
+  be turned on before any map exists (no modules then). `plugins\README.md` "On a release install", `installer\README.md`
+  "UAD plug-ins".
 
 Inserts belong to Apollo Control's device handle (instances belong to the handle that created them): they
 run while Apollo Control runs (it lives in the tray) and come back on the next start; quitting it, a driver

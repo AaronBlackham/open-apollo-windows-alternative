@@ -549,6 +549,69 @@ body[data-live="0"] .monitor { opacity: 0.5; }
 .check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); cursor: pointer; }
 .check input, .set-row input[type="checkbox"] { accent-color: var(--accent); }
 
+/* [Clock] the Device view's clock and digital I/O panel, the monitor link panel (Units & routing), the segment head's clock
+   badge and the talkback strip's note (clockui.js). Shared controls (select, seg, sw, btn, check) at 24 px; state in words. */
+.dev-clock { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dev-clock:focus { outline: none; }
+.clk-row { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; min-height: 24px; min-width: 0; }
+.clk-row > .lbl { flex: none; width: 76px; font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.clk-sel { flex: 1 1 130px; min-width: 0; max-width: 220px; }
+.clk-sel:disabled { opacity: 1; color: var(--text-faint); border-style: dashed; }
+.clk-sel.unconfirmed { border-color: var(--warn); }
+.dev-clock .seg button, .clk-link .seg button { flex: none; height: 24px; padding: 0 10px; }
+.dev-clock .seg button:disabled, .clk-link .seg button:disabled { opacity: 0.45; cursor: default; }
+.dev-clock .seg.unconfirmed { border-style: dashed; border-color: var(--warn); }
+.dev-clock .sw { height: 24px; padding: 0 10px; }
+.dev-clock .sw:disabled { opacity: 0.45; cursor: default; }
+.dev-clock .btn, .clk-link .btn { min-height: 24px; }
+.dev-clock .check, .clk-link .check { min-height: 24px; }
+.clk-lock { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; white-space: nowrap; color: var(--text-dim); }
+.clk-lock[data-state="ok"] .lamp { background: var(--ok); color: var(--ok); box-shadow: var(--lamp-glow); }
+.clk-lock[data-state="bad"] { color: var(--red); }
+.clk-lock[data-state="bad"] .lamp { background: transparent; box-shadow: inset 0 0 0 1.5px var(--red); }
+.clk-lock[data-state="busy"] .lamp { background: var(--warn); border-radius: 1px; }
+.clk-exp { flex: none; }
+.clk-why { font-size: 11px; color: var(--text-faint); flex-basis: 100%; padding-left: 84px; }
+.clk-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap;
+  padding: 5px 6px 5px 10px; border-radius: var(--radius-sm); background: var(--panel-2); box-shadow: inset 3px 0 0 var(--warn);
+}
+.clk-banner-text { font-size: 12px; font-weight: 600; color: var(--text); }
+.clk-banner-text::before { content: "! "; color: var(--warn); }
+.clk-banner-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.clk-notes { display: flex; flex-direction: column; gap: 4px; }
+.clk-note {
+  font-size: 12px; padding: 3px 8px; border-radius: var(--radius-sm); background: var(--panel-2); color: var(--text-dim);
+  box-shadow: inset 3px 0 0 var(--line-strong); user-select: text; overflow-wrap: anywhere;
+}
+.clk-note[data-kind="ok"] { box-shadow: inset 3px 0 0 var(--ok); }
+.clk-note[data-kind="bad"] { box-shadow: inset 3px 0 0 var(--red); color: var(--text); }
+.clk-note[data-kind="info"] { box-shadow: inset 3px 0 0 var(--warn); }
+.clk-adv { display: flex; flex-direction: column; gap: 2px; }
+.clk-fine { margin: 0; font-size: 11.5px; color: var(--text-faint); user-select: text; }
+.clk-details { font-size: 11px; color: var(--text-faint); overflow-wrap: anywhere; user-select: text; }
+.clk-sub { display: flex; align-items: center; gap: 8px; margin-top: 2px; padding-top: 8px; border-top: var(--border-w) solid var(--line); }
+.clk-chans { font-size: 12px; color: var(--text); }
+.clk-state { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-dim); }
+.clk-units button { flex: none; height: 24px; padding: 0 12px; }
+.clk-link .clk-row > .lbl { width: auto; margin-right: 4px; }
+.clk-link-flags { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 6px 0 8px; }
+.clk-link .clk-notes { max-width: 720px; }
+.useg-stat:has(> .clk-badge:not([hidden])) { flex-wrap: wrap; row-gap: 4px; }   /* a narrow segment: the rate drops below */
+.clk-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.05em; padding: 1px 4px; white-space: nowrap; color: var(--text-dim);
+  border: var(--border-w) solid var(--line-strong); border-radius: var(--radius-sm);
+}
+.clk-badge[data-state="bad"], .clk-badge[data-state="warn"] { border-style: dashed; }
+.clk-badge[data-state="bad"] { border-color: var(--red); color: var(--red); }
+.clk-badge[data-state="warn"] { border-color: var(--warn); color: var(--warn); }
+.tb-nosig {
+  font-size: 8px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.15; text-align: center; color: var(--text-faint);
+  border: var(--border-w) dashed var(--line-strong); border-radius: var(--radius-sm); padding: 2px 1px; cursor: help; flex: none;
+  position: relative;                  /* the screen-reader text stays inside the strip scroller */
+}
+.clk-sr { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* ---------- settings ---------- */
 
 .settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; align-items: start; max-width: 1400px; }

@@ -1627,13 +1627,25 @@ static BOOL SendMon(ULONG Param, LONG Value, const char *What)
 static int CueUsage(void)
 {
     fprintf(stderr,
-            "usage: cue <1-4> send <input 1-8|tb> <dB -60..12|off> [pan -100..100]\n"
-            "       cue <1-4> pan <input 1-8|tb> <-100 left..100 right>\n"
+            "usage: cue <1-4> send <input 1-8|tb|v1-v8> <dB -60..12|off> [pan -100..100]\n"
+            "       cue <1-4> pan <input 1-8|tb|v1-v8> <-100 left..100 right>\n"
             "       cue <1-4> mute 0|1\n"
             "  A cue's send of an input (or the talkback mic, tb): DSP bus coefficients, no readback\n"
             "  (the driver keeps them and sends them again after a reconnect). Twin X: cue 1 = HP,\n"
-            "  cue 2 = Line 3/4, inputs 1-2; the x8p: cues 1-4, inputs 1-8.\n");
+            "  cue 2 = Line 3/4, inputs 1-2; the x8p: cues 1-4, inputs 1-8. vN = VIRTUAL N (bus 0x18+N-1),\n"
+            "  taken only where the unit's StripVirtualMask builds that Input Strip.\n");
     return 1;
+}
+
+/* [Virtual] "v1".."v8": VIRTUAL n's mixer bus (0x18 + n - 1); FALSE for anything else. */
+static BOOL ParseVirtualBus(const char *s, ULONG *Bus)
+{
+    ULONG n = 0;
+
+    if ((s[0] != 'v' && s[0] != 'V') || !ParseU32(s + 1, &n) || n < 1 || n > APOLLO_STRIP_VIRTUALS)
+        return FALSE;
+    *Bus = APOLLO_MON_BUS_VIRTUAL(n);
+    return TRUE;
 }
 
 /* [Monitor] cue <n> send|pan|mute ... (driver\monitor_plan.h APOLLO_MON_CUE_*) */
@@ -1654,7 +1666,9 @@ static int CmdCue(int n, char **a)
     }
     if (_stricmp(a[3], "tb") == 0 || _stricmp(a[3], "talkback") == 0)
         bus = APOLLO_MON_BUS_TALKBACK;
-    else if (ParseU32(a[3], &in) && in >= 1 && in <= 8)
+    else if (ParseVirtualBus(a[3], &bus)) {
+        /* [Virtual] VIRTUAL n: bus set */
+    } else if (ParseU32(a[3], &in) && in >= 1 && in <= 8)
         bus = in - 1;
     else
         return CueUsage();
@@ -1670,8 +1684,9 @@ static int CmdCue(int n, char **a)
         hasPan = TRUE;
     }
     if (hasPan) {
-        sprintf_s(what, sizeof(what), "cue %lu pan of %s%s %ld", cue, bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : "input ",
-                  bus == APOLLO_MON_BUS_TALKBACK ? "" : a[3], pan);
+        sprintf_s(what, sizeof(what), "cue %lu pan of %s%s %ld", cue,
+                  bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? "VIRTUAL " : "input ",
+                  bus == APOLLO_MON_BUS_TALKBACK ? "" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? a[3] + 1 : a[3], pan);
         if (!SendMon(APOLLO_MON_CUE_PAN(cue - 1, bus), pan, what))
             return 1;
     }
@@ -1689,19 +1704,80 @@ static int CmdCue(int n, char **a)
         }
         level = (long)floor(2.0 * d + 0.5);
     }
-    sprintf_s(what, sizeof(what), "cue %lu send of %s%s %s dB", cue, bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : "input ",
-              bus == APOLLO_MON_BUS_TALKBACK ? "" : a[3], a[4]);
+    sprintf_s(what, sizeof(what), "cue %lu send of %s%s %s dB", cue,
+              bus == APOLLO_MON_BUS_TALKBACK ? "talkback" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? "VIRTUAL " : "input ",
+              bus == APOLLO_MON_BUS_TALKBACK ? "" : bus >= APOLLO_STRIP_VIRTUAL_BUS0 ? a[3] + 1 : a[3], a[4]);
     return SendMon(APOLLO_MON_CUE_SEND(cue - 1, bus), level, what) ? 0 : 1;
+}
+
+/* [Virtual] aux <1-2> send <input|tb|vN> <dB|off> | return <dB|off> | mute 0|1 (driver\monitor_plan.h "[Aux]") */
+static int CmdAux(int n, char **a)
+{
+    ULONG aux = 0, in = 0, bus;
+    char *end = NULL, what[96];
+    long v;
+
+    if (n < 4 || !ParseU32(a[1], &aux) || aux < 1 || aux > 2) {
+        fprintf(stderr,
+                "usage: aux <1-2> send <input 1-8|tb|v1-v8> <dB -60..12|off>   the input's (pre-fader) send to AUX n\n"
+                "       aux <1-2> return <dB -60..12|off>                       AUX n into the monitor mix\n"
+                "       aux <1-2> mute 0|1                                      its return muted\n"
+                "  DSP bus coefficients, no readback (the driver keeps them and replays them after a reconnect).\n"
+                "  The x8p records AUX 1 L/R on record slots 28/29, AUX 2 on 30/31.\n");
+        return 1;
+    }
+    if (_stricmp(a[2], "mute") == 0) {
+        if (strcmp(a[3], "0") != 0 && strcmp(a[3], "1") != 0)
+            return CmdAux(0, a);
+        sprintf_s(what, sizeof(what), "AUX %lu return mute %s", aux, a[3]);
+        return SendMon(APOLLO_MON_AUX_MUTE(aux - 1), a[3][0] == '1' ? 1 : 0, what) ? 0 : 1;
+    }
+    if (_stricmp(a[2], "return") == 0 || _stricmp(a[2], "send") == 0) {
+        BOOL send = _stricmp(a[2], "send") == 0;
+        const char *lv = send ? (n >= 5 ? a[4] : NULL) : a[3];
+
+        bus = 0;
+        if (send) {
+            if (_stricmp(a[3], "tb") == 0 || _stricmp(a[3], "talkback") == 0)
+                bus = APOLLO_MON_BUS_TALKBACK;
+            else if (ParseVirtualBus(a[3], &bus)) {
+                /* VIRTUAL n */
+            } else if (ParseU32(a[3], &in) && in >= 1 && in <= 8)
+                bus = in - 1;
+            else
+                return CmdAux(0, a);
+        }
+        if (lv == NULL)
+            return CmdAux(0, a);
+        if (_stricmp(lv, "off") == 0) {
+            v = APOLLO_MON_SEND_OFF;
+        } else {
+            double d = strtod(lv, &end);
+            if (end == lv || *end != '\0' || d < -60.0 || d > 12.0) {
+                fprintf(stderr, "aux level: -60..+12 dB (0.5 dB steps) or off\n");
+                return 1;
+            }
+            v = (long)floor(2.0 * d + 0.5);
+        }
+        if (send) {
+            sprintf_s(what, sizeof(what), "AUX %lu send of bus 0x%02lX %s dB", aux, bus, lv);
+            return SendMon(APOLLO_MON_AUX_SEND(aux - 1, bus), v, what) ? 0 : 1;
+        }
+        sprintf_s(what, sizeof(what), "AUX %lu return %s dB", aux, lv);
+        return SendMon(APOLLO_MON_AUX_RETURN(aux - 1), v, what) ? 0 : 1;
+    }
+    return CmdAux(0, a);
 }
 
 static int MixUsage(void)
 {
     fprintf(stderr,
-            "usage: mix <input 1-8|tb> level <dB -60..12|off>\n"
-            "       mix <input 1-8> pan <-100 left..100 right>\n"
-            "       mix <input 1-8|tb> mute 0|1\n"
-            "       mix <input 1-8|tb> solo 0|1\n"
+            "usage: mix <input 1-8|tb|v1-v8> level <dB -60..12|off>\n"
+            "       mix <input 1-8|v1-v8> pan <-100 left..100 right>\n"
+            "       mix <input 1-8|tb|v1-v8> mute 0|1\n"
+            "       mix <input 1-8|tb|v1-v8> solo 0|1\n"
             "       mix all mute 0|1\n"
+            "  vN = VIRTUAL N (bus 0x18+N-1): only where the unit's StripVirtualMask builds that Input Strip.\n"
             "  The monitor mix, what the monitor outputs play (DSP bus coefficients, param 0, no readback: the\n"
             "  driver keeps them and sends them again after a reconnect). Nothing is sent for an input until it\n"
             "  is set here; the unit keeps its own default (inputs on at 0 dB). Solo: every other input goes\n"
@@ -1727,6 +1803,8 @@ static int CmdMix(int n, char **a)
     if (_stricmp(a[1], "tb") == 0 || _stricmp(a[1], "talkback") == 0) {
         bus = APOLLO_MON_BUS_TALKBACK;
         strcpy_s(who, sizeof(who), "talkback");
+    } else if (ParseVirtualBus(a[1], &bus)) {
+        sprintf_s(who, sizeof(who), "VIRTUAL %lu", bus - APOLLO_STRIP_VIRTUAL_BUS0 + 1);   /* [Virtual] */
     } else if (ParseU32(a[1], &in) && in >= 1 && in <= 8) {
         bus = in - 1;
         sprintf_s(who, sizeof(who), "input %lu", in);
@@ -2606,7 +2684,7 @@ static int CmdStrips(void)
         return 1;
     }
     if (ret < sizeof(s))
-        s.Version = (ret >= APOLLO_STRIPS_INFO_V2_SIZE) ? 2 : 1;   /* [Warm] a version 2 driver: its part */
+        s.Version = (ret >= APOLLO_STRIPS_INFO_V3_SIZE) ? 3 : (ret >= APOLLO_STRIPS_INFO_V2_SIZE) ? 2 : 1;   /* [Warm] [Virtual] an older driver: its part */
     s.Why[sizeof(s.Why) - 1] = 0;
     printf("State        %lu  %s\n", s.State, StripsStateName(s.State));
     printf("Why          ");
@@ -2706,6 +2784,27 @@ static int CmdStrips(void)
             for (i = 0; i < 8; i++)
                 printf(" %08lx", s.RecordBootWord[i]);
             printf("   (after this driver's last ring connect)\n");
+        }
+    }
+    if (s.Version >= 4) {
+        /* [Virtual] GET_STRIPS version 4: the Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13) */
+        printf("Virtual      StripVirtualMask=0x%02lX asked, 0x%02lX built", s.VirtualAsked, s.VirtualMask);
+        if (s.VirtualLayoutWhy != 0)
+            printf("  REFUSED by the pool check: %s (code %lu)", StripsLayoutText(s.VirtualLayoutWhy), s.VirtualLayoutWhy);
+        printf("\n");
+        if (s.VirtualMask != 0 || s.VirtualAsked != 0) {
+            printf("Virtual  strip                 SYNCH  bus    header    taken   bus on DSP\n");
+            for (i = 0; i < APOLLO_STRIP_VIRTUALS; i++) {
+                if (!(s.VirtualMask & (1ul << i)) && s.VStripState[i] == APOLLO_STRIP_NONE)
+                    continue;
+                printf("V%-7lu %-20s  %-5s  0x%02lx   0x%05lx   %4lu ms  %lu\n", i + 1,
+                       s.VStripState[i] == APOLLO_STRIP_TAKEN ? "taken" :
+                       s.VStripState[i] == APOLLO_STRIP_QUEUED ? "QUEUED (unproven)" : "-",
+                       s.VStripStarted[i] ? "sent" : "-", s.VirtualBus0 + i, s.VStripHeader[i], s.VStripAckMs[i],
+                       s.VBusOwner[i]);
+            }
+            printf("(VIRTUAL n plays into playback slot 19+n and records on slot 17+n on the x8p; its mixer bus is "
+                   "0x18+n-1: 'mix vN', 'cue <c> send vN')\n");
         }
     }
     printf("(input 1 = record slot 0: watch it with 'apollo-diag levels')\n");
@@ -3351,19 +3450,20 @@ static int CmdParam(int n, char **a)
     DWORD ret = 0;
     char *end = NULL;
 
-    if (n < 2) {
+    /* a[0] is "param" itself (main passes the whole command line, as to every command): the name is a[1] */
+    if (n < 3) {
         fprintf(stderr, "usage: param <name> <value>|--remove   (names: 'params'; applies at the unit's next start)\n");
         return 1;
     }
     ZeroMemory(&q, sizeof(q));
     q.Version = APOLLO_PARAMS_VERSION;
-    strncpy_s(q.Name, sizeof(q.Name), a[0], _TRUNCATE);
-    if (_stricmp(a[1], "--remove") == 0) {
+    strncpy_s(q.Name, sizeof(q.Name), a[1], _TRUNCATE);
+    if (_stricmp(a[2], "--remove") == 0) {
         q.Flags = APOLLO_PARAM_SET_DELETE;
     } else {
-        q.Value = strtoul(a[1], &end, 0);
-        if (end == a[1] || *end != '\0') {
-            fprintf(stderr, "'%s' is not a number (decimal, or 0x... hex)\n", a[1]);
+        q.Value = strtoul(a[2], &end, 0);
+        if (end == a[2] || *end != '\0') {
+            fprintf(stderr, "'%s' is not a number (decimal, or 0x... hex)\n", a[2]);
             return 1;
         }
     }
@@ -3682,7 +3782,9 @@ static void Usage(void)
 "  cue <n> send|pan|mute ...     a cue mix: send <input|tb> <dB|off> [pan], pan <input|tb> <p>,\n"
 "                                mute 0|1 ('cue' alone: the forms)\n"
 "  mix <input|tb|all> ...        the monitor mix (what the speakers play): level <dB|off>, pan <p>,\n"
-"                                mute 0|1, solo 0|1; 'mix all mute 0|1' ('mix' alone: the forms)\n"
+"                                mute 0|1, solo 0|1; 'mix all mute 0|1' ('mix' alone: the forms);\n"
+"                                input vN (cue, mix, aux) = VIRTUAL N where StripVirtualMask builds its strip\n"
+"  aux <1-2> send|return|mute ...  an aux bus: send <input|tb|vN> <dB|off>, return <dB|off>, mute 0|1\n"
 "  levels [seconds=3]            peak dBFS per capture slot (transport must run)\n"
 "  engine [seconds] [--reset]    1 ms copy engine: tick timing, late ticks, ASIO client\n"
 "                                (with seconds: rates over that window)\n"
@@ -3715,7 +3817,7 @@ static void Usage(void)
 "  param <name> <value>|--remove (elevated) store one in Units\\<key> for the unit's next start\n"
 "  log [--all]                   the driver's own log (bring-up steps, errors); with --unit,\n"
 "                                that unit's lines (tag [x8p], [twx]) and driver-wide ones\n"
-"  strips                        input-strip state: ownership, pools, modules, replies\n"
+"  strips                        input-strip state: ownership, pools, modules, replies, Virtual strips\n"
 "  strips verify [dir]           find the five pinned strip modules (UAD install, or the\n"
 "                                DLLs in dir) and check the installed copies; no device\n"
 "  strips install [dir]          elevated: copy them to System32\\drivers\\ApolloStrips\n"
@@ -3847,6 +3949,8 @@ int main(int argc, char **argv)
         rc = CmdCue(n, args);
     else if (_stricmp(cmd, "mix") == 0)
         rc = CmdMix(n, args);
+    else if (_stricmp(cmd, "aux") == 0)
+        rc = CmdAux(n, args);       /* [Virtual] */
     else if (_stricmp(cmd, "levels") == 0)
         rc = CmdLevels(n, args);
     else if (_stricmp(cmd, "engine") == 0)

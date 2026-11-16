@@ -90,6 +90,8 @@ const Plug = (() => {
   ];
 
   const P = {
+    setup: null,                    /* [PlugSetup] the host's last "plugin-setup" */
+    setupSeen: false,               /* [PlugSetup] a stopped setup's box dismissed (maps are in use) */
     sts: {},                        /* unit slot -> the host's last "plugins" for it */
     lists: {},                      /* unit slot -> the host's last "plugin-list" for it (its licence answer) */
     notes: [],                      /* refusals shown in the browser and on the slot: { unit, input, slot, op, code, text } */
@@ -115,7 +117,7 @@ const Plug = (() => {
   }
 
   /* hello from the host (not the demo): the strips' slots want the inserts of every unit that hosts */
-  function hello() { send({ cmd: 'plug-state', units: true }); }
+  function hello() { send({ cmd: 'plug-state', units: true }); send({ cmd: 'plug-setup-state' }); }   /* [PlugSetup] the setup's state too */
 
   const unitOf = m => (typeof m.unit === 'number' && m.unit > 0 ? m.unit | 0 : 0);
 
@@ -869,11 +871,12 @@ const Plug = (() => {
     dspNodes.set(u.room, -1);
     u.notes = el('div', { class: 'plb-notes', 'aria-live': 'polite' });
     u.hint = el('div', { class: 'plb-hint' });
+    u.setup = el('div', { class: 'pl-setup plb-setup', id: 'plbSetup', hidden: true });     /* [PlugSetup] */
     u.list = el('div', { class: 'plb-list', role: 'list', 'aria-label': 'Plug-ins by type' });
     u.foot = el('div', { class: 'plb-foot fine' });
     u.drop = el('div', { class: 'plb-drop', 'aria-hidden': 'true' }, el('span', { text: 'DROP HERE TO UNLOAD' }));
     u.body = el('div', { class: 'plb-body', id: 'plbBody' },
-      el('div', { class: 'plb-tools' }, u.search, u.fits), u.room, u.notes, u.hint, u.list, u.foot);
+      el('div', { class: 'plb-tools' }, u.search, u.fits), u.room, u.notes, u.hint, u.setup, u.list, u.foot);
     root.replaceChildren(el('div', { class: 'plb-head' }, el('span', { class: 'plb-title', text: 'Plug-ins' }), u.unit, u.count, u.chip, u.toggle), u.body, u.drop);
     root.addEventListener('dragover', e => { if (P.drag && P.drag.kind === 'move') { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; root.classList.add('unload'); } });
     root.addEventListener('dragleave', e => { if (!root.contains(e.relatedTarget)) root.classList.remove('unload'); });
@@ -935,6 +938,7 @@ const Plug = (() => {
     renderDspNode(bu, u.room);
     renderNotes();
     renderBrowserHint();
+    renderSetupBox();                   /* [PlugSetup] */
     /* the list, grouped; licences and fit are the listed unit's */
     const all = (l && l.items) || [], q = P.search.trim().toLowerCase();
     const licOf = it => (listOf(bu) ? (itemFor(bu, it.name) || {}).licensed : it.licensed);
@@ -962,7 +966,7 @@ const Plug = (() => {
     let foot = '';
     if (!l) foot = blk && blk.code === 'unit' ? blk.text : 'Reading the plug-in maps...';
     else if (l.state === 'loading') foot = 'Reading the plug-in maps (the first time takes a while)...';
-    else if (l.state === 'failed') foot = l.why || 'No plug-in maps on this PC.';
+    else if (l.state === 'failed') foot = setupShown() ? '' : l.why || 'No plug-in maps on this PC.';   /* [PlugSetup] the box says it */
     else {
       foot = `${l.authorized} of ${l.mapped} mapped plug-ins are licensed on ${unitWord(bu)}.`;
       if (l.licence !== 'ok') foot = `${l.mapped} mapped plug-ins; ${unitWord(bu)}'s licence answer: ${l.licenceWhy || 'not read yet'}.`;
@@ -1337,6 +1341,7 @@ const Plug = (() => {
     send({ cmd: 'plug-state', units: true });
     send({ cmd: 'plug-watch', units: true });
     if (!P.lists[0] || P.lists[0].state !== 'ok') send({ cmd: 'plug-list', units: true });
+    if (!S.demo) send({ cmd: 'plug-setup-state' });          /* [PlugSetup] */
     renderAll();
   }
 
@@ -1379,6 +1384,7 @@ const Plug = (() => {
         el('button', { class: 'btn', disabled: busy || S.demo, onclick: () => send({ cmd: 'plug-modules' }) }, 'Install modules')),
       setRow('Plug-in maps folder', m.ok ? `In use: ${m.dir}` : (m.why || 'not found'), el('div', { class: 'pl-set-actions' }, dir,
         el('button', { class: 'btn', disabled: S.demo, onclick: () => send({ cmd: 'plug-dir', dir: dir.value.trim() }) }, 'Use'))),
+      setupRow(),                       /* [PlugSetup] */
       h.admin ? el('span', { class: 'desc', text: h.admin }) : null,
       P.notes.filter(n => ['hosting', 'modules'].includes(n.op)).map(n => el('div', { class: 'ctl-note', dataset: { kind: 'bad' } }, el('span', { text: n.text }))),
       el('span', { class: 'desc', text: 'The maps, modules, saved plug-in settings and plug-in previews come from your own UAD install. They stay on this PC.' }));
@@ -1387,6 +1393,182 @@ const Plug = (() => {
   function renderSettings() {
     const old = document.getElementById('plSettings');
     if (old) old.replaceWith(settingsPanel());
+  }
+
+  /* ---------------------------------------------------------------- [PlugSetup] Set up plug-ins (a release install) */
+
+  /*
+   * A release install has no developer layout: the host offers "Set up plug-ins" ("plugin-setup", plugin_engine.h
+   * SetupPoll), which runs the installed setup script (plugins/tools/setup-plugins.ps1) in the background: a private
+   * Python, open-apollo's mapper and the maps of the plug-ins the units license, all in the user's profile. Here: the box
+   * in the browser while plug-ins are not set up (or the setup runs or stopped), the row in Settings, and the dialog that
+   * says what it downloads, how big, how long, and that it reads the UAD install offline, before anything starts.
+   * Messages: plug-setup-state, plug-setup-start {all}, plug-setup-cancel; host: plugin-setup (docs/apollo-control-units.md).
+   */
+  const SETUP_DOWNLOADS = [
+    ['Python 3.13.17 for Windows (64-bit embeddable package)', 'www.python.org', '10.9 MB'],
+    ['pip 26.2.2, numpy 2.5.4, unicorn 2.1.4, capstone 5.0.9, pefile 2024.8.26', 'files.pythonhosted.org (PyPI)', '30.2 MB'],
+    ['open-apollo plug-in panel specs 2026.10.20', 'github.com', '1.0 MB'],
+  ];
+  const SETUP_PHASE = { check: 'Checking this PC', python: 'Python runtime', packages: 'Python packages', tools: 'Mapper code', specs: 'Panel specs',
+    store: 'Module store', licence: 'Plug-ins to map', map: 'Mapping plug-ins', modules: 'Driver module store' };
+
+  function onSetup(m) {
+    const was = P.setup;
+    P.setup = m;
+    const st = m.status || {};
+    if (was && was.running && !m.running && st.state === 'done') toast(st.summary ? `Plug-ins are set up: ${st.summary}.` : 'Plug-ins are set up.', 'info', 9000);
+    if (was && was.running && !m.running && (st.state === 'failed' || st.state === 'stopped')) toast(`Plug-in setup stopped: ${st.error || st.text || ''}`, 'warn', 9000);
+    renderBrowser();                    /* the box, and the foot that leaves its words to it */
+    if (S.view === 'settings') renderSettings();
+  }
+
+  /* what the setup is now, for the box and the row: idle | running | done | failed | cancelled | stopped */
+  function setupPhase(m = P.setup) {
+    if (!m) return 'unknown';
+    if (m.running) return 'running';
+    const s = (m.status || {}).state;
+    return ['done', 'failed', 'cancelled', 'stopped'].includes(s) ? s : 'idle';
+  }
+
+  /* the browser shows the box while plug-ins are not set up here, or a setup runs or stopped */
+  function setupShown() {
+    const m = P.setup;
+    if (!m || S.demo || !m.offered) return false;
+    const ph = setupPhase(m);
+    return ph === 'running' || !m.ready || ((ph === 'failed' || ph === 'stopped') && !P.setupSeen);
+  }
+
+  function setupProgress(m) {
+    const st = m.status || {}, pct = clamp(st.percent | 0, 0, 100);
+    const phase = SETUP_PHASE[st.phase] || 'Starting';
+    let text = st.text || '';
+    if (st.phase === 'map' && st.total > 0) {
+      text = `${st.done} of ${st.total} plug-ins mapped` + (st.eta > 0 ? `, about ${st.eta < 90 ? `${st.eta} s` : `${Math.round(st.eta / 60)} min`} left` : '');
+    }
+    return el('div', { class: 'pl-setup-run' },
+      el('div', { class: 'pl-setup-phase', text: `${phase} · ${pct} %` }),
+      el('div', { class: 'pl-setup-bar', role: 'progressbar', 'aria-label': 'Plug-in setup', 'aria-valuemin': '0', 'aria-valuemax': '100',
+        'aria-valuenow': String(pct), 'aria-valuetext': `${phase}, ${pct} percent` }, el('span', { style: `width:${pct}%` })),
+      el('div', { class: 'pl-setup-text fine', text }));
+  }
+
+  function renderSetupBox() {
+    if (!P.built || !P.ui.setup) return;
+    const u = P.ui, m = P.setup;
+    const show = setupShown();
+    u.setup.hidden = !show;
+    if (!show) { u.setup.replaceChildren(); u.setupKey = ''; return; }
+    const ph = setupPhase(m), st = m.status || {};
+    const key = JSON.stringify([ph, st.percent, st.text, st.phase, st.done, st.total, st.eta, st.error, m.uad, m.available, m.why]);
+    if (u.setupKey === key) return;
+    u.setupKey = key;
+    u.setup.dataset.state = ph;
+    const kids = [];
+    if (ph === 'running') {
+      kids.push(el('div', { class: 'pl-setup-title', text: 'Setting up UAD plug-ins' }), setupProgress(m),
+        el('div', { class: 'pl-setup-actions' }, el('button', { class: 'btn', onclick: () => send({ cmd: 'plug-setup-cancel' }) }, 'Cancel')),
+        el('p', { class: 'fine', text: 'Plug-ins appear here as they are mapped. You can keep working.' }));
+    } else {
+      const stopped = ph === 'failed' || ph === 'stopped' || ph === 'cancelled';
+      kids.push(el('div', { class: 'pl-setup-title', text: stopped ? 'Plug-in setup stopped' : 'UAD plug-ins are not set up on this PC' }));
+      if (stopped) kids.push(el('p', { class: 'fine pl-setup-error', text: st.error || st.text || 'It stopped before it finished.' }));
+      if (!m.available) kids.push(el('p', { class: 'fine', text: 'The plug-in setup is not installed with this Apollo Control.' }));
+      else if (!m.uad) kids.push(el('p', { class: 'fine', text: 'No UAD install found on this PC. The setup maps the plug-ins of UA\'s UAD software, read offline: install it first.' }));
+      else kids.push(el('p', { class: 'fine', text: stopped ? 'Set up plug-ins again continues where it stopped.' :
+        'Apollo Control maps the plug-ins in your own UAD install so they can run on your Apollo\'s DSPs. It downloads about 42 MB and takes a while.' }));
+      if (m.why) kids.push(el('p', { class: 'fine pl-setup-error', text: m.why }));
+      kids.push(el('div', { class: 'pl-setup-actions' },
+        el('button', { class: 'btn btn-primary', disabled: !m.available || !m.uad, onclick: () => setupDialog() }, stopped ? 'Set up plug-ins again' : 'Set up plug-ins'),
+        stopped && m.ready ? el('button', { class: 'btn btn-quiet', onclick: () => { P.setupSeen = true; renderSetupBox(); } }, 'Dismiss') : null));
+    }
+    u.setup.replaceChildren(...kids);
+  }
+
+  /* Settings: the setup's row (a developer layout or a folder set above is left as it is) */
+  function setupRow() {
+    const m = P.setup;
+    if (!m || S.demo) return null;
+    if (!m.offered) {
+      const why = m.configured ? `A maps folder is set above. The setup builds its own in ${m.dir}: clear the folder to use it.`
+        : m.dev ? `Developer maps in use (${m.inUse}): map with the commands in plugins\\README.md.` : `Maps in use from ${m.inUse}.`;
+      return setRow('UAD plug-in setup', why, el('span'));
+    }
+    const ph = setupPhase(m), st = m.status || {};
+    let desc;
+    if (ph === 'running') desc = null;
+    else if (ph === 'done') desc = `${st.summary || 'Set up'}. ${st.modules || ''} Map again after you buy or demo a plug-in, or after a UAD update. Folder: ${m.dir}`;
+    else if (ph === 'idle') desc = `Not set up. Maps the plug-ins in your own UAD install so they can run on your Apollo's DSPs (folder: ${m.dir}).`;
+    else desc = `Stopped: ${st.error || st.text || ''} Set up plug-ins again continues where it stopped.`;
+    const ctl = ph === 'running'
+      ? el('div', { class: 'pl-setup pl-set-setup' }, setupProgress(m), el('div', { class: 'pl-setup-actions' },
+        el('button', { class: 'btn', onclick: () => send({ cmd: 'plug-setup-cancel' }) }, 'Cancel')))
+      : el('div', { class: 'pl-set-actions' }, el('button', { class: ph === 'idle' ? 'btn btn-primary' : 'btn', disabled: !m.available || !m.uad,
+        title: !m.available ? 'The plug-in setup is not installed with this Apollo Control' : !m.uad ? 'No UAD install found on this PC' : '',
+        onclick: () => setupDialog() }, ph === 'done' ? 'Map plug-ins again' : ph === 'idle' ? 'Set up plug-ins' : 'Set up plug-ins again'));
+    return el('div', { id: 'plSetupRow' }, setRow('UAD plug-in setup', desc || 'Running in the background; plug-ins appear in the browser as they are mapped.', ctl),
+      m.why ? el('div', { class: 'ctl-note', dataset: { kind: 'bad' } }, el('span', { text: m.why })) : null);
+  }
+
+  /* the minutes the dialog says: a few to prepare, then about 2 minutes per plug-in per worker (cores less one at a time).
+     Measured Nov 16 2026: 9 to 28 s for a small plug-in on one idle worker, about 5 times that with 16 workers busy, a few
+     plug-ins several minutes and the two Chambers 15 to 18 minutes (plugins\work\map-all.log, setup.log). */
+  function setupMinutes(n, cpus) {
+    const workers = Math.max(1, (cpus | 0) - 1);
+    return Math.max(5, Math.round(3 + (n * 120) / workers / 60));
+  }
+
+  /* The explanation, then plug-setup-start. Resolves true when it started a setup. */
+  async function setupDialog() {
+    const m = P.setup || {};
+    const lic = Number.isInteger(m.licensed) ? m.licensed : -1;
+    const many = m.mappable > 0 ? m.mappable : 119;
+    const cpus = m.cpus | 0 || 4;
+    let all = lic < 0;
+    const tbl = el('table', { class: 'pl-setup-dl' }, el('tbody', {}, SETUP_DOWNLOADS.map(([what, from, size]) =>
+      el('tr', {}, el('td', { text: what }), el('td', { text: from }), el('td', { class: 'num', text: size })))));
+    const time = el('p', { class: 'pl-setup-time' });
+    const sayTime = () => {
+      const n = all ? many : Math.max(1, Math.min(lic, many));
+      time.textContent = `Preparing takes a few minutes. Mapping takes about 1 to 3 minutes per plug-in, ${Math.max(1, cpus - 1)} at a time on this PC: ` +
+        `about ${setupMinutes(n, cpus)} minutes for ${all ? `up to ${n}` : `about ${n}`} plug-ins` + (all ? ', and the Capitol and Hitsville Chambers reverbs take 15 to 20 minutes each.' : '.') +
+        ' It runs in the background at low priority; if it stops, set up plug-ins again and it continues where it stopped. Disk: about 230 MB, plus the maps ' +
+        '(most under 1 MB a plug-in; the two Chambers reverbs about 200 MB each).';
+    };
+    const pick = [];
+    if (lic >= 0) {
+      const radio = (value, text) => {
+        const r = el('input', { type: 'radio', name: 'plSetupWhich', value });
+        r.checked = (value === 'all') === all;
+        r.addEventListener('change', () => { all = value === 'all'; sayTime(); });
+        return el('label', { class: 'check pl-setup-pick' }, r, text);
+      };
+      pick.push(radio('licensed', `The plug-ins your ${m.licUnits > 1 ? 'units license' : 'unit licenses'} (${lic} licence entries)`),
+        radio('all', `Every plug-in in your UAD install that open-apollo can map (up to ${many})`));
+    } else {
+      pick.push(el('p', { text: `Every plug-in in your UAD install that open-apollo can map (up to ${many}). Apollo Control has no licence answer from a unit yet ` +
+        `(plug-in hosting is off, or no unit is connected), so it cannot map only the licensed ones. To do that, turn plug-in hosting on first (Settings, Plug-in hosting), then set up plug-ins.` }));
+    }
+    sayTime();
+    const body = el('div', { class: 'pl-setup-dlg' },
+      el('p', { text: `Apollo Control maps the UAD plug-ins in your own UAD install so they can run on your Apollo's DSPs. Everything it makes stays on this PC, in ${m.dir || 'your profile'}.` }),
+      el('h4', { text: 'Downloads, about 42 MB' }), tbl,
+      el('p', { class: 'fine', text: 'Each file is checked against a SHA-256 fixed in the setup before it is used. Nothing else is downloaded.' }),
+      el('h4', { text: 'Your UAD install' }),
+      el('p', { text: 'Read offline: the plug-in files are read as bytes, and plug-in code runs only inside an emulator. The setup never contacts Universal Audio and starts no Universal Audio program.' }),
+      el('h4', { text: 'Which plug-ins' }), ...pick,
+      el('h4', { text: 'Time and space' }), time,
+      el('h4', { text: 'Administrator prompt' }),
+      el('p', { text: m.hosting ? 'At the end, one administrator prompt copies the plug-ins\' DSP modules into the driver\'s module store.'
+        : 'None now. Turning plug-in hosting on later copies the plug-ins\' DSP modules into the driver\'s module store (one administrator prompt).' }));
+    const dlg = document.getElementById('dlg');
+    dlg.classList.add('pl-setup-wide');
+    const ok = await dialog({ title: 'Set up UAD plug-ins', body, confirm: 'Start setup' });
+    dlg.classList.remove('pl-setup-wide');
+    if (!ok) return false;
+    P.setupSeen = false;
+    send({ cmd: 'plug-setup-start', all });
+    return true;
   }
 
   /* ---------------------------------------------------------------- demo: invented plug-ins, nothing reaches hardware */
@@ -1637,6 +1819,7 @@ const Plug = (() => {
   return {
     insertByName, removeAt, setRecMon, itemNames: idx => itemsOf(idx).map(i => i.label || i.name), insertLabel,
     onState, onList, onResult, onShow, onHide, escape, renderAll, renderSlots, renderDsp, slotNodesFor, recmonNode, dspNode, focusSearch, openDrawer,
+    onSetup, setupDialog,               /* [PlugSetup] */
     hello, settingsPanel, renderSettings, demoEnter, demoExit, demoFill, demoSessionDoc, demoSessionSet, categorize, GROUPS, NAME_RULES, AUX_T,
     chainFor, slotIns, slotCount, multi,
     get state() { return P; },

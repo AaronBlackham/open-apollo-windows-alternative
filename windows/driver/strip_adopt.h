@@ -74,20 +74,29 @@ static __inline ULONG StripRecordSum(const STRIP_RECORD *R)
                          (ULONG)((sizeof(*R) - sizeof(R->Check)) / sizeof(ULONG)));
 }
 
+/* [Virtual] The version a record is sealed as: 2 when its plan mask names Virtual strips, else 1 (strip_record.h). */
+static __inline ULONG StripRecordVersionOf(const STRIP_RECORD *R)
+{
+    return ((R->Mask >> 8) & 0xFFu) != 0 ? STRIP_REC_VERSION_VIRTUAL : STRIP_REC_VERSION;
+}
+
 static __inline void StripRecordSeal(STRIP_RECORD *R)
 {
     R->Magic = STRIP_REC_MAGIC;
-    R->Version = STRIP_REC_VERSION;
+    R->Version = StripRecordVersionOf(R);
     R->Size = (ULONG)sizeof(*R);
     R->Check = StripRecordSum(R);
 }
 
-/* Bytes = what the registry value held. 1 = a record this build wrote and nobody changed. */
+/*
+ * Bytes = what the registry value held. 1 = a record this build wrote and nobody changed. [Virtual] Version 1 (no
+ * Virtual strips, every earlier build's) or 2 (Virtual strips in the plan mask), and the one its mask asks for.
+ */
 static __inline int StripRecordValid(const STRIP_RECORD *R, ULONG Bytes)
 {
-    return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == STRIP_REC_VERSION &&
-           R->Size == sizeof(*R) && R->Check == StripRecordSum(R) && R->NumDsps <= STRIP_REC_DSPS &&
-           R->State <= STRIP_REC_UNKNOWN;
+    return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == StripRecordVersionOf(R) &&
+           (R->Mask >> 16) == 0 && R->Size == sizeof(*R) && R->Check == StripRecordSum(R) &&
+           R->NumDsps <= STRIP_REC_DSPS && R->State <= STRIP_REC_UNKNOWN;
 }
 
 /* ---- The plan's identity (strip_plan.h must be included first) ---- */
@@ -120,6 +129,53 @@ static __inline ULONG StripPlanHash(ULONG Mask, ULONG Limit, ULONG Rate, ULONG D
         h = StripFnv(h, in);
         h = StripFnv(h, Plan->N);
         for (j = 0; j < Plan->N && j < STRIP_PLAN_ENTS_MAX; j++) {
+            h = StripFnv(h, Plan->Ent[j].Dma);
+            h = StripFnvWords(h, Plan->Ent[j].W, 4);
+            h = StripFnv(h, Plan->Ent[j].Off);
+            h = StripFnv(h, Plan->Ent[j].Dwords);
+        }
+        h = StripFnvWords(h, Plan->Payload, Plan->Len <= STRIP_PLAN_PAYLOAD_MAX ? Plan->Len : 0);
+    }
+    if (StripPlanSteps(Limit) >= STRIP_STEP_OTHERS) {
+        h = StripFnv(h, StripRouteDsps(NumDsps, Dsp));
+        h = StripFnv(h, STRIP_CMD_INPUT);
+        h = StripFnv(h, STRIP_INPUT_ROUTE);
+        h = StripFnv(h, STRIP_ROUTE_NONE);
+    }
+    return h ? h : 1u;
+}
+
+/*
+ * [Virtual] The same identity for a plan mask Pm (StripMask | StripVirtualMask << 8, strip_plan.h StripPlanPm) with the
+ * model's MicSlots (where the Virtual strips sit): every Mic and Virtual PREPARE, then the START, word for word. For a
+ * Pm of 0..0xFF it is StripPlanHash's value, so a record any earlier build wrote matches a start without Virtual
+ * strips exactly as before (strip-plan-test). 0 on a planner error.
+ */
+static __inline ULONG StripPlanHashPm(ULONG Pm, ULONG MicSlots, ULONG Limit, ULONG Rate, ULONG Dsp, ULONG NumDsps,
+                                      STRIP_PLAN *Plan)
+{
+    ULONG h = STRIP_FNV_INIT, k, kind, in, j;
+
+    h = StripFnv(h, Pm);
+    h = StripFnv(h, Limit);
+    h = StripFnv(h, Rate);
+    h = StripFnv(h, Dsp);
+    for (k = 0; k <= STRIP_PLAN_SLOTS; k++) {
+        ULONG rc;
+
+        kind = StripPassStepPm(Pm, Limit, k, &in);
+        if (kind == STRIP_XACT_END) {
+            break;
+        }
+        rc = (kind == STRIP_XACT_PREPARE) ? StripPlanPrepareSlot(in, MicSlots, Limit, Rate, Plan) :
+                                            StripPlanStartPm(Pm, MicSlots, Limit, Plan);
+        if (rc != 0 || Plan->Err != 0) {
+            return 0;
+        }
+        h = StripFnv(h, kind);
+        h = StripFnv(h, in);
+        h = StripFnv(h, Plan->N);
+        for (j = 0; j < Plan->N && j < STRIP_PLAN_ENT_SLOTS; j++) {
             h = StripFnv(h, Plan->Ent[j].Dma);
             h = StripFnvWords(h, Plan->Ent[j].W, 4);
             h = StripFnv(h, Plan->Ent[j].Off);

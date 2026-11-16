@@ -26,6 +26,10 @@
  * the Unison slot (CREATE F_UNISON, the analog lease: BEGIN, ACTIVATE, CUSTOM, gain and impedance triples; no Unison map
  * exists yet, so it waits with code "unison"); inserts on the aux returns (experimental, Parameters\AuxInserts).
  *
+ * [PlugSetup] On a release install (no developer layout) "Set up plug-ins" runs the installed setup script, which builds
+ * %LOCALAPPDATA%\Avium\ApolloPlugins (a private Python, specs, module store, maps); the only thing of a licence answer
+ * that leaves this process is the set of render ids it admits, handed to that script when the user starts it.
+ *
  * Plug-in hosting on/off and the module store need an administrator: Apollo Control runs itself
  * elevated once (--plugin-admin <request file>, UAC), which writes Parameters\PluginHost and
  * PluginHostImage (this exe's own NT path: the driver then takes the plug-in calls from this
@@ -106,6 +110,7 @@ struct Cmd {
     bool hasSlot = false, mon = false;
     std::vector<ULONG> words;
     std::string text, unitId;               /* [Sess] session-set: the message (its "chains") and the unit id it names */
+    bool all = false;                       /* [PlugSetup] setup-start: map every plug-in, not only the licensed ones */
 };
 
 struct CatEntry {
@@ -268,7 +273,20 @@ static std::wstring FindPlugins(std::string &why)
         if (s == std::wstring::npos) break;
         up = up.substr(0, s);
     }
-    why = "no plug-in maps on this PC (apollo-win\\plugins: the mapper writes them; set the folder in Settings)";
+    /* [PlugSetup] the words a release install shows next to its Set up plug-ins button */
+    why = "UAD plug-ins are not set up on this PC yet: Set up plug-ins maps them from your own UAD install";
+    return {};
+}
+
+/* [PlugSetup] Where Set up plug-ins builds the maps (FindPlugins' second place, the mapper's Windows default). */
+static std::wstring UserPluginsDir() { return KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloPlugins"; }
+
+/* [PlugSetup] The maps' Python: the developer layout's venv (as before), else the setup's private runtime; '' = none. */
+static std::wstring PluginsPython(const std::wstring &dir)
+{
+    if (dir.empty()) return {};
+    if (Exists(dir + L"\\.venv\\Scripts\\python.exe")) return dir + L"\\.venv\\Scripts\\python.exe";
+    if (Exists(dir + L"\\python\\python.exe")) return dir + L"\\python\\python.exe";
     return {};
 }
 
@@ -1138,7 +1156,7 @@ static bool HelperStart(std::string &why)
     if (g_helperProc && WaitForSingleObject(g_helperProc, 0) == WAIT_TIMEOUT) return true;
     HelperStop();
     if (g_plugins.empty() && !LoadIndex()) { why = g_mapsWhy; return false; }
-    std::wstring py = g_plugins + L"\\.venv\\Scripts\\python.exe", script;
+    std::wstring py = PluginsPython(g_plugins), script;     /* [PlugSetup] the venv, or the setup's runtime */
     std::wstring up = ExeDir();
     if (Exists(up + L"\\plughelper.py")) script = up + L"\\plughelper.py";
     for (int i = 0; i < 5 && script.empty() && !up.empty(); i++) {
@@ -1147,7 +1165,7 @@ static bool HelperStart(std::string &why)
         if (s == std::wstring::npos) break;
         up = up.substr(0, s);
     }
-    if (!Exists(py)) { why = "the plug-in maps' Python (plugins\\.venv) is missing: parameters need it"; return false; }
+    if (py.empty()) { why = "the plug-in maps' Python is missing (plugins\\.venv, or Set up plug-ins in Settings): parameters need it"; return false; }
     if (script.empty()) { why = "plughelper.py is not next to Apollo Control"; return false; }
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE inR = nullptr, inW = nullptr, outR = nullptr, outW = nullptr;
@@ -2160,7 +2178,7 @@ static void PostState(bool force)
     j += b;
     j += ",\"maps\":{\"ok\":" + std::string(g_plugins.empty() ? "false" : "true") + ",\"dir\":" + Q(U8(g_plugins)) +
          ",\"configured\":" + Q(g_mapsDir) + ",\"why\":" + Q(g_mapsWhy) + ",\"python\":" +
-         (Exists(g_plugins + L"\\.venv\\Scripts\\python.exe") && !g_plugins.empty() ? "true" : "false") +
+         (!PluginsPython(g_plugins).empty() ? "true" : "false") +       /* [PlugSetup] venv or private runtime */
          ",\"catalog\":" + Q(g_catBuilding ? "building" : (g_cat.empty() ? "idle" : "ready")) +
          ",\"progress\":[" + std::to_string(g_catNext) + "," + std::to_string(g_index.size()) + "]}";
     j += ",\"inserts\":[";
@@ -2357,6 +2375,240 @@ static void PostLists(bool force)
         if (u.slot == 0 || u.model != nullptr) PostList(force);
     }
     g_u = &g_unitState[0];
+}
+
+/* ------------------------------------------------------------------ [PlugSetup] Set up plug-ins (a release install) */
+
+/*
+ * A release install has no developer layout (apollo-win\plugins with its .venv): "Set up plug-ins" runs the setup script
+ * installed next to this exe (plugin-setup\tools\setup-plugins.ps1; plugins\tools\ above it in a source tree) hidden, at
+ * below-normal priority, with -Yes: it builds UserPluginsDir() (a private Python 3.13, the panel specs, the module store
+ * from the user's own UAD install, the maps of the plug-ins the units license) and, with hosting on, copies the modules
+ * through this exe's own --plugin-admin. Its progress, <dir>\setup\status.json, is read here and posted as
+ * "plugin-setup"; the maps are read again as they land, so the browser fills while it maps. The script keeps running
+ * if this app quits (a later start shows it again from the status file); Cancel leaves <dir>\setup\cancel, which the
+ * script takes within a second. Offered only when no other maps folder is in use (a developer layout, or a folder set
+ * in Settings, stays as it is). Nothing here downloads anything.
+ */
+static HANDLE       g_setupProc;                /* the script this app started (null: none, or it ended) */
+static std::string  g_setupLast;                /* the last "plugin-setup" posted */
+static std::string  g_setupState;               /* the status file's last state */
+static std::string  g_setupWhy;                 /* a start that failed here */
+static ULONG        g_setupMapped;              /* the map phase's "done" when the maps were last read */
+static LONG         g_setupMappable = -2;       /* -2 not counted yet, -1 unknown, else open-apollo's list in the UAD install */
+
+static std::wstring SetupScript()
+{
+    std::wstring up = ExeDir();
+    if (Exists(up + L"\\plugin-setup\\tools\\setup-plugins.ps1")) return up + L"\\plugin-setup\\tools\\setup-plugins.ps1";
+    for (int i = 0; i < 6 && !up.empty(); i++) {
+        if (Exists(up + L"\\plugins\\tools\\setup-plugins.ps1")) return up + L"\\plugins\\tools\\setup-plugins.ps1";
+        size_t s = up.find_last_of(L'\\');
+        if (s == std::wstring::npos) break;
+        up = up.substr(0, s);
+    }
+    return {};
+}
+
+static bool SameDir(std::wstring a, std::wstring b)
+{
+    while (!a.empty() && a.back() == L'\\') a.pop_back();
+    while (!b.empty() && b.back() == L'\\') b.pop_back();
+    return _wcsicmp(a.c_str(), b.c_str()) == 0;
+}
+
+/* The setup builds UserPluginsDir(): offered while no other maps folder is in use or set. */
+static bool SetupOffered() { return g_mapsDir.empty() && (g_plugins.empty() || SameDir(g_plugins, UserPluginsDir())); }
+
+/* UA's install, by its files only (the script reads it; nothing of it is opened here): the plug-in folder and UAD2SDK.dll. */
+static std::wstring UadPluginDir()
+{
+    wchar_t sys[MAX_PATH];
+    UINT n = GetSystemDirectoryW(sys, MAX_PATH);
+    if (n < 3 || n >= MAX_PATH) return {};
+    return std::wstring(sys, 3) + L"Program Files\\Universal Audio\\Powered Plugins\\UAD-2 Powered Plugins";
+}
+static bool UadPresent()
+{
+    wchar_t sys[MAX_PATH];
+    UINT n = GetSystemDirectoryW(sys, MAX_PATH);
+    return n && n < MAX_PATH && IsFile(std::wstring(sys, n) + L"\\UAD2SDK.dll") && Exists(UadPluginDir());
+}
+
+/* How many plug-ins of open-apollo's known-good list the UAD install has (what "map every plug-in" maps at most). */
+static LONG SetupMappable()
+{
+    if (g_setupMappable != -2) return g_setupMappable;
+    g_setupMappable = -1;
+    std::wstring script = SetupScript(), dlls = UadPluginDir();
+    if (script.empty() || dlls.empty()) return g_setupMappable;
+    std::string t;
+    aggjson::Value kg;
+    std::wstring list = script.substr(0, script.find_last_of(L'\\')) + L"\\open-apollo\\mixer-engine\\device_maps\\native_known_good.json";
+    if (!ReadAll(list, t, 4ull << 20) || !aggjson::Parser(t).Parse(kg)) return g_setupMappable;
+    LONG n = 0;
+    if (const aggjson::Value *a = kg.Get("plugins")) {
+        for (const aggjson::Value &e : a->a) {
+            std::string name = e.Str("name");
+            if (!name.empty() && name.find_first_of("\\/:") == std::string::npos && IsFile(dlls + L"\\" + W(name) + L".dll")) n++;
+        }
+    }
+    return g_setupMappable = n;
+}
+
+/* The render ids the present units' own licence answers admit, as hex for the script; units: how many answered. */
+static std::string SetupIds(ULONG &units, ULONG &count)
+{
+    std::set<ULONG> ids;
+    units = 0;
+    for (const UnitState &u : g_unitState) {
+        if (!u.present || u.licState != "ok" || u.lic.size() != APOLLO_BOARD_QUERY_WORDS) continue;
+        units++;
+        for (ULONG k = 0; k < APOLLO_BOARD_QUERY_WORDS; k++) {
+            if (PlugLicenseAdmits(PlugLicenseState(u.lic[k]))) ids.insert(APOLLO_BOARD_QUERY_BASE + k);
+        }
+    }
+    count = (ULONG)ids.size();
+    std::string s;
+    char b[16];
+    for (ULONG id : ids) {
+        snprintf(b, sizeof(b), "%s%lx", s.empty() ? "" : ",", id);
+        s += b;
+    }
+    return s;
+}
+
+static bool SetupRunning() { return g_setupProc && WaitForSingleObject(g_setupProc, 0) == WAIT_TIMEOUT; }
+
+static bool SetupStart(bool all, std::string &why)
+{
+    if (SetupRunning() || g_setupState == "running") { why = "the plug-in setup is already running"; return false; }
+    if (!SetupOffered()) { why = "another plug-in maps folder is in use (" + U8(g_plugins.empty() ? W(g_mapsDir) : g_plugins) + ")"; return false; }
+    std::wstring script = SetupScript();
+    if (script.empty()) { why = "the setup script is not installed next to Apollo Control (plugin-setup\\tools\\setup-plugins.ps1)"; return false; }
+    std::wstring root = UserPluginsDir(), dir = root + L"\\setup";
+    SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
+    DeleteFileW((dir + L"\\cancel").c_str());
+    ULONG units = 0, count = 0;
+    std::string ids = all ? std::string() : SetupIds(units, count);
+    wchar_t sys[MAX_PATH], exe[MAX_PATH * 4];
+    UINT sn = GetSystemDirectoryW(sys, MAX_PATH);
+    DWORD en = GetModuleFileNameW(nullptr, exe, _countof(exe));
+    if (!sn || sn >= MAX_PATH || !en || en >= _countof(exe)) { why = "the system folder or this program's path could not be read"; return false; }
+    std::wstring ps = std::wstring(sys, sn) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+    std::wstring cmd = L"\"" + ps + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + script + L"\" -Yes -Root \"" + root +
+                       L"\" -AppExe \"" + std::wstring(exe, en) + L"\"" + (ids.empty() ? std::wstring(L" -Authorized all") : L" -AuthorizedIds " + W(ids));
+    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
+    HANDLE log = CreateFileW((dir + L"\\console.log").c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
+    STARTUPINFOW si{ sizeof(si) };
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = nul;
+    si.hStdOutput = si.hStdError = log;
+    PROCESS_INFORMATION pi{};
+    BOOL ok = log != INVALID_HANDLE_VALUE && nul != INVALID_HANDLE_VALUE &&
+              CreateProcessW(ps.c_str(), cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
+                             root.c_str(), &si, &pi);
+    DWORD e = GetLastError();
+    if (log != INVALID_HANDLE_VALUE) CloseHandle(log);
+    if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
+    if (!ok) { why = "the setup did not start: " + U8(ErrorText(e)); return false; }
+    CloseHandle(pi.hThread);
+    if (g_setupProc) CloseHandle(g_setupProc);
+    g_setupProc = pi.hProcess;
+    g_setupMapped = 0;
+    g_setupState = "running";
+    return true;
+}
+
+static void SetupCancel()
+{
+    std::wstring f = UserPluginsDir() + L"\\setup\\cancel";
+    HANDLE h = CreateFileW(f.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+}
+
+/* A file the script replaces while this reads it: every sharing mode, so its replace never waits on us. */
+static bool ReadSetupFile(const std::wstring &path, std::string &out)
+{
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    out.clear();
+    if (f == INVALID_HANDLE_VALUE) return false;
+    char b[4096];
+    DWORD got = 0;
+    while (out.size() < (1u << 20) && ReadFile(f, b, sizeof(b), &got, nullptr) && got) out.append(b, got);
+    CloseHandle(f);
+    return !out.empty();
+}
+
+static ULONGLONG UnixNow()
+{
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    return ((((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) - 116444736000000000ull) / 10000000ull;
+}
+
+/* The setup's state for the page ("plugin-setup"), posted when it changes; the maps read again as they land. */
+static void SetupPoll(bool force)
+{
+    bool ended = false;
+    if (g_setupProc && WaitForSingleObject(g_setupProc, 0) != WAIT_TIMEOUT) {
+        CloseHandle(g_setupProc);
+        g_setupProc = nullptr;
+        ended = true;
+    }
+    std::string t;
+    aggjson::Value st;
+    bool have = ReadSetupFile(UserPluginsDir() + L"\\setup\\status.json", t) && aggjson::Parser(t).Parse(st) &&
+                st.kind == aggjson::Value::Object && st.Str("schema") == "apollo-plugin-setup/1";
+    std::string state = have ? st.Str("state") : std::string();
+    /* "running" with nobody running it (it ended without its last word, or this app restarted and the beat stopped) */
+    if (state == "running" && !SetupRunning() && (ended || (double)UnixNow() - st.Num("beat") > 90)) state = "stopped";
+    if (ended && !have && g_setupWhy.empty()) g_setupWhy = "the setup stopped before it wrote anything (see " + U8(UserPluginsDir()) + "\\setup\\console.log)";
+    bool running = SetupRunning() || state == "running";
+    ULONG units = 0, count = 0;
+    (void)SetupIds(units, count);
+    bool hosting = false;
+    for (const UnitState &u : g_unitState) hosting |= u.present && u.capsOk && (u.caps.Enabled & APOLLO_PLUGIN_ENABLED_HOST);
+    std::string j = std::string("{\"type\":\"plugin-setup\",\"offered\":") + (SetupOffered() ? "true" : "false") +
+                    ",\"available\":" + (SetupScript().empty() ? "false" : "true") + ",\"uad\":" + (UadPresent() ? "true" : "false") +
+                    ",\"dir\":" + Q(U8(UserPluginsDir())) + ",\"inUse\":" + Q(U8(g_plugins)) + ",\"configured\":" + Q(g_mapsDir) +
+                    ",\"dev\":" + (!g_plugins.empty() && Exists(g_plugins + L"\\.venv\\Scripts\\python.exe") ? "true" : "false") +
+                    ",\"ready\":" + (!g_plugins.empty() && !PluginsPython(g_plugins).empty() ? "true" : "false") +
+                    ",\"running\":" + (running ? "true" : "false") + ",\"licensed\":" + (units ? std::to_string(count) : std::string("-1")) +
+                    ",\"licUnits\":" + std::to_string(units) + ",\"mappable\":" + std::to_string(SetupMappable()) +
+                    ",\"cpus\":" + std::to_string(std::max(1u, std::thread::hardware_concurrency())) + ",\"hosting\":" + (hosting ? "true" : "false") +
+                    ",\"why\":" + Q(g_setupWhy) + ",\"status\":";
+    if (!have) j += "null";
+    else {
+        char b[160];
+        snprintf(b, sizeof(b), ",\"percent\":%d,\"done\":%d,\"total\":%d,\"eta\":%d", (int)st.Num("percent"), (int)st.Num("done"),
+                 (int)st.Num("total"), (int)st.Num("eta", -1));
+        j += "{\"state\":" + Q(state) + ",\"phase\":" + Q(st.Str("phase")) + ",\"text\":" + Q(st.Str("text")) + b + ",\"code\":" +
+             Q(st.Str("code")) + ",\"error\":" + Q(st.Str("error")) + ",\"summary\":" + Q(st.Str("summary")) + ",\"modules\":" +
+             Q(st.Str("modules")) + ",\"mode\":" + Q(st.Str("mode")) + ",\"log\":" + Q(st.Str("log")) + ",\"phases\":[";
+        if (const aggjson::Value *ph = st.Get("phases")) {
+            for (size_t k = 0; k < ph->a.size(); k++) {
+                const aggjson::Value &p = ph->a[k];
+                j += (k ? ",{" : "{") + std::string("\"id\":") + Q(p.Str("id")) + ",\"label\":" + Q(p.Str("label")) + ",\"state\":" +
+                     Q(p.Str("state")) + ",\"detail\":" + Q(p.Str("detail")) + "}";
+            }
+        }
+        j += "]}";
+    }
+    j += "}";
+    if (force || j != g_setupLast) {
+        g_setupLast = j;
+        PostJson(W(j));
+    }
+    /* the maps as they land (each plug-in mapped), and once more at the end */
+    ULONG done = have && st.Str("phase") == "map" ? (ULONG)st.Num("done") : 0;
+    if ((done > g_setupMapped) || (state != g_setupState && !g_setupState.empty() && state != "running")) {
+        g_setupMapped = std::max(done, g_setupMapped);
+        if (LoadIndex() && g_listWanted) CatalogStart();    /* the catalogue parses new or changed bundles only */
+    }
+    g_setupState = state;
 }
 
 /* [Ins] A parameter of one slot: planned in its own rows by the plug-in's setter, moved to the slot's rows in the chain. */
@@ -2733,12 +2985,17 @@ static void Run(const Cmd &c)
         }
         PostResult(c.op.c_str(), ch, c.input, -1, ok, ok ? "" : code, ok ? "" : why);
     } else if (c.op == "hosting") {
+        bool mods = c.on;
         if (!c.on) {
             for (Chain &ch : g_chains) {
                 if (ch.handle) { DestroyOn(ch); ch.state = "waiting"; SetSlotStates(ch); }     /* every unit's */
             }
+        } else if (!LoadIndex()) {
+            /* [PlugSetup] no maps yet (a release install before Set up plug-ins): hosting on without modules, so the
+               units' own licence answers can choose what the setup maps; the setup (or Install modules) copies them */
+            if (!SetupOffered()) { PostResult("hosting", nullptr, 0, -1, false, "maps", g_mapsWhy); return; }
+            mods = false;
         } else {
-            if (!LoadIndex()) { PostResult("hosting", nullptr, 0, -1, false, "maps", g_mapsWhy); return; }
             if (g_cat.empty()) CacheLoad();
             g_catNext = 0;
             g_catBuilding = true;
@@ -2746,9 +3003,10 @@ static void Run(const Cmd &c)
             PostState();
             while (g_catBuilding && !g_quit) CatalogStep();
         }
-        g_admin = c.on ? "Waiting for the administrator prompt: hosting on and the module store" : "Waiting for the administrator prompt: hosting off";
+        g_admin = !c.on ? "Waiting for the administrator prompt: hosting off" :
+                  mods ? "Waiting for the administrator prompt: hosting on and the module store" : "Waiting for the administrator prompt: hosting on";
         PostState();
-        bool ok = Admin(c.on ? "on" : "off", c.on, why);
+        bool ok = Admin(c.on ? "on" : "off", mods, why);
         g_admin.clear();
         for (Chain &ch : g_chains) ch.triedEpoch = 0;
         PostResult("hosting", nullptr, 0, -1, ok, ok ? "" : "admin", why);
@@ -2803,6 +3061,24 @@ static void Run(const Cmd &c)
         LoadIndex();
         Save();
         if (g_listWanted) CatalogStart();
+        g_setupLast.clear();                /* [PlugSetup] offered or not follows the folder */
+    } else if (c.op == "setup-state") {
+        /* [PlugSetup] the setup's state; a unit that hosts for this program answers its licence query first (the dialog
+           says how many plug-ins that is) */
+        for (UnitState &u : g_unitState) {
+            g_u = &u;
+            if (g_present && CallerOk() && g_licState != "ok") Licence(false);
+        }
+        g_u = &UnitAt(c.unit);
+        if (g_index.empty()) LoadIndex();
+        SetupPoll(true);
+    } else if (c.op == "setup-start") {
+        std::string w;
+        g_setupWhy = SetupStart(c.all, w) ? std::string() : w;
+        SetupPoll(true);
+    } else if (c.op == "setup-cancel") {
+        SetupCancel();
+        SetupPoll(true);
     }
 }
 
@@ -2813,7 +3089,8 @@ static void ThreadMain()
     Load();
     LoadIndex();
     while (!g_quit) {
-        WaitForSingleObject(g_wake, g_catBuilding ? 0 : g_watch ? 1000 : !g_chains.empty() ? 2000 : 5000);
+        /* [PlugSetup] each second while a plug-in setup runs too */
+        WaitForSingleObject(g_wake, g_catBuilding ? 0 : (g_watch || SetupRunning() || g_setupState == "running") ? 1000 : !g_chains.empty() ? 2000 : 5000);
         if (g_quit) break;
         std::deque<Cmd> cmds;
         {
@@ -2837,6 +3114,7 @@ static void ThreadMain()
         }
         Restore();
         CatalogStep();
+        SetupPoll(false);                   /* [PlugSetup] */
         if (g_helperProc && GetTickCount64() - g_helperUsed > HELPER_IDLE_MS) HelperStop();
         for (UnitState &u : g_unitState) {
             /* [P7] each present unit's own licence answer, for its own picker */
@@ -2881,6 +3159,8 @@ static void FromUi(const std::string &json)
     c.stereo = b && b->kind == aggjson::Value::Bool && b->b;
     b = v.Get("units");
     if (b && b->kind == aggjson::Value::Bool && b->b) g_multi = true;
+    b = v.Get("all");                       /* [PlugSetup] setup-start */
+    c.all = b && b->kind == aggjson::Value::Bool && b->b;
     c.name = v.Str("name");
     c.dir = v.Str("dir");
     /* [Ins] slot, aux, REC/MON, move, Unison */

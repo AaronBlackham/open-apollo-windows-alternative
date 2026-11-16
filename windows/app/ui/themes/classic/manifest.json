@@ -3,7 +3,7 @@
   "name": "Classic",
   "order": 0,
   "mode": "dark",
-  "metaphor": "No metaphor: a conventional digital mixer app, laid out the way console software usually is.",
+  "metaphor": "No metaphor: the standard console-app layout, with a View column, channel strips, aux returns, a monitor section and a control room column.",
   "desc": "A standard mixer layout: channel strips, flat knobs and faders, lit buttons, plain meters.",
   "layout": {
     "browser": "list",

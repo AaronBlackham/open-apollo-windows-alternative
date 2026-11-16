@@ -119,6 +119,11 @@
           <div class="dev-rate" id="devRate"></div>
         </div>
         <div class="panel">
+          <div class="panel-head"><h2>Clock and digital I/O</h2></div>
+          <!-- [Clock] the focused unit's clock source, digital formats and front panel (clockui.js) -->
+          <div class="dev-clock" id="devClock" tabindex="-1"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2>Driver parameters</h2>
             <div class="panel-tools"><button class="btn" id="paramsRefresh">Refresh</button></div></div>
           <!-- [Params] the selected unit's per-unit Parameters (app.js renderParams; read-only, apollo-diag param sets them) -->
@@ -167,6 +172,7 @@
 <script src="undo.js"></script>
 <script src="chcopy.js"></script>
 <script src="endpoints.js"></script>
+<script src="clockui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

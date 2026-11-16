@@ -44,6 +44,8 @@
  *                      pan: left = lin*sqrt2*cos((p+1)pi/4), right = ...sin (_write_send, hardware.py:2954-2975).
  *                      Buses: ANALOG n = n-1, TALKBACK 0x0A (oa:devices/apollo-x8p.json / apollo-twin-x.json
  *                      mixer_inputs synch_in, talkback_synch_in 10). Send range -inf..+12 dB (device map).
+ *                      [Virtual] VIRTUAL n = 0x18 + n - 1 (synch_in 24-31), only where the unit builds that input's
+ *                      Input Strip (StripVirtualMask; ApolloMonEncodeEx's Extra).
  *   [Mix] monitor mix  the same command with param 0: UA_BUS_SUB_MAIN "control-room mix coefficient (fader x pan)"
  *                      (oa:driver/ua_apollo.h:825, ua_dsp.c:3644 "param: 0 CR"; hardware.py SUB_PARAM_MIX = 0, "0=main
  *                      mix"). Weights (DTrace-verified encode_mix_coeff / _r, hardware.py:1041-1068): left =
@@ -201,6 +203,7 @@
 #define APOLLO_MON_BUSES            32ul
 #define APOLLO_MON_TALKBACK_BUS     0x0Aul
 #define APOLLO_DSP_CMD_BUS_PARAM    0x001D0004ul    /* {cmd, bus, (side << 24) | param, float} */
+#define APOLLO_DSP_CMD_BUS_ENABLE   0x001C0003ul    /* [BusEnable] {cmd, bus group 0-6, 1 on / 0 off, 0} to every DSP */
 #define APOLLO_MIX_SUB              0ul             /* [Mix] UA_BUS_SUB_MAIN: the monitor (control-room) mix */
 
 /* ------------------------------------------------------------------ */
@@ -256,6 +259,28 @@ static __inline const APOLLO_MON_MODEL *ApolloMonModelFor(int Model)
 static __inline int ApolloMonHasBus(const APOLLO_MON_MODEL *M, unsigned long Bus)
 {
     return M != 0 && (Bus < M->AnalogBuses || Bus == M->TalkbackBus);
+}
+
+/*
+ * [Virtual] The Virtual input buses: VIRTUAL n = bus 0x18 + n - 1, the DSP input a DAW plays into
+ * (oa:devices/apollo-x8p.json / apollo-twin-x.json mixer_inputs synch_in 24-31). A Virtual input "mixes nothing and
+ * records silence" without an Input Strip on it (oa:driver/ua_strips.c:19-25), so no model mixes them by itself:
+ * the unit names the ones whose strip it builds (strips.c ApolloStripsVirtualBuses, from StripVirtualMask) as
+ * Extra, a bus mask, and ApolloMonEncodeEx takes them for the monitor mix, the cue sends and the aux sends
+ * exactly as an ANALOG bus (level, pan, mute, solo, mute-all; the same coefficient laws). Extra outside
+ * APOLLO_MON_VIRTUAL_BUSES is ignored; Extra 0 is ApolloMonEncode, every code and error as before.
+ */
+#define APOLLO_MON_VIRTUAL_BUS0     0x18ul
+#define APOLLO_MON_VIRTUAL_BUS(n)   (APOLLO_MON_VIRTUAL_BUS0 + (unsigned long)(n) - 1ul)     /* n = 1..8 */
+#define APOLLO_MON_VIRTUAL_BUSES    0xFF000000ul
+
+/* Does model M mix bus B, with the Virtual buses Extra the unit's strips make live? */
+static __inline int ApolloMonHasBusEx(const APOLLO_MON_MODEL *M, unsigned long Extra, unsigned long Bus)
+{
+    if (ApolloMonHasBus(M, Bus)) {
+        return 1;
+    }
+    return M != 0 && Bus < APOLLO_MON_BUSES && (((Extra & APOLLO_MON_VIRTUAL_BUSES) >> Bus) & 1ul) != 0;
 }
 
 /* [Mix] Every bus model M mixes, as a mask (x8p 0x4FF: ANALOG 1-8 + TALKBACK; Twin X 0x403). */
@@ -458,8 +483,11 @@ static __inline int ApolloMonSwitch(APOLLO_MON_WRITE *W, long V, unsigned long S
 /*
  * One SET_MONITOR_PARAM for model M. The ten codes that existed before give exactly the writes and
  * errors mixer.c gave (the x8p's monitor source now also takes CUE 3 and CUE 4).
+ * [Virtual] Extra: the Virtual buses the unit's Input Strips mix (ApolloMonHasBusEx); mixer.c passes the unit's,
+ * ApolloMonEncode none.
  */
-static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Param, long Value, APOLLO_MON_WRITE *W)
+static __inline int ApolloMonEncodeEx(const APOLLO_MON_MODEL *M, unsigned long Extra, unsigned long Param, long Value,
+                                      APOLLO_MON_WRITE *W)
 {
     unsigned long c, b;
 
@@ -486,7 +514,7 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
         case 0ul:
         case 1ul:
         case 2ul:
-            if (!ApolloMonHasBus(M, b)) {
+            if (!ApolloMonHasBusEx(M, Extra, b)) {
                 return APOLLO_MON_BAD_VALUE;
             }
             if (c == 0ul && !ApolloMonInRange(Value, APOLLO_CUE_SEND_OFF, APOLLO_CUE_SEND_MAX)) {
@@ -529,7 +557,7 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
         /* [Mix] the monitor mix: per bus the model mixes; the talkback has no pan (one weight on both sides) */
         c = APOLLO_MP_MIX_KIND(Param);
         b = Param & 0xFFul;
-        W->Buses = ApolloMonBusMask(M);
+        W->Buses = ApolloMonBusMask(M) | (Extra & APOLLO_MON_VIRTUAL_BUSES);    /* [Virtual] mute-all and solo cover them */
         if (c == 4ul) {
             if (b != 0) {
                 return APOLLO_MON_NOT_HERE;
@@ -541,7 +569,7 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
             W->Arg = Value;
             return APOLLO_MON_OK;
         }
-        if (!ApolloMonHasBus(M, b)) {
+        if (!ApolloMonHasBusEx(M, Extra, b)) {
             return APOLLO_MON_BAD_VALUE;
         }
         switch (c) {
@@ -581,7 +609,7 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
         W->Cue = c;
         switch (APOLLO_MP_FAMILY(Param)) {
         case 0x1000ul:
-            if (!ApolloMonHasBus(M, b)) {
+            if (!ApolloMonHasBusEx(M, Extra, b)) {
                 return APOLLO_MON_BAD_VALUE;
             }
             if (!ApolloMonInRange(Value, APOLLO_CUE_SEND_OFF, APOLLO_CUE_SEND_MAX)) {
@@ -590,7 +618,7 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
             W->Kind = APOLLO_MONW_SEND;
             break;
         case 0x2000ul:
-            if (!ApolloMonHasBus(M, b)) {
+            if (!ApolloMonHasBusEx(M, Extra, b)) {
                 return APOLLO_MON_BAD_VALUE;
             }
             if (!ApolloMonInRange(Value, -APOLLO_CUE_PAN_MAX, APOLLO_CUE_PAN_MAX)) {
@@ -769,6 +797,12 @@ static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Par
         }
         return APOLLO_MON_NOT_HERE;
     }
+}
+
+/* One SET_MONITOR_PARAM for model M on a unit without Virtual strips (every code and error as before [Virtual]). */
+static __inline int ApolloMonEncode(const APOLLO_MON_MODEL *M, unsigned long Param, long Value, APOLLO_MON_WRITE *W)
+{
+    return ApolloMonEncodeEx(M, 0ul, Param, Value, W);
 }
 
 /* ------------------------------------------------------------------ */

@@ -549,7 +549,7 @@ static int Relaunch(const wchar_t *args)
     if (!ShellExecuteExW(&sei)) {
         DWORD e = GetLastError();
         if (e == ERROR_CANCELLED)
-            Err(L"Cancelled: switching a unit to the Apollo driver needs administrator rights.");
+            Err(L"Cancelled: switching a unit's driver needs administrator rights.");
         else
             Err(L"Could not start elevated: %s", ErrText(e).c_str());
         return EXIT_NOT_ELEVATED;
@@ -671,6 +671,104 @@ static int CmdConnect(bool elevatedChild)
 }
 
 /* ------------------------------------------------------------------ */
+/* disconnect: the Start-menu shortcut back to UA's driver             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The way back, per unit, for anything that needs Universal Audio's own software: a firmware update from UA's
+ * installer, UA Console, or simply going back for a while. Asks per unit, waits until nothing plays on it, saves the
+ * Windows default devices, moves each chosen unit to UA's driver (unbind --unit: the Apollo package stays installed,
+ * so "Connect Apollo units" brings it back in one step), and puts the defaults back.
+ */
+static int DisconnectElevated()
+{
+    std::wstring dir = ExeDir();
+    std::wstring state = dir + L"\\state";
+    std::wstring saved = state + L"\\disconnect-audio-defaults.txt";
+
+    Out(L"Switch Apollo units back to Universal Audio's driver");
+    Out(L"====================================================");
+    Out(L"");
+    Out(L"Use this before updating firmware with Universal Audio's own software, or to use UA Console.");
+    Out(L"The Apollo driver stays installed: \"Connect Apollo units\" switches back in one step.");
+    Out(L"");
+
+    std::vector<Device> present = FindUaDevices(false);
+    std::vector<UnitKind> chosen;
+    bool anyOnApollo = false;
+    for (UnitKind k : { UNIT_X8P, UNIT_TWINX }) {
+        std::vector<size_t> same = UnitsWithHwid(present, UnitHwid(k));
+        if (same.empty())
+            continue;
+        const Device &d = present[same[0]];
+        if (!d.OnApollo()) {
+            Out(L"%s: already on %s.", UnitKindName(k),
+                d.Owner() == OWNER_UA ? L"Universal Audio's driver" : (d.Service.empty() ? L"no driver" : d.Service.c_str()));
+            continue;
+        }
+        anyOnApollo = true;
+        Out(L"%s: on the Apollo driver.", UnitKindName(k));
+        Out(L"  Switch the %s back to Universal Audio's driver? [Y/n]", UnitKindName(k));
+        if (AskYes())
+            chosen.push_back(k);
+        else
+            Out(L"  left on the Apollo driver.");
+    }
+    if (!anyOnApollo) {
+        Out(L"No connected Apollo unit is on the Apollo driver. Nothing changed.");
+        return EXIT_NO_DEVICE;
+    }
+    if (chosen.empty()) {
+        Out(L"Nothing to switch. Nothing changed.");
+        return EXIT_OK;
+    }
+    Out(L"");
+
+    int rc = CmdIdleWait(60, true, chosen);
+    if (rc != EXIT_OK) {
+        Out(L"Stopped before changing anything.");
+        return rc;
+    }
+    CreateDirectoryW(state.c_str(), nullptr);
+    bool haveDefaults = CmdDefaultsSave(saved) == EXIT_OK;
+    Out(L"");
+    int worst = EXIT_OK;
+    for (UnitKind k : chosen) {
+        int r = CmdUnbind(k == UNIT_X8P ? L"x8p" : L"twinx");
+        if (r != EXIT_OK && (worst == EXIT_OK || r == EXIT_REBOOT))
+            worst = r;
+        Out(L"");
+    }
+    if (haveDefaults) {
+        CmdDefaultsRestore(saved, 3);
+        DeleteFileW(saved.c_str());
+    }
+    Out(L"");
+    if (worst == EXIT_OK) {
+        Out(L"Done. Universal Audio's software sees the units now (they may take up to a minute to appear).");
+        Out(L"To update firmware: open UA Connect, install its updates, then let UA's software update the units and");
+        Out(L"power-cycle them when it asks. Then run \"Connect Apollo units\" to come back to the Apollo driver.");
+    } else if (worst == EXIT_REBOOT) {
+        Out(L"Restart Windows to finish (see above why).");
+    }
+    return worst;
+}
+
+static int CmdDisconnect(bool elevatedChild)
+{
+    if (!IsElevated()) {
+        if (elevatedChild) {
+            Err(L"Still not elevated after the UAC prompt.");
+            return EXIT_NOT_ELEVATED;
+        }
+        return Relaunch(L"disconnect --elevated");
+    }
+    int rc = DisconnectElevated();
+    Pause();
+    return rc;
+}
+
+/* ------------------------------------------------------------------ */
 /* main                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -695,6 +793,8 @@ static void Usage()
     Out(L"  cert add <cer> [--expect <sha1>] [--record <file>]");
     Out(L"  cert remove <cer> [--record <file>]     admin: LocalMachine Root and TrustedPublisher (older installs)");
     Out(L"  connect                                 Start-menu shortcut: elevate, ask per unit, free, bind, restore");
+    Out(L"  disconnect                              Start-menu shortcut back: elevate, ask per unit, free, unbind each");
+    Out(L"                                          to UA's driver (the package stays), restore (UA firmware updates)");
     Out(L"");
     Out(L"U: x8p, twinx, x8p,twinx, all (the default) or none. Only the Apollo x8p and the Apollo Twin X Gen 1 are");
     Out(L"ever switched; every other Universal Audio device stays on its own driver.");
@@ -794,6 +894,8 @@ int wmain(int argc, wchar_t **argv)
         rc = CmdCert(EqualsI(argv[2], L"add"), argv[3], expect ? expect : L"", record ? record : L"");
     } else if (EqualsI(cmd, L"connect")) {
         rc = CmdConnect(Flag(argc, argv, L"--elevated"));
+    } else if (EqualsI(cmd, L"disconnect")) {
+        rc = CmdDisconnect(Flag(argc, argv, L"--elevated"));
     } else {
         Err(L"Unknown command or missing argument: %s", cmd.c_str());
         Usage();

@@ -22,7 +22,7 @@ implemented, where it differs from this plan, and the exact T3 procedure.
 
 | # | Decision |
 |---|---|
-| D1 | Port the strip path only: transaction engine, upload, memspec, release, boot-word ownership, geometry check, strip planner, teardown/fence, bus-owner table, route defaults, 48V resync. No plug-in hosting, licensing, Virtual Input Strips, other rates. |
+| D1 | Port the strip path only: transaction engine, upload, memspec, release, boot-word ownership, geometry check, strip planner, teardown/fence, bus-owner table, route defaults, 48V resync. No plug-in hosting, licensing, Virtual Input Strips, other rates. **Virtual Input Strips added Nov 16 2026 (section 13), behind `StripVirtualMask` (default 0).** |
 | D2 | Model entry `{0x22, first_synch 0, first_virtual 0x18}`. Mic strip for input i (0-based) goes on DSP input (synch) i. |
 | D3 | Strips on **DSP 1**, the verified default (`oa:driver/ua_strips.c:129`). |
 | D4 | Ownership is decided by DSP 1's boot word (window +0x1A4 = BAR0 0x09A4) read **before our ring connect**, never by the SEQ counters. |
@@ -66,7 +66,7 @@ implemented, where it differs from this plan, and the exact T3 procedure.
 | Licensing / board query | `oa:driver/ua_plugin_license.c`, `oa:driver/ua_plugin_host.h:357-387` | Only needed for plug-ins. Strip modules need no authorization (`oa:driver/ua_strips.c:27-33`) |
 | SHA-named plug-in store, catalog refcounts | `oa:driver/ua_plugin_catalog.c:76-219`, `:257-299` | Five fixed files instead |
 | General pool ledger | `oa:driver/ua_resource_pool.c` | With strips as the only tenant, it returns the recipe's addresses or the pass refuses (`oa:driver/ua_strips.c:1462-1468`, `:1550-1554`). A fixed table plus the layout check is equivalent. |
-| Virtual Input Strips (0x83E, modules A5/C2) | `oa:driver/ua_strips.c:394-412`, `:713-745`, `:1000-1009` | v1 is mic preamps only. Virtual 1-8 would follow at synch 0x18-0x1F. |
+| Virtual Input Strips (0x83E, modules A5/C2) | `oa:driver/ua_strips.c:394-412`, `:713-745`, `:1000-1009` | v1 is mic preamps only. Virtual 1-8 would follow at synch 0x18-0x1F. **Ported Nov 16 2026: section 13.** |
 | Rates other than 48 kHz, A1 recipe | `oa:driver/ua_strips.c:285-341`, `:675-702` | 48 kHz is the only rate with captured words. The A1 layout "started the strip and hung the x4" (`oa:HARDWARE-SESSIONS.md:324-326`). |
 | Arch-byte upload form (`UA_BILL_STRIP`) | `oa:driver/ua_plugin_upload.c:57-60` | Refused: `80070004 f0010005 020000eb`, DSP quarantined (`oa:HARDWARE-SESSIONS.md:320-321`) |
 | Reply realignment probe | `oa:driver/ua_dsp_xact.c:642-696` | v1 quarantines on any unexpected reply instead |
@@ -1662,3 +1662,140 @@ adoption still needs `StripWarmRebuild=1` to build the strips again (a teardown 
   `apollo-diag --unit x8p strips` (Live, Record RUNNING, ANCHORED, KEEP_AT_EXIT) and input 1 with
   `levels 3`; then `pnputil /disable-device` + `/enable-device` of the x8p and check `Warm start
   ADOPTED` and input 1 again. A Twin X warm restart then exercises the rebuild.
+
+---
+
+## 13. Virtual Input Strips (Nov 16 2026)
+
+A DAW (or Windows) plays into VIRTUAL 1-8. On the DSP those are inputs (synch) 0x18-0x1F, and "without a strip
+on their DSP input the Console's Virtual channels mix nothing and record silence" (`oa:driver/ua_strips.c:19-25`).
+Their strip is the plain **Input Strip**, pluginId 0x83E, run by the Mic strip's A5 and C2 modules: nothing new is
+uploaded. Code: `driver/strip_plan.h` ("Virtual Input Strips"), `driver/strips.c` (`[Virtual]`), `driver/strip_adopt.h`
+(`StripPlanHashPm`, record version 2), `driver/monitor_plan.h` (`ApolloMonEncodeEx`), `driver/cues.c`, `driver/plugin.c`
+(ledger room). Not run on hardware: `tools\phase1\step-virtual.ps1`.
+
+### 13.1 Registry and what it builds
+
+`Parameters\Units\<key>\StripVirtualMask` (REG_DWORD, hex in the log and `apollo-diag params`), bit n-1 = VIRTUAL n.
+**0 on every model** until proven. The model takes VIRTUAL 1-8 on the x8p, 1-4 on the Twin X (`virtual_max 4`);
+other bits are dropped with a log line. It needs `StripsEnable=1` and follows `StripSteps` like the Mic strips.
+Log at start: `strips: StripsEnable=1 StripSteps=.. StripMask=0x.. StripVirtualMask=0x01 ...`.
+
+### 13.2 The recipe (port of `oa:driver/ua_strips.c:394-412`, `:713-745`)
+
+| Row | Pool | Dwords | Link |
+|---|---|---|---|
+| hdr | 1 | 0x008 | chain head |
+| m0 | 1 | 0x01E | hdr[6] |
+| c0 | 3 | 0x100 | m0[0x0E] |
+| c1 | 3 | 0x100 | m0[0x0F] |
+| c2 | 3 | 0x100 | m0[0x06] |
+| c3 | 3 | 0x100 | m0[0x07] |
+
+Per strip 0x26 words in pool 1, none in pool 2, 0x400 in pool 3. PREPARE (9 entries, 31 payload dwords): 6 zero-fills,
+memspec DMA(11), header DMA(9) `{0x00140009, hdr, 0x24, 0x40000000, 1, 1, 0x22, 1, 0x83E}`, parameters DMA(11)
+`{0x0014000B, m0, 0x00df7fe4, 0x40000000, 1, 1, 4, 0x100, 0xc8, 0x3a888889, 0x3b83126f}` (the first value is the
+WRITE's skip mask: the eight values land on m0 words 0, 1, 2, 4, 5, 16, 22, 25, never on a link word). The same words
+at every rate (upstream has no rate rule for them). START per strip: `{0x001F0004, 0x00200000 | synch, hdr, 0}`,
+`{0x001E0004, synch, 8, 0x20}` twice, `{0x001E0004, synch, 7, 0x0001FFFF}`; from stage 8 the route word to every other
+DSP and the bus owner, exactly as a Mic strip.
+
+**Placement.** The Mic strips keep their slots (D6). VIRTUAL n sits in Virtual slot n-1 directly below the room the
+model books for its Mic strips (x8p 8, Twin X 2), top-down per pool. With every Mic strip of the model built that is
+open-apollo's packing (Input Strips after every Mic strip); with a partial StripMask upstream would pack them higher,
+ours leave gaps (harmless, as for the Mic strips). x8p addresses:
+
+| VIRTUAL | synch | hdr | m0 | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|---|---|---|
+| 1 | 0x18 | 0x9CF10 | 0x9CEF2 | 0x08FEDE80 | 0x08FEDD80 | 0x08FEDC80 | 0x08FEDB80 |
+| 2 | 0x19 | 0x9CEEA | 0x9CECC | 0x08FEDA80 | 0x08FED980 | 0x08FED880 | 0x08FED780 |
+| 3 | 0x1A | 0x9CEC4 | 0x9CEA6 | 0x08FED680 | 0x08FED580 | 0x08FED480 | 0x08FED380 |
+| 4 | 0x1B | 0x9CE9E | 0x9CE80 | 0x08FED280 | 0x08FED180 | 0x08FED080 | 0x08FECF80 |
+| 5 | 0x1C | 0x9CE78 | 0x9CE5A | 0x08FECE80 | 0x08FECD80 | 0x08FECC80 | 0x08FECB80 |
+| 6 | 0x1D | 0x9CE52 | 0x9CE34 | 0x08FECA80 | 0x08FEC980 | 0x08FEC880 | 0x08FEC780 |
+| 7 | 0x1E | 0x9CE2C | 0x9CE0E | 0x08FEC680 | 0x08FEC580 | 0x08FEC480 | 0x08FEC380 |
+| 8 | 0x1F | 0x9CE06 | 0x9CDE8 | 0x08FEC280 | 0x08FEC180 | 0x08FEC080 | 0x08FEBF80 |
+
+VIRTUAL 1's memspec: `0015000b 0009cf16 0009cef2 0009cf00 08fede80 0009cf01 08fedd80 0009cef8 08fedc80 0009cef9 08fedb80`.
+`strip-plan-test --print-pm 0x1ff` prints the whole x8p pass (StripMask 0xFF + VIRTUAL 1).
+
+### 13.3 The pass
+
+One list of slots: 0-7 Mic, 8-15 VIRTUAL 1-8; the plan mask Pm = StripMask | StripVirtualMask << 8. Every PREPARE
+(Mic first), then **one START** for all of them (SYNCH, span, span, route per strip, slot order), as 10.8: no strip runs
+while any strip's memory is written. 16 PREPARE buffers stay held until the START is taken (`XACT_SLOTS` 20), and the
+START of 16 strips is 64 entries (`XACT_ENTS_MAX` 64, `STRIP_PLAN_ENT_SLOTS`). A Pm of 0..0xFF gives exactly the
+Mic-only functions' words (strip-plan-test). The teardown stops every started slot (`SYNCH 0` at its synch), then the
+releases. The probe and the 48V resync stay Mic-only.
+
+**Pool room.** At every pool read the driver checks the room for the Mic strips plus the Virtual slots up to the
+highest bit of StripVirtualMask (`StripPlanRoom`, `StripPlanLayoutCheckRoom`). A mask that does not fit is refused
+whole: `strips: StripVirtualMask 0x.. REFUSED: no room in pool p (code 8+p) ...; the Virtual strips are off, the Mic
+strips go on`, GET_STRIPS `VirtualLayoutWhy`. The x8p's measured pools fit all 16 strips. The plug-in ledger of the
+strip DSP books the same room (`PlugLedgerBookStripRoom`), so no plug-in lands on an Input Strip.
+
+### 13.4 Warm starts
+
+The record keeps its 50 words; `Mask` holds Pm. A record whose Pm has Virtual bits is sealed as **version 2**, so a
+build without Virtual strips (version 1 only) refuses it (power cycle) instead of adopting, rebuilding over, or
+keeping strips it does not know. Without Virtual bits the record and `StripPlanHashPm` are byte for byte what earlier
+builds wrote (the pinned x8p hash 0x209A8BDB still matches), so:
+
+| Record | This start | Verdict |
+|---|---|---|
+| v1, StripMask 0xFF (earlier build) | StripVirtualMask 0 | ADOPTED, as before |
+| v1 | StripVirtualMask 0x01 | PLAN_DIFFERS; with StripWarmRebuild (x8p default 1): REBUILD, the recorded strips stopped first |
+| v2, 0xFF + VIRTUAL 1 | the same | ADOPTED: the Input Strip too (its header from the plan, which the hash proved), its bus on the strip DSP |
+| v2 | StripVirtualMask 0 (or refused by the pool check) | PLAN_DIFFERS / REBUILD (its teardown stops VIRTUAL 1 too) |
+
+The D0 exit keeps Live Input Strips with the Mic strips. RESTORE re-SYNCHes the Mic strips only (no chain can sit
+on an Input Strip: plugin.c takes Mic inputs only).
+
+### 13.5 GET_STRIPS version 4
+
+`VirtualMask` (built), `VirtualAsked`, `VirtualLayoutWhy`, `VirtualBus0` (0x18), and per VIRTUAL n `VStripState`,
+`VStripStarted`, `VStripHeader`, `VStripAckMs`, `VBusOwner`. A shorter buffer gets version 3 or 2 as before.
+`apollo-diag strips` prints the Virtual rows.
+
+### 13.6 The mixer
+
+VIRTUAL n is mixer bus 0x18 + n - 1 (`APOLLO_MON_BUS_VIRTUAL(n)`). `ApolloMonEncodeEx(model, Extra, ...)` takes the
+mix, cue-send and aux-send codes of the buses in Extra exactly as an ANALOG bus's (level, pan, mute, solo; mute-all
+and solo cover them); mixer.c passes `ApolloStripsVirtualBuses` (StripVirtualMask << 0x18 while StripsEnable is on).
+Elsewhere the bus is refused (STATUS_INVALID_PARAMETER) as before; `ApolloMonEncode` = Extra 0 (mon-plan-test proves
+both). cues.c's owner rule maps bus 0x18+ to its Input Strip's slot, so the sends follow the bus to the strip DSP
+(and DSP 0) when the strip goes Live and are replayed after a connect. `apollo-diag mix v1 ...`, `cue <c> send v1 ...`,
+and the new `aux <1-2> send v1 <dB|off>` / `return` / `mute` (the x8p records AUX 1 on slots 28/29, AUX 2 on 30/31; no
+record slot carries a cue). `apollo-diag param <name> <value>` read its arguments one place early (it always failed with
+"'<name>' is not a number"); fixed with this change.
+
+**What Apollo Control needs (app\ui, not changed here):** VIRTUAL n strips (n = 1-8 on the x8p, 1-4 on the Twin X)
+shown only where GET_STRIPS v4 `VirtualMask` has bit n-1 (the host's `LiveStrips` JSON must carry it); bus numbers in
+the existing host messages, decimal: `mix:24` .. `mix:31` (level), `mixpan:`, `mixmute:`, `mixsolo:`, `send:<cue>:24`,
+`pan:<cue>:24`, `auxsend:<a>:24`, `auxpan:<a>:24`, `auxpost:<a>:24`; names "VIRTUAL 1" .. "VIRTUAL 8"; VIRTUAL 1-2,
+3-4, ... as stereo pairs (the host's link logic, as for Mic pairs); turning one on = SET_PARAM StripVirtualMask
+(elevated) and a restart of the unit.
+
+### 13.7 Tests and the hardware run
+
+strip-plan-test (1496 checks): the tables against `ua_strip_input_rows` / `ua_strip_input_m0`; every Input Strip of the x8p
+(8 Mic + Virtual 0x01, 0x03, 0x0F, 0xFF) and of the Twin X (2 Mic + 0x0F, upstream's default) against a verbatim port of
+`ua_strip_build_input` + `ua_memspec_compile` at `ua_strip_priv_addrs`' addresses, at every stage (and a check that the
+comparison can fail); VIRTUAL 1 word by word (13.2); the plan-mask functions equal to the Mic-only ones for every
+StripMask; the pass through the stream checks (no write after a SYNCH, own rows, link words); all 128 blocks disjoint,
+inside the pools and inside the booked room; the refusal codes; the hash and the record (13.4). mon-plan-test (293):
+13.6. plugin-plan-test (459): the ledger booking. ident-test (580): the value's defaults. Hardware (not run):
+`tools\phase1\step-virtual.ps1` (one UAC): stores StripVirtualMask 1, installs with step-ep.ps1, waits for VIRTUAL 1
+(asks for one x8p power cycle if the warm start cannot build it), plays a -30 dBFS tone into playback slots 20/21
+(`apollo-diag tone`: Windows has no render endpoint for the Virtual channels) and reads record slots 18/19 (VIRTUAL 1
+with its strip, VIRTUAL 2 without: exact zero), 26/27 (MON) and 28/29 (AUX 1), then mix mute, an AUX 1 send and a CUE 1
+send of bus 0x18; it stops with NEEDS POWER CYCLE at a quarantine.
+
+### 13.8 Not done, and what to look at if VIRTUAL 1 stays silent
+
+UA's mixer daemon also sends, at connect, an input "Level" (param 0x16 = 0xA0) to every input and the route mask
+(param 0x13 = 0x1FFFF) to the inputs it routes, VIRTUAL 1-4 among them (`oa:mixer-engine/ua_mixer_daemon.py:3118-3146`).
+This driver sends the route word only as the strips' START and stage-8 words (the same value), for Mic and Input Strips
+alike, and the Level for no input (the Mic strips work without it). If the Input Strip is Live (`apollo-diag strips`:
+taken, SYNCH sent) and record slot 18 stays at exact zero with a tone on playback slots 20-21, the 0x16 level on synch
+0x18 is the next thing to try.

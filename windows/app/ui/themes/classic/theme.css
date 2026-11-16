@@ -1,5 +1,6 @@
 /* classic pack: tokens (layer 7) */
-/* ---------- Classic (the default for a new config): neutral dark grey, one blue accent, red for 48V and clip ---------- */
+/* ---------- Classic (the default for a new config): neutral dark grey, one blue accent, red for 48V, mutes and clip.
+   Labels in a condensed face, small caps; numbers plain. Every colour, line and shape here is this pack's own. ---------- */
 [data-look="classic"] {
   --bg: #1c1d20;
   --view-bg: #1c1d20;
@@ -34,19 +35,19 @@
   --lamp-glow: 0 0 0 transparent;
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-label: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-head: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Bahnschrift", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --font-num: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --label-size: 10px;
   --label-weight: 600;
-  --label-track: 0.05em;
-  --label-stretch: normal;
+  --label-track: 0.06em;
+  --label-stretch: semi-condensed;
   --grid-line: transparent;
   --sel-bg: #243650;
   color-scheme: dark;
 }
 
-/* ===== Classic: a standard mixer app (layers 3-9). Flat, legible, nothing moves but short state changes. ===== */
+/* ===== Classic: the controls (layers 3-9). Flat, legible, nothing moves but short state changes. ===== */
 
 /* knobs: a flat cap with a pointer inside a value arc (from the origin: zero for gain and sends, centre for pan) */
 [data-look="classic"] .cl-knob .cl-k-track { fill: none; stroke: #44464c; }
@@ -55,7 +56,10 @@
 [data-look="classic"] .cl-knob .cl-k-ptr { stroke: #f4f5f7; stroke-linecap: round; }
 [data-look="classic"] .knob:hover .cl-k-body, [data-look="classic"] .knob:focus-visible .cl-k-body { fill: #565960; }
 [data-look="classic"] .knob .k-readout { font-size: 11.5px; font-weight: 600; }
-[data-look="classic"] .knob .k-label { font-family: var(--font-ui); font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-dim); }
+[data-look="classic"] .knob .k-label {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-label); font-stretch: semi-condensed; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-dim);
+}
 /* waiting: the ring turns to dashes until the unit reads the value back; refused: a red rim and "!" before the value */
 [data-look="classic"] .knob.unconfirmed .cl-k-track { stroke-dasharray: 5 5; }
 [data-look="classic"] .knob.unconfirmed .cl-k-val { stroke: var(--warn); stroke-dasharray: 5 5; }
@@ -68,7 +72,7 @@
 
 /* faders: a thin slot, a flat cap with a centre line, the dB scale on the left (press it to jump there) */
 [data-look="classic"] .fader { gap: 1px; }
-[data-look="classic"] .cl-scale { width: 22px; margin: 10px 0; font-family: var(--font-num); font-size: 8.5px; color: var(--text-faint); cursor: pointer; }
+[data-look="classic"] .cl-scale { width: 22px; margin: 10px 0; font-family: var(--font-label); font-stretch: semi-condensed; font-size: 8.5px; color: var(--text-faint); cursor: pointer; }
 [data-look="classic"] .cl-scale span { right: 4px; }
 [data-look="classic"] .cl-scale span.unity { color: var(--text); font-weight: 700; }
 /* +12 +6 0 -6 -12 -20 -40 and off: -30 and -60 left out so the legend never overlaps; a short fader (a full insert
@@ -102,14 +106,14 @@
 
 /* switches: rectangular, grey when off, lit (filled) when on; 48V and the mutes light red */
 [data-look="classic"] .sw {
-  background: #36383d; border-color: #50535a; color: var(--text-dim); font-weight: 600; letter-spacing: 0.03em;
+  background: #36383d; border-color: #50535a; color: var(--text-dim); font-weight: 600; letter-spacing: 0.04em;
   transition: background-color 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
 }
 [data-look="classic"] .sw:hover { background: #404248; color: var(--text); border-color: #696c73; }
 [data-look="classic"] .sw[aria-pressed="true"], [data-look="classic"] .sw[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 [data-look="classic"] .sw.sw-red[aria-pressed="true"], [data-look="classic"] .sw.sw-red[aria-checked="true"] { background: var(--red); border-color: var(--red); color: var(--red-ink); }
 [data-look="classic"] .sw:active { background-color: #2c2e32; }
-[data-look="classic"] .sw-grid .sw { font-family: var(--font-ui); font-size: 8.5px; font-weight: 600; letter-spacing: 0; word-spacing: -1px; }
+[data-look="classic"] .sw-grid .sw { font-family: var(--font-label); font-stretch: semi-condensed; font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; }
 /* waiting: a hollow ring in the corner; refused: a red triangle (never colour alone) */
 [data-look="classic"] .sw.unconfirmed::after { top: 2px; right: 2px; width: 6px; height: 6px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--warn), 0 0 0 1px #000000aa; }
 [data-look="classic"] .sw.refused::after { top: 2px; right: 2px; width: 8px; height: 7px; border-radius: 0; background: var(--red); box-shadow: none; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
@@ -118,7 +122,7 @@
 
 /* selectors: a row of segments, the chosen one lit */
 [data-look="classic"] .seg { border-color: #50535a; }
-[data-look="classic"] .seg button { background: #36383d; color: var(--text-dim); font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; transition: background-color 80ms ease-out, color 80ms ease-out; }
+[data-look="classic"] .seg button { background: #36383d; color: var(--text-dim); font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; transition: background-color 80ms ease-out, color 80ms ease-out; }
 [data-look="classic"] .sg-seg .seg:has(> button:nth-of-type(5)) { min-width: 230px; }
 [data-look="classic"] .seg button + button { border-left-color: #50535a; }
 [data-look="classic"] .seg button:hover { background: #404248; color: var(--text); }
@@ -132,11 +136,11 @@
 [data-look="classic"] .cl-meter .meter-clip { height: 6px; border-radius: 0; box-shadow: inset 0 0 0 1px #3a3c41; }
 [data-look="classic"] .cl-meter .meter-clip.on { box-shadow: none; }
 [data-look="classic"] .cl-meter .meter-hold { background: #f4f5f7; }
-[data-look="classic"] .meter-scale { font-family: var(--font-num); }
+[data-look="classic"] .meter-scale { font-family: var(--font-label); font-stretch: semi-condensed; }
 [data-look="classic"] .bcell .cl-meter .meter-col { width: 11px; }
 
 /* the plug-in slot: a dashed box while empty, solid once a plug-in is in it; the lamp's shape carries the state */
-[data-look="classic"] .ins-slot { font-family: var(--font-ui); font-weight: 600; letter-spacing: 0.01em; border-color: #4f5259; }
+[data-look="classic"] .ins-slot, [data-look="classic"] .ins-uni { font-family: var(--font-label); font-stretch: semi-condensed; font-weight: 600; letter-spacing: 0.02em; border-color: #4f5259; }
 [data-look="classic"] .ins-slot[data-state="running"], [data-look="classic"] .ins-slot[data-state="loading"], [data-look="classic"] .ins-slot[data-state="bypassed"],
 [data-look="classic"] .ins-slot[data-state="waiting"], [data-look="classic"] .ins-slot[data-state="failed"] { background: #34363b; border-color: #5a5d64; }
 [data-look="classic"] .ins-slot.cl-dropped { animation: cl-drop 450ms ease-out; }
@@ -145,21 +149,92 @@
 @keyframes cl-refuse { from { box-shadow: 0 0 0 2px var(--red); } to { box-shadow: 0 0 0 2px transparent; } }
 
 /* the plug-in browser (layout "list", by type) and the parameter view (layout "grid"): the shared ones, flat */
-[data-look="classic"] .plb-group-head { font-family: var(--font-ui); letter-spacing: 0.05em; }
+[data-look="classic"] .plb-group-head { font-family: var(--font-label); font-stretch: semi-condensed; letter-spacing: 0.06em; }
 [data-look="classic"] .plb-name { font-size: 12px; }
 
-/* labels: small caps words, no glyphs */
-[data-look="classic"] .st-lbl { font-family: var(--font-ui); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; color: var(--text-faint); }
+/* labels: small caps words in the condensed face, no glyphs */
+[data-look="classic"] .st-lbl { font-family: var(--font-label); font-stretch: semi-condensed; font-size: 9px; font-weight: 600; letter-spacing: 0.08em; color: var(--text-faint); }
 [data-look="classic"] .st-lbl::before { content: none; }
+[data-look="classic"] .tabs button, [data-look="classic"] .sess-btn .sb-l { font-stretch: semi-condensed; }
 
-/* ===== Classic, layer 2: composition "strips": the shared full-height channel strips in the order console software
-   uses: number, preamp (gain, mic / line, 48V, PAD, LO CUT, polarity), inserts, sends, pan, the long fader with its
-   scale and the meter, mute / solo, the name; every unit's master section on its right. It is the console layout
-   without Studio's meter bridge (app.js draws that only for "console"), so the console layouts' AUX button rules
-   (app.css) are repeated here: the AUX 1 / AUX 2 strips open from the master's AUX button. ===== */
-[data-look="classic"] #view-control[data-comp="strips"] .mo-aux { display: block; padding: 2px 0; font-size: 10.5px; font-family: var(--font-label); letter-spacing: 0.04em; }
+/* ===== Classic, layer 2: the window (composition "strips", used by this pack only).
+
+   [View column] [ unit 1: device row / strips / AUX returns / monitor ] [ unit 2 ... ] [control room]
+                 [ info bar: sample rate                                                          ]
+
+   The View column on the left (the pack's ClassicDesk), the input strips, the aux returns after them, each unit's
+   monitor section at its right, the control room column on the far right, the info bar along the bottom. The plug-in
+   browser is a panel that opens from an empty insert (or SHOW PLUG-INS, or Ctrl+F) instead of a column of its own.
+   app.js draws Studio's meter bridge only for "console", so the console layouts' AUX button rules (app.css) are
+   repeated here. ===== */
+[data-look="classic"] .top { height: 38px; gap: 14px; }
+[data-look="classic"] .tabs button { padding: 4px 9px; font-size: 10.5px; }
+[data-look="classic"] #view-control[data-comp="strips"] {
+  --cl-vc-w: 86px; --mon-w: 200px;
+  grid-template-columns: var(--cl-vc-w) minmax(0, 1fr) var(--mon-w); column-gap: 4px; padding: 4px;
+}
+[data-look="classic"] #view-control[data-comp="strips"][data-cl-ctrl="0"] { grid-template-columns: var(--cl-vc-w) minmax(0, 1fr); }
+[data-look="classic"] #view-control[data-comp="strips"][data-cl-ctrl="0"] > .monitor { display: none; }
+[data-look="classic"] #view-control[data-comp="strips"] > .cl-viewcol { grid-column: 1; grid-row: 2; }
+[data-look="classic"] #view-control[data-comp="strips"] > .desk { grid-column: 2; grid-row: 2; }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor { grid-column: 3; grid-row: 2; }
+[data-look="classic"] #view-control[data-comp="strips"] .mo-aux { display: block; padding: 2px 0; font-size: 10.5px; font-family: var(--font-label); font-stretch: semi-condensed; letter-spacing: 0.04em; }
 [data-look="classic"] #view-control[data-comp="strips"] .aux-sec[data-open="0"] { display: none; }
-[data-look="classic"] #view-control[data-comp="strips"] .st-aux > .st-lbl { display: none; }
+
+/* the View column: strip views, SHOW switches, then CLEAR CLIPS, CLEAR SOLO and SETTINGS at the foot */
+[data-look="classic"] .cl-viewcol {
+  display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding: 6px 6px 8px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+}
+[data-look="classic"] .cl-vc-lbl {
+  margin: 6px 1px 1px; font-family: var(--font-label); font-stretch: semi-condensed; font-size: 9px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint);
+}
+[data-look="classic"] .cl-vc-lbl:first-child { margin-top: 0; }
+[data-look="classic"] .cl-viewcol .seg { flex-direction: column; flex: none; }
+[data-look="classic"] .cl-viewcol .seg button { flex: none; height: 28px; font-size: 10.5px; }
+[data-look="classic"] .cl-viewcol .seg button + button { border-left: 0; border-top: 1px solid #50535a; }
+[data-look="classic"] .cl-viewcol .sw { height: 28px; flex: none; font-size: 10.5px; }
+[data-look="classic"] .cl-vc-gap { flex: 1 1 auto; min-height: 10px; }
+[data-look="classic"] .cl-vc-btn {
+  display: flex; align-items: center; justify-content: center; gap: 4px; flex: none; height: 28px; padding: 0 3px;
+  font-family: var(--font-label); font-stretch: semi-condensed; font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-dim);
+}
+[data-look="classic"] .cl-vc-btn:hover { color: var(--text); }
+/* CLEAR SOLO lights while any input is soloed, with the count beside the words */
+[data-look="classic"] .cl-solo.cl-lit { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+[data-look="classic"] .cl-count { min-width: 14px; padding: 0 3px; border-radius: 2px; background: var(--accent-ink); color: var(--accent); font-size: 10px; }
+[data-look="classic"] .cl-count:empty { display: none; }
+
+/* the plug-in browser: a panel beside the View column, shown while it waits for a choice for an insert (.picking), while
+   SHOW PLUG-INS is on, or while it has the focus (Ctrl+F); dragging a plug-in out of it lets the strips take the drop */
+[data-look="classic"] #view-control[data-comp="strips"] > .plb {
+  position: absolute; z-index: 8; top: 4px; bottom: 4px; left: calc(var(--cl-vc-w) + 10px); width: 282px;
+  box-shadow: var(--shadow); border-color: var(--line-strong);
+  opacity: 0; pointer-events: none; transform: translateX(-6px); transition: opacity 100ms ease-out, transform 100ms ease-out;
+}
+[data-look="classic"] #view-control[data-comp="strips"][data-cl-plb="1"] > .plb,
+[data-look="classic"] #view-control[data-comp="strips"] > .plb.picking,
+[data-look="classic"] #view-control[data-comp="strips"] > .plb:focus-within { opacity: 1; pointer-events: auto; transform: none; }
+[data-look="classic"] body.pl-dragging #view-control[data-comp="strips"] > .plb { opacity: 0; pointer-events: none; }
+[data-look="classic"] #view-control[data-comp="strips"] .plb-toggle { display: none; }
+
+/* the desk: device rows over each unit's strips, the info bar (the shared sample rate) along the bottom */
+[data-look="classic"] #view-control[data-comp="strips"] .desk { gap: 4px; }
+/* the "placing a plug-in" bar floats over the info bar, so the strips do not move while a plug-in is chosen or placed */
+[data-look="classic"] #view-control[data-comp="strips"] .desk > .place-bar { order: 4; position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; min-height: 26px; box-shadow: inset 3px 0 0 var(--accent), var(--shadow); }
+[data-look="classic"] #view-control[data-comp="strips"] .desk > .inputs { order: 1; gap: 3px; }
+[data-look="classic"] #view-control[data-comp="strips"] .desk > .pl-drawer { order: 2; }
+[data-look="classic"] #view-control[data-comp="strips"] .desk > .rate-bar {
+  order: 3; min-height: 26px; padding: 2px 8px; border-radius: 0; font-size: 11.5px; background: var(--panel-2);
+}
+[data-look="classic"] #view-control[data-comp="strips"] .useg { border-radius: 0; }
+[data-look="classic"] #view-control[data-comp="strips"] .useg-head { padding: 3px 6px; gap: 2px 10px; background: var(--panel-2); }
+[data-look="classic"] #view-control[data-comp="strips"] .useg-name { font-family: var(--font-head); font-stretch: semi-condensed; letter-spacing: 0.06em; }
+
+/* ===== the input strip, top to bottom: number, input select, the preamp switches, the Hi-Z load, the gain; the Unison
+   slot right under it and the inserts (REC / MON under them); the sends; pan; solo and mute; the fader with the meter
+   beside it and its value; the channel label at the foot. The strips carry no section titles. ===== */
 [data-look="classic"] #view-control .strip > .strip-top, [data-look="classic"] #view-control .tb-strip > .strip-top { order: 0; }
 [data-look="classic"] #view-control .strip > .st-pre { order: 1; }
 [data-look="classic"] #view-control .strip > .st-ins { order: 2; }
@@ -168,14 +243,30 @@
 [data-look="classic"] #view-control .strip > .strip-name, [data-look="classic"] #view-control .strip > .strip-name-edit,
 [data-look="classic"] #view-control .tb-strip > .strip-name { order: 6; }
 [data-look="classic"] #view-control .strip > .st-out, [data-look="classic"] #view-control .tb-strip > .st-out { display: none; }
-/* inside the mix section: pan above the fader, mute / solo under it */
+[data-look="classic"] #view-control .strip .st-lbl, [data-look="classic"] #view-control .tb-strip .st-lbl,
+[data-look="classic"] #view-control .aux-strip .st-lbl { display: none; }
+[data-look="classic"] #view-control .st-sec { gap: 4px; padding-top: 4px; }
+/* the preamp */
+[data-look="classic"] #view-control .st-pre > .seg { order: 1; }
+[data-look="classic"] #view-control .st-pre > .sw-grid { order: 2; }
+[data-look="classic"] #view-control .st-pre > .strip-extra { order: 3; }
+[data-look="classic"] #view-control .st-pre > .knob { order: 4; }
+/* the inserts: Unison first (right under the gain), the slots, the strip's REC / MON switch */
+[data-look="classic"] #view-control .st-ins > .ins-slots { order: 1; }
+[data-look="classic"] #view-control .st-ins > .st-ins-head { order: 2; }
+[data-look="classic"] #view-control .st-ins > .st-ins-head:not(:has(.ins-recmon:not([hidden]))) { display: none; }
+/* the sends: AUX 1 / AUX 2, then the cues (OVERVIEW shows CUE 1 and CUE 2, SENDS every cue) */
+[data-look="classic"] #view-control .st-aux .aux-sends { row-gap: 3px; }
+[data-look="classic"] #view-control:not([data-cl-view="sends"]) .cl-cue[data-cue="2"],
+[data-look="classic"] #view-control:not([data-cl-view="sends"]) .cl-cue[data-cue="3"] { display: none; }
+/* the mix: pan, then solo and mute, then the fader with the meter beside it */
 [data-look="classic"] #view-control .st-mix > .mix-top { display: contents; }
-[data-look="classic"] #view-control .st-mix > .st-lbl { order: 0; }
 [data-look="classic"] #view-control .mix-top > .knob, [data-look="classic"] #view-control .mix-top > .mix-nopan { order: 1; flex-shrink: 0; }
-[data-look="classic"] #view-control .st-mix > .strip-meter { order: 2; }
-[data-look="classic"] #view-control .mix-top > .mix-ms { order: 3; flex-shrink: 0; min-height: 24px; }
-[data-look="classic"] #view-control .mix-ms .mix-sw { height: 24px; font-size: 11px; }
-/* the channel name at the foot: a flat label box */
+[data-look="classic"] #view-control .mix-top > .mix-ms { order: 2; flex-shrink: 0; min-height: 24px; }
+[data-look="classic"] #view-control .st-mix > .strip-meter { order: 3; }
+[data-look="classic"] #view-control .mix-ms > :first-child { order: 2; }
+[data-look="classic"] #view-control .mix-ms .mix-sw { height: 24px; font-size: 10.5px; }
+/* the channel label at the foot: a flat label box */
 [data-look="classic"] #view-control .strip-name {
   height: 24px; line-height: 22px; text-align: center; padding: 0 3px; color: var(--text);
   background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 11.5px;
@@ -183,29 +274,66 @@
 [data-look="classic"] #view-control .strip-name:hover { background: var(--raised); }
 [data-look="classic"] #view-control .strip-name.empty { color: var(--text-faint); font-style: normal; }
 [data-look="classic"] #view-control .strip-name-edit { height: 24px; text-align: center; }
-[data-look="classic"] #view-control .strip-num { font-size: 14px; font-weight: 600; }
-/* targets: at least 24 x 24 px where the shared layout has smaller ones */
-[data-look="classic"] .pair-head { height: 30px; }
-[data-look="classic"] .link-btn { height: 24px; padding: 0 9px; font-size: 10px; }
-[data-look="classic"] .seg button { height: 24px; }
-[data-look="classic"] .mo-ctl .sw, [data-look="classic"] .mo-ctl .mix-sw, [data-look="classic"] .aux-ctl .mix-sw { height: 24px; }
-[data-look="classic"] .mo-ctl .btn { min-height: 24px; }
-[data-look="classic"] .ins-slot, [data-look="classic"] .ins-slots[data-slots] .ins-slot, [data-look="classic"] .ins-uni { height: 24px; }
-[data-look="classic"] .ins-x, [data-look="classic"] .ins-slots[data-slots] .ins-x, [data-look="classic"] .ins-uni-row .ins-x { height: 24px; width: 24px; }
-[data-look="classic"] .ins-recmon button { height: 24px; }
-[data-look="classic"] .ins-slot[data-drop] .ins-why { line-height: 22px; }
-[data-look="classic"] .useg-name, [data-look="classic"] .rate-sel, [data-look="classic"] .plb-toggle, [data-look="classic"] .talk-cues { min-height: 24px; }
-[data-look="classic"] .plb-toggle, [data-look="classic"] .mon-units button { min-width: 26px; }
-[data-look="classic"] .check { min-height: 24px; }
-[data-look="classic"] .check input { width: 16px; height: 16px; margin: 0; }
-/* the talkback strip is 52 px: its M and S stack so each stays a full-width target */
+[data-look="classic"] #view-control .strip-num { font-size: 13px; font-weight: 600; font-family: var(--font-label); font-stretch: semi-condensed; }
+/* the talkback strip is 52 px: its solo and mute stack so each stays a full-width target */
 [data-look="classic"] #view-control .tb-strip .mix-ms { grid-template-columns: 1fr; }
-[data-look="classic"] .plb-group-head { min-height: 24px; }
-/* the master section and the unit head: plain panels */
-[data-look="classic"] #view-control .master { background: var(--panel-2); border-left: 1px solid var(--line-strong); }
+
+/* the strip views (View column): OVERVIEW shows everything; INPUTS the preamps and Unison; INSERTS every insert row;
+   SENDS every send. The mix (pan, solo, mute, fader) and the label are in every view. */
+[data-look="classic"] #view-control[data-cl-view="inputs"] .st-ins .ins-row:not(.ins-uni-row),
+[data-look="classic"] #view-control[data-cl-view="inputs"] .st-ins > .st-ins-head,
+[data-look="classic"] #view-control[data-cl-view="inputs"] .ins-chain,
+[data-look="classic"] #view-control[data-cl-view="inputs"] .strip > .st-aux,
+[data-look="classic"] #view-control[data-cl-view="inputs"] .aux-strip .aux-ins,
+[data-look="classic"] #view-control[data-cl-view="inputs"] .aux-strip .aux-cues { display: none; }
+[data-look="classic"] #view-control[data-cl-view="inserts"] .strip > .st-pre,
+[data-look="classic"] #view-control[data-cl-view="inserts"] .strip > .st-aux,
+[data-look="classic"] #view-control[data-cl-view="inserts"] .aux-strip .aux-cues { display: none; }
+[data-look="classic"] #view-control[data-cl-view="inserts"] .ins-row.ins-extra { display: flex; }
+[data-look="classic"] #view-control[data-cl-view="sends"] .strip > .st-pre,
+[data-look="classic"] #view-control[data-cl-view="sends"] .strip > .st-ins,
+[data-look="classic"] #view-control[data-cl-view="sends"] .aux-strip .aux-ins { display: none; }
+
+/* ===== each unit's monitor section (the master), top to bottom: the monitor meters, SHOW AUX and MON (this unit in
+   the control room column), MUTE ALL, CLEAR SOLO, the monitor MUTE and DIM, the monitor knob with its level; the knob's
+   ring turns red while the monitor is muted (the MUTE switch is lit too). ===== */
+[data-look="classic"] #view-control .master { padding: 5px 4px; gap: 5px; background: var(--panel-2); border-left: 1px solid var(--line-strong); }
+[data-look="classic"] #view-control .mo-title { font-family: var(--font-label); font-stretch: semi-condensed; font-weight: 600; }
+[data-look="classic"] #view-control .mo-title > span:first-child { font-size: 0; }
+[data-look="classic"] #view-control .mo-title > span:first-child::before { content: "MONITOR"; font-size: 9px; }
+[data-look="classic"] #view-control .mo-body { flex-direction: column; gap: 6px; }
+[data-look="classic"] #view-control .mo-meters { order: 0; flex: 1 1 auto; min-height: 90px; }
+[data-look="classic"] #view-control .mo-bars { justify-content: center; }
+[data-look="classic"] #view-control .mo-ctl { order: 1; flex: none; width: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+[data-look="classic"] #view-control .mo-ctl > * { min-width: 0; }
+[data-look="classic"] #view-control .mo-ctl > .mo-gap { display: none; }
+[data-look="classic"] #view-control .mo-ctl > .mo-aux { order: 1; }
+[data-look="classic"] #view-control .mo-ctl > .mo-focus { order: 2; }
+[data-look="classic"] #view-control .mo-ctl > .mix-sw { order: 3; grid-column: 1 / -1; }
+[data-look="classic"] #view-control .mo-ctl > .mo-clrsolo { order: 4; grid-column: 1 / -1; font-family: var(--font-label); font-stretch: semi-condensed; font-size: 10px; }
+[data-look="classic"] #view-control .mo-ctl > .sw-red:not(.mix-sw) { order: 5; }
+[data-look="classic"] #view-control .mo-ctl > .sw:not(.sw-red) { order: 6; }
+[data-look="classic"] #view-control .mo-ctl > .knob { order: 7; grid-column: 1 / -1; margin-top: 4px; }
+[data-look="classic"] #view-control .mo-ctl > .knob .cl-knob { width: 64px; height: 64px; }
+[data-look="classic"] #view-control .mo-ctl > .knob .k-readout { font-size: 12.5px; }
+[data-look="classic"] #view-control .master:has(.mo-ctl > .sw-red:not(.mix-sw)[aria-pressed="true"]) .mo-ctl > .knob .cl-k-val { stroke: var(--red); }
+[data-look="classic"] #view-control .mo-ctl .btn { min-height: 24px; padding: 2px 0; }
 [data-look="classic"] .mo-title { font-family: var(--font-ui); font-weight: 600; }
-[data-look="classic"] .useg-head { background: var(--panel-2); }
 [data-look="classic"] .aux-strip { background: var(--panel-2); }
+
+/* the control room column (far right): the focused unit's source, headphones, ALT speakers, outputs and talkback as
+   plain stacked sections under one CONTROL ROOM title; the help sentences stay in the titles and the other looks */
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor { gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor::before {
+  content: "Control room"; padding: 7px 8px 6px; border-bottom: 1px solid var(--line-strong); flex: none;
+  font-family: var(--font-label); font-stretch: semi-condensed; font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--head);
+}
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor .mon-card { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 7px 8px; gap: 6px; }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor .hp-note { display: none; }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor .sect-title { font-size: 9.5px; letter-spacing: 0.1em; color: var(--text-dim); }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor .field:not(.field-stack) { grid-template-columns: 58px minmax(0, 1fr); }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor .alt-row { grid-template-columns: 46px minmax(0, 1fr) auto; gap: 4px; }
+[data-look="classic"] #view-control[data-comp="strips"] > .monitor .mon-card .seg button { padding: 0 1px; font-size: 9.5px; letter-spacing: 0.02em; }
 
 /* ===== [Sess] the session list in plain words (layout "plain"), at desktop density ===== */
 [data-look="classic"] .ss-plain { gap: 10px; }
@@ -217,3 +345,18 @@
 [data-look="classic"] .ss-plain .ss-tag { font-size: 11px; font-weight: 600; letter-spacing: 0; color: var(--text); background: var(--raised); border-radius: var(--radius-sm); padding: 0 6px; }
 [data-look="classic"] .ss-plain .ss-note { border-left-width: 3px; }
 [data-look="classic"] .ss-plain .btn { min-height: 28px; padding: 3px 12px; }
+
+/* ===== targets: at least 24 x 24 px where the shared layout has smaller ones ===== */
+[data-look="classic"] .pair-head { height: 30px; }
+[data-look="classic"] .link-btn { height: 24px; padding: 0 9px; font-size: 10px; }
+[data-look="classic"] .seg button { height: 24px; }
+[data-look="classic"] .mo-ctl .sw, [data-look="classic"] .mo-ctl .mix-sw, [data-look="classic"] .aux-ctl .mix-sw { height: 24px; }
+[data-look="classic"] .ins-slot, [data-look="classic"] .ins-slots[data-slots] .ins-slot, [data-look="classic"] .ins-uni { height: 24px; }
+[data-look="classic"] .ins-x, [data-look="classic"] .ins-slots[data-slots] .ins-x, [data-look="classic"] .ins-uni-row .ins-x { height: 24px; width: 24px; }
+[data-look="classic"] .ins-recmon button { height: 24px; }
+[data-look="classic"] .ins-slot[data-drop] .ins-why { line-height: 22px; }
+[data-look="classic"] .useg-name, [data-look="classic"] .rate-sel, [data-look="classic"] .plb-toggle, [data-look="classic"] .talk-cues { min-height: 24px; }
+[data-look="classic"] .plb-toggle, [data-look="classic"] .mon-units button { min-width: 26px; }
+[data-look="classic"] .check { min-height: 24px; }
+[data-look="classic"] .check input { width: 16px; height: 16px; margin: 0; }
+[data-look="classic"] .plb-group-head { min-height: 24px; }

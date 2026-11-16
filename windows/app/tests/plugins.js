@@ -11,6 +11,7 @@ const out = process.argv[2] || require('os').tmpdir();
 const ui = require('url').pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
 let failed = 0;
 const check = (c, l) => { if (!c) failed++; console.log(`${c ? 'PASS' : 'FAIL'}  ${l}`); };
+const DOCKED = JSON.stringify({ appearance: { look: 'studio' } });   /* [Classic] a saved Studio look: the docked browser */
 
 const X8P = { id: 'SN22532017106180', index: 0, model: 'Apollo x8p', deviceType: 34, serial: '22532017106180', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
 const TWX = { id: '7C1E40A2D3F09B61', index: 1, model: 'Apollo Twin X (Gen 1)', deviceType: 153, serial: '2253202500117', fw: '11.15.54803', mode: 2, present: true, active: true, observe: false, stage: 5 };
@@ -97,7 +98,9 @@ const DEESSER = (over = {}) => ({ input: 0, stereo: false, bypass: false, name: 
   };
 
   let n = await mark();
-  await host({ type: 'hello', app: 'test', config: null, demo: false, view: 'control' });
+  /* [Classic] A and D drive the docked browser with the mouse (drags from it, onto it), so they run in Studio, whose browser
+     is docked; Classic (the default) opens its browser from an insert instead (looks.js 5i) */
+  await host({ type: 'hello', app: 'test', config: DOCKED, demo: false, view: 'control' });
   await host({ type: 'status', present: true, info: INFO });
   await host({ type: 'units', units: [X8P, TWX] });
   await host({ type: 'status', unit: 1, present: true, info: TW_INFO });
@@ -399,7 +402,7 @@ const DEESSER = (over = {}) => ({ input: 0, stereo: false, bypass: false, name: 
     overloaded: false, running: true, load: { before: 1989, after: 4781 }, slots, unison: null, analog: false, ...over });
   const v19 = (chains, over = {}) => ({ ...state([], over), slots: 4, recmon: true, auxBuses: 2, unison: true, auxInserts: false, chains });
   let m0 = await at();
-  await h4({ type: 'hello', app: 'test', config: null, demo: false, view: 'control' });
+  await h4({ type: 'hello', app: 'test', config: DOCKED, demo: false, view: 'control' });
   await h4({ type: 'status', present: true, info: INFO });
   await h4({ type: 'units', units: [X8P] });
   check((await monSince(m0)).filter(x => /^monitor\taux(ret|mute):/.test(x)).join('|') ===

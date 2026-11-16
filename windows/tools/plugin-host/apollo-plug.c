@@ -762,12 +762,14 @@ static const char *RbSkipped(const RB *C)
  * DSP D's ledger as driver\plugin.c PlugLedgerFor builds it the first time in an epoch: PlugLedgerInit
  * from the pool registers (CAPS Regs: sizes 0-3, bases 0-3, scratch 1-3); on the strip DSP the strips'
  * scratch floor and room (PlugLedgerBookStrips, the unit's strips: x8p 8, Twin X 2), which must land where the strip plan puts
- * them. PLUG_OK, or the ledger's error (not a usable pool map).
+ * them. PLUG_OK, or the ledger's error (not a usable pool map). [Virtual] The room includes the Virtual Input Strips the unit
+ * built (g_virtualMask, from its GET_STRIPS version 4; 0 offline and for an older driver), as plugin.c books them.
  */
+static ULONG g_virtualMask;
+
 static ULONG BuildLedger(PLUG_LEDGER *L, const ULONG Regs[11], BOOL StripDsp, PLUG_LEASE Book[4])
 {
-    static const ULONG kPer[4] = { 0, STRIP_POOL1_PER_STRIP, STRIP_POOL2_PER_STRIP, STRIP_POOL3_PER_STRIP };
-    ULONG size[4], base[4], scr[4], p, err;
+    ULONG size[4], base[4], scr[4], p, err, room[4];
 
     for (p = 0; p < 4; p++) {
         size[p] = Regs[p];
@@ -776,7 +778,8 @@ static ULONG BuildLedger(PLUG_LEDGER *L, const ULONG Regs[11], BOOL StripDsp, PL
     }
     err = PlugLedgerInit(L, base, size, scr);
     if (err == PLUG_OK && StripDsp) {
-        err = PlugLedgerBookStrips(L, STRIP_CODE_WORDS, kPer, g_model->Strips, Book);
+        StripPlanRoom(g_model->Strips, g_virtualMask, room);
+        err = PlugLedgerBookStripRoom(L, STRIP_CODE_WORDS, room, Book);
         if (err == PLUG_OK && (Book[0].Base != APOLLO_STRIP_CODE_BASE || Book[1].Base + Book[1].Words != STRIP_TOP1 ||
                                Book[2].Base + Book[2].Words != STRIP_TOP2 || Book[3].Base + Book[3].Words != STRIP_TOP3)) {
             err = PLUG_EINVAL;
@@ -2167,14 +2170,23 @@ static int HeadCheck(RECIPE *r, ULONG Page0, const APOLLO_PLUGIN_INSTANCE *inst,
     return (int)bad;
 }
 
-/* GET_STRIPS (user IOCTL, status only): FALSE when it failed or the driver's struct is older than version 2. */
+/*
+ * GET_STRIPS (user IOCTL, status only): FALSE when it failed or the driver's struct is older than version 3 (every field
+ * this tool reads before [Virtual]). [Virtual] A version 4 driver also gives the Virtual strips it built: their room is
+ * part of the strip DSP's ledger (BuildLedger); an older driver's VirtualMask stays 0 (none).
+ */
 static BOOL GetStrips(APOLLO_STRIPS_INFO *s)
 {
     DWORD ret = 0;
+    BOOL ok;
 
     memset(s, 0, sizeof(*s));
-    return DeviceIoControl(g_dev, IOCTL_APOLLO_GET_STRIPS, NULL, 0, s, (DWORD)sizeof(*s), &ret, NULL) && ret >= sizeof(*s) &&
-           s->Version >= 2;
+    ok = DeviceIoControl(g_dev, IOCTL_APOLLO_GET_STRIPS, NULL, 0, s, (DWORD)sizeof(*s), &ret, NULL) &&
+         ret >= APOLLO_STRIPS_INFO_V3_SIZE && s->Version >= 2;
+    if (ok) {
+        g_virtualMask = (ret >= sizeof(*s) && s->Version >= 4) ? (s->VirtualMask & 0xFFu) : 0;
+    }
+    return ok;
 }
 
 /* Instances left of a create-start: its handle, or any routed or staged chain on one of its inputs. */
@@ -2447,9 +2459,9 @@ static int CmdCreateStart(int n, char **a)
             memcpy(baseRegs, c1.Dsp[dsp].Regs, sizeof(baseRegs));
             baseHow = "derived from the pool registers";
             Info("DSP %lu had no ledger before the CREATE (apollo.sys builds it inside the first CREATE after a power cycle): "
-                 "baseline derived from its pool registers as the driver builds it (8 strips booked): used %lu / %lu / %lu / %lu, "
-                 "scratch 0x%lx / 0x%lx / 0x%lx", dsp, base[0].Used, base[1].Used, base[2].Used, base[3].Used, base[1].Scratch,
-                 base[2].Scratch, base[3].Scratch);
+                 "baseline derived from its pool registers as the driver builds it (the strips booked, Virtual 0x%02lx): used %lu / "
+                 "%lu / %lu / %lu, scratch 0x%lx / 0x%lx / 0x%lx", dsp, g_virtualMask, base[0].Used, base[1].Used, base[2].Used,
+                 base[3].Used, base[1].Scratch, base[2].Scratch, base[3].Scratch);
         } else {
             Info("DSP %lu had no ledger before the CREATE, and %s after it: no ledger baseline", dsp,
                  (c1.Dsp[dsp].Flags & APOLLO_PLUGIN_DSP_LEDGER) ? "its pool registers are not a usable map" : "none");

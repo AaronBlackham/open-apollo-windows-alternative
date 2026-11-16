@@ -9,6 +9,13 @@
 
 #define STRIP_REC_MAGIC         0x52537641u     /* "AvSR" */
 #define STRIP_REC_VERSION       1u
+/*
+ * [Virtual] (Nov 16 2026, docs/STRIPS.md 13) The same 50 words; Mask holds the plan mask (StripMask | StripVirtualMask
+ * << 8). A record whose Mask names Virtual strips is sealed as version 2, so a build without Virtual strips (which
+ * trusts version 1 only) never adopts, rebuilds over or keeps strips it does not know: it asks for a power cycle.
+ * Every other record is version 1, byte for byte what the builds before wrote.
+ */
+#define STRIP_REC_VERSION_VIRTUAL 2u
 #define STRIP_REC_DSPS          8u              /* = APOLLO_MAX_DSPS */
 #define STRIP_REC_INPUTS        8u              /* = STRIP_PLAN_INPUTS */
 
@@ -40,10 +47,10 @@ typedef struct _STRIP_RECORD {
     ULONG   BootWord[STRIP_REC_DSPS];   /* right after this driver's last ring connect */
     ULONG   State;                  /* STRIP_REC_* */
     ULONG   Keep;                   /* RUNNING strips are left running at the D0 exit */
-    ULONG   Dsp, Mask, Rate, Limit; /* the plan: strip DSP, StripMask, Hz, stage (STRIP_STEP_*) */
+    ULONG   Dsp, Mask, Rate, Limit; /* the plan: strip DSP, StripMask [| StripVirtualMask << 8], Hz, stage (STRIP_STEP_*) */
     ULONG   ModuleHash;             /* the pins the strips were built from (strips.c StripsModulesHash) */
-    ULONG   PlanHash;               /* strip_adopt.h StripPlanHash */
-    ULONG   Header[STRIP_REC_INPUTS];
+    ULONG   PlanHash;               /* strip_adopt.h StripPlanHash (StripPlanHashPm: the Virtual strips' words too) */
+    ULONG   Header[STRIP_REC_INPUTS];   /* the Mic strips' (the Virtual headers follow from the plan, which the hash covers) */
     ULONG   Geom[11];               /* strip DSP pool registers: size 0-3, base 0-3, scratch 1-3 */
     ULONG   Plugins;                /* plug-in instances placed on the strip DSP */
     ULONG   BuiltDate;              /* (days since 2007-01-01 << 12) + minute of day */

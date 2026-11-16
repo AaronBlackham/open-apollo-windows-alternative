@@ -680,7 +680,7 @@ const Units = (() => {
     liveCells.clear();
     const d = U.draft, C = combined(d);
     const bar = applyBar(d, C);
-    root.replaceChildren(unitsPanel(d), clockPanel(d), orderPanel(d, C), routingPanel(d, C), bar);
+    root.replaceChildren(unitsPanel(d), clockPanel(d), Clock.linkPanel(), orderPanel(d, C), routingPanel(d, C), bar);   /* [Clock] the monitor link (clockui.js) */
     document.body.style.setProperty('--ur-bar-h', `${bar.offsetHeight}px`);
     view.scrollTop = keep;
     if (fkey) { const f = root.querySelector(`[data-fkey="${CSS.escape(fkey)}"]`); if (f) f.focus(); }

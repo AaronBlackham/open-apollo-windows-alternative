@@ -1216,9 +1216,12 @@ static __inline ULONG PlugLedgerStripScratch(PLUG_LEDGER *L)
     return PLUG_OK;
 }
 
-/* On a fresh ledger: the strips' scratch floor first, then their room (both never handed out). */
-static __inline ULONG PlugLedgerBookStrips(PLUG_LEDGER *L, ULONG CodeWords, const ULONG PerStrip[4], ULONG Strips,
-                                           PLUG_LEASE Out[4])
+/*
+ * On a fresh ledger: the strips' scratch floor first, then their room (both never handed out). [Virtual] Room[p] = the
+ * words pool p's strips take below its top (strip_plan.h StripPlanRoom: the model's Mic strips and the Input Strips of
+ * StripVirtualMask), one block per pool from the top down.
+ */
+static __inline ULONG PlugLedgerBookStripRoom(PLUG_LEDGER *L, ULONG CodeWords, const ULONG Room[4], PLUG_LEASE Out[4])
 {
     ULONG p, err;
 
@@ -1229,9 +1232,21 @@ static __inline ULONG PlugLedgerBookStrips(PLUG_LEDGER *L, ULONG CodeWords, cons
     }
     err = PlugLedgerReserve(L, 0, CodeWords, PLUG_ID_STRIPS, 0, &Out[0]);
     for (p = 1; p < PLUG_POOLS && err == PLUG_OK; p++) {
-        err = PlugLedgerReserve(L, p, PerStrip[p] * Strips, PLUG_ID_STRIPS, 0, &Out[p]);
+        err = PlugLedgerReserve(L, p, Room[p], PLUG_ID_STRIPS, 0, &Out[p]);
     }
     return err;
+}
+
+/* The same for Strips strips of PerStrip[p] words each (the Mic strips only: every build before [Virtual]). */
+static __inline ULONG PlugLedgerBookStrips(PLUG_LEDGER *L, ULONG CodeWords, const ULONG PerStrip[4], ULONG Strips,
+                                           PLUG_LEASE Out[4])
+{
+    ULONG room[4], p;
+
+    for (p = 0; p < 4; p++) {
+        room[p] = PerStrip[p] * Strips;
+    }
+    return PlugLedgerBookStripRoom(L, CodeWords, room, Out);
 }
 
 /* ------------------------------------------------------------------ */

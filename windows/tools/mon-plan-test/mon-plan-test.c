@@ -27,6 +27,9 @@
  *   8. [Clock] the front panel (driver\clock_plan.h): the live readback words of both units decoded (knob mode,
  *      level, lock), a knob turn / press / talkback as changes, a host write's echo told from the panel, and the
  *      monitor link's rules (only the knob unit's own changes, the level as clamped steps, talkback dim).
+ *   9. [Virtual] the Virtual buses (VIRTUAL n = 0x18 + n - 1) of the Input Strips a unit builds: ApolloMonEncodeEx with
+ *      no Virtual bus is ApolloMonEncode for every code and value (so 1. holds for mixer.c's path); with VIRTUAL n's bit
+ *      every mix, cue and aux family takes that bus as it takes ANALOG 1, nothing else moves, mute-all and solo cover it.
  * Exit code 0 = all pass.
  *
  * SPDX-License-Identifier: GPL-2.0-only
@@ -1546,6 +1549,183 @@ static void CheckOutputs(void)
     Expect(X, 0x1D, 8, R_INVALID, 0, 0, 0, "identify 8");
 }
 
+/*
+ * 9. [Virtual] The Virtual buses (VIRTUAL n = bus 0x18 + n - 1) of the Input Strips the unit builds (strips.c
+ * ApolloStripsVirtualBuses -> ApolloMonEncodeEx's Extra): with Extra 0 every code and every write is
+ * ApolloMonEncode's (so the x8p-unchanged proof above stands for the driver's path); with VIRTUAL n's bit the mix,
+ * cue and aux codes of that bus are taken exactly like an ANALOG bus's, every other bus and code as before, and
+ * mute-all and solo cover it; bits outside 0x18-0x1F are ignored.
+ */
+static int SameWrite(const APOLLO_MON_WRITE *A, const APOLLO_MON_WRITE *B, unsigned long BusesExtra)
+{
+    return A->Kind == B->Kind && A->Setting == B->Setting && A->Value == B->Value && A->Mask == B->Mask &&
+           A->Cue == B->Cue && A->Bus == B->Bus && A->Arg == B->Arg && A->Aux == B->Aux &&
+           A->Buses == (B->Buses | (ApolloMonIsMix(B) ? BusesExtra : 0ul));
+}
+
+/* The bus a mix, cue or aux code names (0xFFFFFFFF: none). */
+static unsigned long CodeBus(unsigned long P)
+{
+    if (P >= APOLLO_MP_AUX_FIRST && P <= APOLLO_MP_AUX_LAST) {
+        return (APOLLO_MP_AUX_KIND(P) <= 2ul && (P & 0xC0ul) == 0) ? (P & 0x1Ful) : 0xFFFFFFFFul;
+    }
+    if (P >= APOLLO_MP_MIX_FIRST && P <= APOLLO_MP_MIX_LAST) {
+        return APOLLO_MP_MIX_KIND(P) <= 3ul ? (P & 0xFFul) : 0xFFFFFFFFul;
+    }
+    if (P >= 0x1000ul && P <= 0x2FFFul) {
+        return P & 0xFFul;
+    }
+    return 0xFFFFFFFFul;
+}
+
+static void CheckVirtualBuses(void)
+{
+    static const LONG vals[] = { -2000000000L, -122L, -121L, -120L, -101L, -100L, -12L, -1L, 0L, 1L, 2L, 3L, 4L, 24L,
+                                 25L, 100L, 101L, 192L, 193L };
+    static const int models[3] = { X, T, 0 };
+    const unsigned long v1 = 1ul << 0x18, all = APOLLO_MON_VIRTUAL_BUSES, twx4 = 0x0F000000ul;
+    unsigned long p, bad = 0, n = 0, took = 0, m;
+    APOLLO_MON_WRITE w0, w1, w2;
+    APOLLO_MIX_STATE before, after;
+    unsigned int k;
+    int r0, r1, r2;
+    char what[220];
+
+    Check(APOLLO_MON_VIRTUAL_BUS(1) == 0x18ul && APOLLO_MON_VIRTUAL_BUS(8) == 0x1Ful && APOLLO_MON_VIRTUAL_BUSES == 0xFF000000ul,
+          "virtual: VIRTUAL 1-8 = buses 0x18-0x1F (synch_in 24-31), one mask bit each");
+    Check(APOLLO_MP_AUX_SEND(1, 0x18) == 0x6038ul && APOLLO_MP_AUX_POST(0, 0x1F) == 0x621Ful &&
+          APOLLO_MP_CUE_SEND(3, 0x18) == 0x1318ul && APOLLO_MP_MIX_SOLO(0x1F) == 0x431Ful,
+          "virtual: the codes carry buses 0x18-0x1F (aux: 5-bit index, bits 6-7 clear)");
+
+    /* Extra 0, and Extra outside the Virtual buses: exactly ApolloMonEncode, on both models and no model */
+    for (m = 0; m < 3; m++) {
+        const APOLLO_MON_MODEL *M = ApolloMonModelFor(models[m]);
+
+        for (p = 0; p < 0x7000; p++) {
+            for (k = 0; k < RTL_NUMBER_OF(vals); k++) {
+                r0 = ApolloMonEncode(M, p, vals[k], &w0);
+                r1 = ApolloMonEncodeEx(M, 0, p, vals[k], &w1);
+                r2 = ApolloMonEncodeEx(M, 0x00FFFFFFul, p, vals[k], &w2);
+                n++;
+                if (r0 != r1 || r0 != r2 || (r0 == APOLLO_MON_OK && (!SameWrite(&w1, &w0, 0) || !SameWrite(&w2, &w0, 0)))) {
+                    if (bad++ < 5) {
+                        sprintf_s(what, sizeof(what), "virtual: model %d code 0x%lX value %ld: Encode %d, EncodeEx(0) %d, "
+                                  "EncodeEx(0x00ffffff) %d", models[m], p, vals[k], r0, r1, r2);
+                        Check(0, what);
+                    }
+                }
+            }
+        }
+    }
+    sprintf_s(what, sizeof(what), "virtual: Extra 0 (and bits outside 0x18-0x1F) = ApolloMonEncode for %lu (model, code, value) "
+              "triples: the x8p-unchanged proof holds for mixer.c's path", n);
+    Check(bad == 0, what);
+
+    /* x8p with VIRTUAL 1 (StripVirtualMask 0x01): bus 0x18 taken by every mix, cue and aux family; nothing else moves */
+    bad = 0;
+    n = 0;
+    for (m = 0; m < 2; m++) {
+        const APOLLO_MON_MODEL *M = ApolloMonModelFor(models[m]);
+        unsigned long extra = (m == 0) ? v1 : twx4;
+
+        for (p = 0; p < 0x7000; p++) {
+            unsigned long b = CodeBus(p);
+
+            for (k = 0; k < RTL_NUMBER_OF(vals); k++) {
+                r0 = ApolloMonEncode(M, p, vals[k], &w0);
+                r1 = ApolloMonEncodeEx(M, extra, p, vals[k], &w1);
+                n++;
+                if (b < 32 && ((extra >> b) & 1ul) != 0 && ((p >> 12) != 3ul)) {
+                    /* the Virtual bus: refused before (no strip), now what an ANALOG bus gets with this value */
+                    unsigned long q = (p & ~0x1Ful & ~0xE0ul) | ((p >= APOLLO_MP_AUX_FIRST) ? (p & 0x20ul) : 0ul);
+                    APOLLO_MON_WRITE wa;
+                    int ra;
+
+                    if (p < APOLLO_MP_AUX_FIRST) {
+                        q = p & ~0xFFul;        /* the same code on bus 0 (ANALOG 1) */
+                    }
+                    ra = ApolloMonEncode(M, q, vals[k], &wa);
+                    /* before: refused for the bus (a cue the model lacks: not here, as for any bus) */
+                    if (r0 != ((ra == APOLLO_MON_NOT_HERE) ? APOLLO_MON_NOT_HERE : APOLLO_MON_BAD_VALUE) || r1 != ra ||
+                        (r1 == APOLLO_MON_OK && (w1.Kind != wa.Kind || w1.Bus != b || w1.Arg != wa.Arg || w1.Cue != wa.Cue ||
+                                                 w1.Aux != wa.Aux))) {
+                        if (bad++ < 5) {
+                            sprintf_s(what, sizeof(what), "virtual: model %d code 0x%lX (bus 0x%lX) value %ld: before %d, now %d, "
+                                      "ANALOG 1 gets %d", models[m], p, b, vals[k], r0, r1, ra);
+                            Check(0, what);
+                        }
+                    } else if (r1 == APOLLO_MON_OK) {
+                        took++;
+                    }
+                } else if (r0 != r1 || (r0 == APOLLO_MON_OK && !SameWrite(&w1, &w0, extra))) {
+                    if (bad++ < 5) {
+                        sprintf_s(what, sizeof(what), "virtual: model %d code 0x%lX value %ld: %d before, %d with the Virtual "
+                                  "buses (another bus or code must not change)", models[m], p, vals[k], r0, r1);
+                        Check(0, what);
+                    }
+                }
+            }
+        }
+    }
+    sprintf_s(what, sizeof(what), "virtual: x8p + VIRTUAL 1, Twin X + VIRTUAL 1-4: their buses take every mix/cue/aux family as "
+              "ANALOG 1 does (%lu writes), every other code and bus as before (%lu triples)", took, n);
+    Check(bad == 0 && took > 600, what);
+
+    /* by name, the ones Apollo Control will send */
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_LEVEL(0x18), -12, &w1) == APOLLO_MON_OK &&
+          w1.Kind == APOLLO_MONW_MIX_LEVEL && w1.Bus == 0x18 && w1.Arg == -12 && w1.Buses == (0x4FFul | v1),
+          "virtual: x8p mix level of VIRTUAL 1 (-6 dB): bus 0x18; the mixed buses 0x010004FF");
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_PAN(0x18), -100, &w1) == APOLLO_MON_OK &&
+          ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_MUTE(0x18), 1, &w1) == APOLLO_MON_OK &&
+          ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_SOLO(0x18), 1, &w1) == APOLLO_MON_OK,
+          "virtual: VIRTUAL 1 pan (not the talkback's rule), mute, solo");
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_CUE_SEND(0, 0x18), 0, &w1) == APOLLO_MON_OK &&
+          w1.Kind == APOLLO_MONW_SEND && w1.Cue == 0 && w1.Bus == 0x18 &&
+          ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_CUE_PAN(3, 0x18), 30, &w1) == APOLLO_MON_OK &&
+          w1.Kind == APOLLO_MONW_PAN && w1.Cue == 3,
+          "virtual: VIRTUAL 1's sends to CUE 1-4 (level, pan)");
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_AUX_SEND(1, 0x18), -6, &w1) == APOLLO_MON_OK &&
+          w1.Kind == APOLLO_MONW_AUX_SEND && w1.Aux == 1 && w1.Bus == 0x18 &&
+          ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_AUX_POST(0, 0x18), 1, &w1) == APOLLO_MON_OK &&
+          w1.Kind == APOLLO_MONW_AUX_POST,
+          "virtual: VIRTUAL 1's aux sends (AUX 2 level, AUX 1 post-fader)");
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_LEVEL(0x19), 0, &w1) == APOLLO_MON_BAD_VALUE &&
+          ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_CUE_SEND(0, 0x19), 0, &w1) == APOLLO_MON_BAD_VALUE &&
+          ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_AUX_SEND(0, 0x19), 0, &w1) == APOLLO_MON_BAD_VALUE &&
+          ApolloMonEncode(ApolloMonModelFor(X), APOLLO_MP_MIX_LEVEL(0x18), 0, &w1) == APOLLO_MON_BAD_VALUE,
+          "virtual: VIRTUAL 2 without its strip, and VIRTUAL 1 on a unit without one: refused (invalid parameter)");
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(T), twx4, APOLLO_MP_CUE_SEND(1, 0x1B), 0, &w1) == APOLLO_MON_OK &&
+          ApolloMonEncodeEx(ApolloMonModelFor(T), twx4, APOLLO_MP_CUE_SEND(2, 0x18), 0, &w1) == APOLLO_MON_NOT_HERE,
+          "virtual: Twin X VIRTUAL 4 to LINE 3/4 (CUE 2) taken; CUE 3 still not on a Twin X");
+    Check(ApolloMonEncodeEx(0, all, APOLLO_MP_MIX_LEVEL(0x18), 0, &w1) == APOLLO_MON_NOT_HERE,
+          "virtual: no monitor plan, no Virtual bus");
+    Check(ApolloPlanMonitorParamAllowed(ApolloBringupPlanFor(X), APOLLO_MP_MIX_LEVEL(0x18)) &&
+          ApolloPlanMonitorParamAllowed(ApolloBringupPlanFor(X), APOLLO_MP_CUE_SEND(0, 0x18)) &&
+          ApolloPlanMonitorParamAllowed(ApolloBringupPlanFor(X), APOLLO_MP_AUX_SEND(0, 0x18)) &&
+          ApolloPlanMonitorParamAllowed(ApolloBringupPlanFor(T), APOLLO_MP_MIX_MUTE(0x18)),
+          "virtual: the plan filter passes the families whatever the bus (the encoder decides the bus)");
+
+    /* mute-all and solo cover the Virtual buses the unit mixes */
+    memset(&before, 0, sizeof(before));
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_MUTE_ALL, 1, &w1) == APOLLO_MON_OK &&
+          w1.Buses == (0x4FFul | v1), "virtual: mute-all covers VIRTUAL 1");
+    after = before;
+    ApolloMixStore(&after, &w1);
+    Check((after.Muted & v1) != 0 && (ApolloMixTargets(&before, &after, &w1) & v1) != 0,
+          "virtual: mute-all mutes and re-sends VIRTUAL 1 (0.0)");
+    Check(ApolloMonEncodeEx(ApolloMonModelFor(X), v1, APOLLO_MP_MIX_SOLO(0), 1, &w1) == APOLLO_MON_OK, "solo input 1");
+    after = before;
+    ApolloMixStore(&after, &w1);
+    {
+        unsigned long l, r, t = ApolloMixTargets(&before, &after, &w1);
+
+        ApolloMixCoef(&after, 0x18, &l, &r);
+        Check((t & v1) != 0 && l == 0 && r == 0, "virtual: soloing input 1 silences VIRTUAL 1 (sent as 0.0)");
+        ApolloMixCoef(&after, 0, &l, &r);
+        Check(l == 0x3F3504F3ul && r == 0x3F3504F3ul && (t & 1ul) == 0, "virtual: ... and leaves the soloed input alone");
+    }
+}
+
 int main(void)
 {
     CheckX8pUnchanged();
@@ -1563,6 +1743,7 @@ int main(void)
     CheckAux();
     CheckPanel();
     CheckOutputs();
+    CheckVirtualBuses();    /* [Virtual] */
     printf("mon-plan-test: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

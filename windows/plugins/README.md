@@ -33,6 +33,7 @@ shared. `specs\` is open-apollo-panels (CC0), still kept local. Only `tools\` is
 | `.venv\` | Python 3.13.1 venv: numpy 2.5.4, unicorn 2.1.4, capstone 5.0.9, pefile 2024.8.26 (upstream's `requirements.txt`) |
 | `tools\open-apollo\` | Vendored open-apollo 2.1.0 code (GPL-2.0, `LICENSE`, `NOTICE.md`), same relative layout as upstream so its paths still resolve: `tools\plugin-mapper\` (patched, below), `mixer-engine\` (unmodified subset: the native carrier, providers, composer and what they import, plus `device_maps\native_known_good.json` and two test files), `tools\plugin-qualify.py` (unmodified, its offline panel check), `configs\plugin-panels.conf` (the pin), `console-rs\crates\oa-assets\data\firmware-pins.json` (strip module pins) |
 | `tools\oa_assets_dsp.py` | Python port of `oa-assets dsp` (Rust): builds the module store |
+| `tools\setup-plugins.ps1`, `tools\setup_plugins.py` | [PlugSetup] Set up plug-ins on a release install (section below) |
 | `tools\install_panels.py` | Python port of `scripts/install-panels.sh` |
 | `tools\offline_check.py` | Upstream's offline recipe checks per bundle, compared with upstream's reference data (plus the upstream-evidence checks below) |
 | `tools\bench.py` | What gate P1 needs from one bundle |
@@ -79,6 +80,40 @@ ANSI code page, which would silently misread the panel specs. `--authorized all`
 licence answer; `--authorized FILE` (one name per line) maps only what the x8p authorizes:
 `p1\authorized.txt` is the x8p's own answer on our driver (Nov 15 2026, 112 names). `auto` asks
 upstream's daemon, which is not here.
+
+## On a release install: Set up plug-ins ([PlugSetup], Nov 16 2026)
+
+`tools\setup-plugins.ps1` (PowerShell 5.1, ASCII) is the section above as one resumable flow for a user without this
+developer layout. The installer ships `tools\` as `plugin-setup\tools\` (source only, `installer\stage.ps1`) and
+`plughelper.py` next to the exe; Apollo Control runs the script hidden from the plug-in browser or Settings, the Start
+menu's "Set up UAD plug-ins" runs it in a console. It builds `%LOCALAPPDATA%\Avium\ApolloPlugins` with this folder's
+layout (`tools\ specs\ store\ bundles\ work\ downloads\`, plus `python\` and `setup\`), which `plugin_engine.h`
+`FindPlugins` already looked at; its Python is `python\python.exe` where this layout has `.venv` (`PluginsPython`).
+
+| Phase | What |
+|---|---|
+| check | 64-bit, the UAD install by file names (else stops: "No UAD install found", exit 5, nothing downloaded), 700 MB free |
+| python | `python-3.13.17-embed-amd64.zip` from www.python.org, SHA-256 `9e35319b...ddb38` (python.org's 3.13.17 release page); `python313._pth` removed (it forces isolated mode with the script's folder off `sys.path`, which the mapper's child scripts need); every run gets `PYTHONHOME` = the runtime, `PYTHONNOUSERSITE=1` and no other `PYTHON*` variable (without `PYTHONHOME` a 3.13 install's registry `PythonPath` on this PC added its `Lib` and `DLLs`) |
+| packages | pip 26.2.2 run from its wheel, offline: `--no-index --find-links --require-hashes --only-binary :all: --no-deps` with the four pinned wheels (SHA-256 from PyPI; their `RECORD`s equal this `.venv`'s) |
+| tools | this folder copied (changed files only) |
+| specs | the script downloads the tarball `plugin-panels.conf` pins (github.com, redirected to release-assets.githubusercontent.com) and checks its SHA-256, then `install_panels.py --from` (the same checks again). Not Python's own download: on a fresh Windows (Windows Sandbox) its `ssl` failed with CERTIFICATE_VERIFY_FAILED, since Windows fetches GitHub's root on demand and Python reads only the roots already in the store |
+| store | `oa_assets_dsp.py dsp --from <SystemDrive>\` and `strips`; skipped while the UAD install's file list, sizes and times are unchanged |
+| licence | `setup_plugins.py names`: the render ids Apollo Control passes (`-AuthorizedIds`, those the units' own licence answers admit) to names through the store manifest (own render id or a matched `UA.xml` collection) |
+| map | `python -X utf8 -m plugin_mapper` from the mapper folder, absolute paths, `--markers` (parsed for progress), `--authorized FILE` or `all`, workers = CPU threads - 1 |
+| modules | with `PluginHost` on: `setup_plugins.py modules` (the bundles' architecture 0/2 modules less the 5 strip pins, as Settings > Install modules) then `apollo-control.exe --plugin-admin <request>` elevated |
+
+Progress: `setup\status.json` (schema `apollo-plugin-setup/1`, written atomically, a beat every 5 s), log
+`setup\setup.log`, phase stamps `setup\state.txt`, one run at a time (`setup\.lock`), Cancel = `setup\cancel`. All
+of it below-normal priority. Network, from the script only: www.python.org and files.pythonhosted.org, and the
+github.com URL `plugin-panels.conf` pins with GitHub's release-asset host (other redirects refused, Universal Audio
+hosts refused outright). Self-test (offline, about
+5 s): `powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup-plugins.ps1 -SelfTest` (pins, hosts, quoting,
+JSON, no-UAD stop, lock, cancel; `setup_plugins.py selftest` with a Python at hand).
+
+Measured Nov 16 2026 (UAD 12.0.0.602, scratch root, `-AuthorizedIds 825 -SkipModules`): downloads 3 s, pip 16 s,
+specs 6 s, store 13 s (229 DLLs, 971 modules, the 7 strip pins match), Precision De-Esser mapped mono and stereo in
+27.9 s on one worker, AMS RMX16 in 9.2 s, a rerun 4 s ("already mapped"); `plughelper.py` ran open, plan and accept on
+the De-Esser's map with that runtime under `-I`. 230 MB before maps.
 
 ## What was changed for Windows
 

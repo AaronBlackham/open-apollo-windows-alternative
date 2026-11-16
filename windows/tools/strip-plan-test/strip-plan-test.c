@@ -25,8 +25,15 @@
  *   - [Warm] warm-start adoption (strip_adopt.h, docs/STRIPS.md 12): the record's seal, the plan
  *     hash (pinned for the x8p), the boot-word rules with the logged words, the anchor and decision
  *     tables, and start-by-start lives of an x8p and a Twin X. "--adopt-hash" prints the hashes.
+ *   - [Virtual] the Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13): their tables against upstream's, every
+ *     Input Strip's words against a verbatim port of open-apollo's ua_strip_build_input at the addresses its
+ *     ua_strip_priv_addrs gives (x8p with 8 Mic strips, Twin X with 2, every stage), the x8p's VIRTUAL 1 word by
+ *     word, the plan-mask functions equal to the Mic-only ones without Virtual strips, the pass through the
+ *     stream checks, the blocks inside the pools and the room the ledger books, the refusal of a mask that does
+ *     not fit, the plan hash (the pinned x8p hash unchanged), the version 2 record and the decisions.
  * Exit code 0 = all pass. "--print [mask]" prints the pass for a mask (default 0xff);
- * "--print-probe [mask]" prints the repair transactions; "--digests" prints the planner digests.
+ * "--print-probe [mask]" prints the repair transactions; "--digests" prints the planner digests;
+ * "--print-pm [plan mask]" prints the x8p pass for StripMask | StripVirtualMask << 8 (default 0x1ff).
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -1369,6 +1376,832 @@ static void CheckAdopt(void)
     Check(a == STRIP_ANCHOR_OTHER_HOST, "Twin X life: a connect by someone else between ours: refused");
 }
 
+/* ------------------------------------------------------------------ */
+/* [Virtual] Virtual Input Strips (strip_plan.h, docs/STRIPS.md 13)    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * open-apollo's builder as written there, recording what it puts into a transaction, so the planner's words
+ * can be compared with upstream's word for word: oa:driver/ua_strips.c:372-383 and 394-412 (rows, m0),
+ * 503-520 (ua_strip_priv_addrs), 555-601 (header, block, start), 713-745 (ua_strip_build_input), 990-1009
+ * (the pass's kinds: every Mic strip, then the Input Strips), oa:driver/ua_plugin_upload.c ua_memspec_compile,
+ * oa:driver/ua_plugin_host.h:319-324 (UA_CMD_ZERO, UA_CMD_MEMSPEC, UA_MEMSPEC_ROWS_MAX).
+ */
+#define OA_KIND_MIC             0
+#define OA_KIND_INPUT           1
+#define OA_CMD_ZERO             0x00080004u
+#define OA_CMD_MEMSPEC          0x00150000u
+#define OA_MEMSPEC_ROWS_MAX     128u
+#define OA_XENTS                128u
+
+typedef struct _OA_ROW {
+    ULONG pool, dwords, link, flags;
+} OA_ROW;
+
+static const OA_ROW oa_strip_rows[10] = {
+    { 1, 0x008, 0xffffffff, 0 }, { 1, 0x038, 0x00000006, 0 }, { 2, 0x010, 0x00000036, 0 },
+    { 1, 0x010, 0x00000037, 0 }, { 3, 0x010, 0x0000001b, 0 }, { 1, 0x004, 0x0000001c, 0 },
+    { 3, 0x800, 0x0000000e, 0 }, { 3, 0x800, 0x0000000f, 0 }, { 3, 0x800, 0x00000006, 0 },
+    { 3, 0x800, 0x00000007, 0 },
+};
+static const OA_ROW oa_strip_input_rows[6] = {
+    { 1, 0x008, 0xffffffff, 0 },        /* instance header */
+    { 1, 0x01e, 0x00000006, 0 },        /* m0 -> header[6] */
+    { 3, 0x100, 0x0000000e, 0 },        /* c0 -> m0[0x0e] */
+    { 3, 0x100, 0x0000000f, 0 },        /* c1 -> m0[0x0f] */
+    { 3, 0x100, 0x00000006, 0 },        /* c2 -> m0[0x06] */
+    { 3, 0x100, 0x00000007, 0 },        /* c3 -> m0[0x07] */
+};
+static const unsigned int oa_strip_desc[2] = { 0, 1 };
+static const ULONG oa_strip_input_m0[9] = {
+    0x00df7fe4, 0x40000000, 0x00000001, 0x00000001, 0x00000004, 0x00000100,
+    0x000000c8, 0x3a888889, 0x3b83126f,
+};
+static const ULONG oa_strip_tops[4] = { 0, 0x0009d1b8, 0x000c6ffe, 0x08ffe000 };
+
+/* What a transaction got: inline words, or a DMA command's words (Len of them at Words[Off]). */
+typedef struct _OA_XACT {
+    ULONG N, Err, Used;
+    ULONG Dma[OA_XENTS], W[OA_XENTS][4], Off[OA_XENTS], Len[OA_XENTS];
+    ULONG Words[2048];
+} OA_XACT;
+
+static void oa_xact_inline(OA_XACT *x, ULONG a, ULONG b, ULONG c, ULONG d)
+{
+    if (x->N >= OA_XENTS) {
+        x->Err = 1;
+        return;
+    }
+    x->Dma[x->N] = 0;
+    x->W[x->N][0] = a;
+    x->W[x->N][1] = b;
+    x->W[x->N][2] = c;
+    x->W[x->N][3] = d;
+    x->N++;
+}
+
+static void oa_strip_dma(OA_XACT *x, const ULONG *w, unsigned int n)
+{
+    if (x->N >= OA_XENTS || x->Used + n > 2048) {
+        x->Err = 1;
+        return;
+    }
+    x->Dma[x->N] = 1;
+    x->Off[x->N] = x->Used;
+    x->Len[x->N] = n;
+    memcpy(&x->Words[x->Used], w, n * sizeof(ULONG));
+    x->Used += n;
+    x->N++;
+}
+
+static int oa_memspec_compile(const OA_ROW *rows, unsigned int n, const unsigned int *desc, unsigned int n_desc,
+                              const ULONG *addr, ULONG *words)
+{
+    unsigned int c, j, m = 0, first, last, tgt_first, tgt_count, t;
+    ULONG link, off;
+
+    if (!rows || !desc || !addr || !words || !n || n > OA_MEMSPEC_ROWS_MAX || !n_desc || n_desc > n || desc[0])
+        return -1;
+    for (j = 0; j < n; j++)
+        if (rows[j].pool < 1 || rows[j].pool > 3 || !rows[j].dwords || (rows[j].flags != 0 && rows[j].flags != 2) ||
+            addr[j] == 0xffffffff || (addr[j] & 1) || (unsigned long long)addr[j] + rows[j].dwords > 0xffffffffULL)
+            return -1;
+    for (c = 1; c < n_desc; c++)
+        if (desc[c] <= desc[c - 1] || desc[c] >= n)
+            return -1;
+    if (rows[0].link != 0xffffffff)
+        return -1;
+    words[m++] = OA_CMD_MEMSPEC | (2 * n - 1);
+    for (c = 0; c < n_desc; c++) {
+        first = desc[c];
+        last = c + 1 < n_desc ? desc[c + 1] : n;
+        for (j = first; j < last; j++) {
+            link = rows[j].link;
+            if (link == 0xffffffff) {
+                if (j)
+                    return -1;
+                continue;
+            }
+            tgt_first = j == first ? 0 : first;
+            tgt_count = j == first ? (n_desc > 1 ? desc[1] : n) : last - first;
+            t = link >> 24;
+            off = link & 0xffffff;
+            if (t >= tgt_count || off >= rows[tgt_first + t].dwords)
+                return -1;
+            words[m++] = addr[tgt_first + t] + off;
+            words[m++] = addr[j];
+        }
+    }
+    return m == 2 * n - 1 ? (int)m : -1;
+}
+
+/* ua_strip_priv_addrs on the recipe's empty pools: strip after strip, each its kind's rows, top-down */
+static void oa_strip_priv_addrs(const unsigned char *kinds, unsigned int k, ULONG addr[10])
+{
+    const OA_ROW *rows;
+    ULONG cur[4];
+    unsigned int p, j, s, n;
+
+    for (p = 0; p < 4; p++)
+        cur[p] = oa_strip_tops[p];
+    for (s = 0; s <= k; s++) {
+        rows = kinds[s] == OA_KIND_INPUT ? oa_strip_input_rows : oa_strip_rows;
+        n = kinds[s] == OA_KIND_INPUT ? 6 : 10;
+        for (j = 0; j < n; j++) {
+            cur[rows[j].pool] -= rows[j].dwords;
+            addr[j] = cur[rows[j].pool];
+        }
+    }
+}
+
+static void oa_strip_build_header(OA_XACT *x, ULONG hdr, ULONG plugin)
+{
+    const ULONG w[9] = { (0x14u << 16) | 9u, hdr, 0x24, 0x40000000, 1, 1, 0x22, 1, plugin };
+
+    oa_strip_dma(x, w, 9);
+}
+
+static void oa_strip_build_block(OA_XACT *x, ULONG addr, const ULONG *v, unsigned int n)
+{
+    ULONG w[64];
+    unsigned int j;
+
+    w[0] = (0x14u << 16) | (2 + n);
+    w[1] = addr;
+    for (j = 0; j < n; j++)
+        w[2 + j] = v[j];
+    oa_strip_dma(x, w, 2 + n);
+}
+
+static int oa_strip_build_start(OA_XACT *x, ULONG hdr, ULONG synch, unsigned int steps)
+{
+    if (steps && steps <= 5)
+        return (int)x->Err;
+    oa_xact_inline(x, 0x001F0004, 0x20u << 16 | synch, hdr, 0);
+    if (steps && steps <= 6)
+        return (int)x->Err;
+    oa_xact_inline(x, 0x001E0004, synch, 8, 0x20);
+    oa_xact_inline(x, 0x001E0004, synch, 8, 0x20);
+    oa_xact_inline(x, 0x001E0004, synch, 7, 0x1ffff);   /* ua_strip_route, input_strips_route default */
+    return (int)x->Err;
+}
+
+static int oa_strip_build_input(OA_XACT *x, const ULONG addr[6], ULONG synch, unsigned int steps)
+{
+    ULONG w[2 * 6];
+    unsigned int j;
+    int ret;
+
+    if (steps && steps <= 1)
+        return (int)x->Err;
+    for (j = 0; j < 6; j++)
+        oa_xact_inline(x, OA_CMD_ZERO, addr[j], 0, oa_strip_input_rows[j].dwords);
+    if (steps && steps <= 2)
+        return (int)x->Err;
+    ret = oa_memspec_compile(oa_strip_input_rows, 6, oa_strip_desc, 2, addr, w);
+    if (ret < 0)
+        return ret;
+    oa_strip_dma(x, w, (unsigned int)ret);
+    if (steps && steps <= 3)
+        return (int)x->Err;
+    oa_strip_build_header(x, addr[0], 0x83e);
+    if (steps && steps <= 4)
+        return (int)x->Err;
+    oa_strip_build_block(x, addr[1], oa_strip_input_m0, 9);
+    return oa_strip_build_start(x, addr[0], synch, steps);
+}
+
+/* Two plans say the same: error, addresses, entries 0..N-1 and payload 0..Len-1 (what lies past them is stale). */
+static int PlanSame(const STRIP_PLAN *A, const STRIP_PLAN *B)
+{
+    return A->Err == B->Err && A->N == B->N && A->Len == B->Len && A->N <= STRIP_PLAN_ENT_SLOTS &&
+           A->Len <= STRIP_PLAN_PAYLOAD_MAX && memcmp(A->Addr, B->Addr, sizeof(A->Addr)) == 0 &&
+           memcmp(A->Ent, B->Ent, A->N * sizeof(A->Ent[0])) == 0 &&
+           memcmp(A->Payload, B->Payload, A->Len * sizeof(A->Payload[0])) == 0;
+}
+
+/* Our StripSteps (1-9, 0 = all) as upstream's input_strips_steps: 1-6 the same, 7 and up everything (0). */
+static unsigned int OaSteps(ULONG Steps)
+{
+    ULONG s = StripPlanSteps(Steps);
+
+    return s >= STRIP_STEP_INPUT ? 0u : (unsigned int)s;
+}
+
+/* Does our plan p (a PREPARE) followed by START entries q[from..from+n) say exactly what x got? */
+static int SameAsUpstream(const STRIP_PLAN *p, const STRIP_PLAN *q, ULONG From, ULONG N, const OA_XACT *x)
+{
+    ULONG i, k = 0;
+
+    if (x->Err)
+        return 0;
+    for (i = 0; i < p->N; i++, k++) {
+        const STRIP_PLAN_ENT *e = &p->Ent[i];
+
+        if (k >= x->N || e->Dma != x->Dma[k])
+            return 0;
+        if (!e->Dma) {
+            if (memcmp(e->W, x->W[k], sizeof(e->W)) != 0)
+                return 0;
+        } else if (e->Dwords != x->Len[k] || memcmp(&p->Payload[e->Off], &x->Words[x->Off[k]], e->Dwords * sizeof(ULONG)) != 0) {
+            return 0;
+        }
+    }
+    for (i = 0; i < N; i++, k++) {
+        if (From + i >= q->N || k >= x->N || x->Dma[k] || q->Ent[From + i].Dma ||
+            memcmp(q->Ent[From + i].W, x->W[k], sizeof(q->Ent[0].W)) != 0)
+            return 0;
+    }
+    return k == x->N;
+}
+
+/*
+ * The Input Strip of VIRTUAL V+1 in a pass of every Mic strip of a model with MicSlots preamps and the Virtual strips
+ * of VMask (VIRTUAL 1..n contiguous from 1, where the fixed layout and upstream's packing agree): our PREPARE plus its
+ * START entries against ua_strip_build_input at the address ua_strip_priv_addrs gives, at stage Steps.
+ */
+static int VirtualMatchesUpstream(ULONG MicSlots, ULONG VMask, ULONG V, ULONG Steps)
+{
+    static OA_XACT x;
+    static STRIP_PLAN p, q;
+    unsigned char kinds[16];
+    ULONG addr[10], i, k = 0, slot = STRIP_SLOT_VIRTUAL0 + V, pm, from = 0, n;
+
+    if (!(VMask & (1u << V)))
+        return 0;
+    for (i = 0; i < MicSlots; i++)
+        kinds[k++] = OA_KIND_MIC;
+    for (i = 0; i <= V; i++)
+        if (VMask & (1u << i))
+            kinds[k++] = OA_KIND_INPUT;
+    oa_strip_priv_addrs(kinds, k - 1, addr);
+    memset(&x, 0, sizeof(x));
+    if (oa_strip_build_input(&x, addr, STRIP_VIRTUAL_SYNCH0 + V, OaSteps(Steps)) != 0)
+        return 0;
+    pm = StripPlanPm((1u << MicSlots) - 1, VMask);
+    if (StripPlanPrepareSlot(slot, MicSlots, Steps, 48000, &p) != 0 || StripPlanStartPm(pm, MicSlots, Steps, &q) != 0)
+        return 0;
+    for (i = 0; i < 6; i++)
+        if (StripPlanSteps(Steps) >= STRIP_STEP_ZERO && p.Addr[i] != addr[i])
+            return 0;
+    /* this strip's entries in the START: after those of every slot before it */
+    n = (StripPlanSteps(Steps) >= STRIP_STEP_INPUT) ? 4 : (StripPlanSteps(Steps) >= STRIP_STEP_SYNCH) ? 1 : 0;
+    for (i = 0; i < slot; i++)
+        if (pm & (1u << i))
+            from += n;
+    return SameAsUpstream(&p, &q, from, n, &x);
+}
+
+/* The blocks of slot K (Mic rows 0-9 or the Input Strip's 0-5): row J's pool and size. */
+static void SlotRow(ULONG K, ULONG J, ULONG *Pool, ULONG *Dwords)
+{
+    const STRIP_ROW *r = (K < STRIP_SLOT_VIRTUAL0) ? &g_StripRows[J] : &g_StripVRows[J];
+
+    *Pool = r->Pool & 3;
+    *Dwords = r->Dwords;
+}
+
+static ULONG SlotRows(ULONG K)
+{
+    return (K < STRIP_SLOT_VIRTUAL0) ? STRIP_PLAN_ROWS : STRIP_PLAN_VROWS;
+}
+
+/* Which strip of Pm holds Addr, and which row; 0 if none. */
+static int RowOfPm(ULONG Pm, ULONG MicSlots, ULONG Addr, ULONG *Slot, ULONG *Row)
+{
+    ULONG k, j, a[STRIP_PLAN_ROWS], pool, dw;
+
+    for (k = 0; k < STRIP_PLAN_SLOTS; k++) {
+        if (!(Pm & (1u << k)) || StripPlanSlotAddrs(k, MicSlots, a) != 0)
+            continue;
+        for (j = 0; j < SlotRows(k); j++) {
+            SlotRow(k, j, &pool, &dw);
+            if (Addr >= a[j] && Addr - a[j] < dw) {
+                *Slot = k;
+                *Row = j;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Is Addr a memspec link word of a strip of Pm (a block address the DSP follows)? */
+static int IsLinkWordPm(ULONG Pm, ULONG MicSlots, ULONG Addr)
+{
+    ULONG k, j, a[STRIP_PLAN_ROWS];
+
+    for (k = 0; k < STRIP_PLAN_SLOTS; k++) {
+        const STRIP_ROW *rows = (k < STRIP_SLOT_VIRTUAL0) ? g_StripRows : g_StripVRows;
+
+        if (!(Pm & (1u << k)) || StripPlanSlotAddrs(k, MicSlots, a) != 0)
+            continue;
+        for (j = 1; j < SlotRows(k); j++) {
+            ULONG tgt = (j == 1) ? a[0] : a[1];
+
+            if (Addr == tgt + (rows[j].Link & 0xFFFFFF))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* The pass over Pm as apollo.sys runs it (StripPassStepPm), flattened into the stream the strip DSP sees. */
+static int BuildPassPm(STREAM *S, ULONG Pm, ULONG MicSlots, ULONG Steps)
+{
+    static STRIP_PLAN p;
+    ULONG k, in, kind;
+
+    memset(S, 0, sizeof(*S));
+    for (k = 0; k <= STRIP_PLAN_SLOTS + 1; k++) {
+        kind = StripPassStepPm(Pm, Steps, k, &in);
+        if (kind == STRIP_XACT_END)
+            return 1;
+        if (kind == STRIP_XACT_PREPARE) {
+            if (StripPlanPrepareSlot(in, MicSlots, Steps, 48000, &p) != 0)
+                return 0;
+            EmitPlan(S, &p, in);
+        } else if (kind == STRIP_XACT_START) {
+            if (StripPlanStartPm(Pm, MicSlots, Steps, &p) != 0)
+                return 0;
+            EmitPlan(S, &p, 0xFFFFFFFFu);
+        } else {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+/* CheckPass's stream checks for a plan mask with Virtual strips (the SYNCH input is the slot's synch). */
+static void CheckPassPm(ULONG Pm, ULONG MicSlots, ULONG Steps, const char *Who)
+{
+    STREAM *s = (STREAM *)calloc(1, sizeof(STREAM));
+    ULONG i, n = 0, in, row, seen = 0, lastPrep = 0, firstSynch = 0xFFFFFFFFu, steps, a[STRIP_PLAN_ROWS];
+    int ownOk = 1, linkOk = 1, synchOk = 1, inputOk = 1;
+    char what[200];
+
+    if (s == NULL) {
+        Check(0, "out of memory");
+        return;
+    }
+    steps = StripPlanSteps(Steps);
+    for (i = 0; i < STRIP_PLAN_SLOTS; i++)
+        n += (Pm >> i) & 1;
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: pass plans", Who, Pm, steps);
+    Check(BuildPassPm(s, Pm, MicSlots, Steps) && !s->Overflow, what);
+    for (i = 0; i < s->N; i++) {
+        const EV *e = &s->Ev[i];
+
+        if (e->Kind == EV_MEM) {
+            ULONG in2, row2;
+
+            lastPrep = i;
+            if (e->Count == 0 || !RowOfPm(Pm, MicSlots, e->Addr, &in, &row) || in != e->Owner ||
+                !RowOfPm(Pm, MicSlots, e->Addr + e->Count - 1, &in2, &row2) || in2 != in || row2 != row)
+                ownOk = 0;
+            if ((e->Param == SRC_MEMSPEC && !IsLinkWordPm(Pm, MicSlots, e->Addr)) ||
+                (e->Param == SRC_WRITE && IsLinkWordPm(Pm, MicSlots, e->Addr)))
+                linkOk = 0;
+        } else if (e->Kind == EV_SYNCH) {
+            ULONG k = StripBusSlot(e->Arg);
+
+            if (firstSynch == 0xFFFFFFFFu)
+                firstSynch = i;
+            if (k >= STRIP_PLAN_SLOTS || !(Pm & (1u << k)) || (seen & (1u << k)) || e->Owner != 0xFFFFFFFFu ||
+                StripPlanSlotAddrs(k, MicSlots, a) != 0 || e->Addr != a[0])
+                synchOk = 0;
+            seen |= 1u << (k < 32 ? k : 0);
+        } else if (e->Kind == EV_INPUT) {
+            ULONG k = StripBusSlot(e->Arg);
+
+            if (k >= STRIP_PLAN_SLOTS || !(seen & (1u << k)) ||
+                !((e->Param == STRIP_INPUT_SPAN && e->Value == STRIP_SPAN_NONE) ||
+                  (e->Param == STRIP_INPUT_ROUTE && e->Value == STRIP_ROUTE_NONE)))
+                inputOk = 0;
+        } else {
+            inputOk = 0;
+        }
+    }
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: %lu PREPAREs + one START", Who, Pm, steps, n);
+    Check(s->Xacts == n + (steps >= STRIP_STEP_SYNCH && n ? 1u : 0u), what);
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: no strip memory written after a strip started", Who, Pm, steps);
+    Check(NoWriteAfterStart(s) && (firstSynch == 0xFFFFFFFFu || lastPrep < firstSynch), what);
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: each PREPARE writes only its own rows", Who, Pm, steps);
+    Check(ownOk, what);
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: memspec on link words only, no value on one", Who, Pm, steps);
+    Check(linkOk, what);
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: every strip started once, own header and synch, in the START",
+              Who, Pm, steps);
+    Check(synchOk && seen == (steps >= STRIP_STEP_SYNCH ? Pm : 0u), what);
+    sprintf_s(what, sizeof(what), "%s Pm 0x%04lx stage %lu: span/route words only after their SYNCH", Who, Pm, steps);
+    Check(inputOk, what);
+    free(s);
+}
+
+/* Every block of the strips of Pm: pairwise disjoint, inside the pools above the scratch, inside StripPlanRoom. */
+static int BlocksOk(ULONG Pm, ULONG MicSlots, const ULONG *Size, const ULONG *Base, const ULONG *Scr, int *Inside, int *InRoom)
+{
+    ULONG a[STRIP_PLAN_SLOTS][STRIP_PLAN_ROWS], k, j, k2, j2, room[4], pool, dw, pool2, dw2;
+    int ok = 1;
+
+    *Inside = 1;
+    *InRoom = 1;
+    StripPlanRoom(MicSlots, (Pm & STRIP_PM_VIRTUAL) >> 8, room);
+    for (k = 0; k < STRIP_PLAN_SLOTS; k++)
+        if ((Pm & (1u << k)) && StripPlanSlotAddrs(k, MicSlots, a[k]) != 0)
+            return 0;
+    for (k = 0; k < STRIP_PLAN_SLOTS; k++) {
+        if (!(Pm & (1u << k)))
+            continue;
+        for (j = 0; j < SlotRows(k); j++) {
+            ULONG lo = a[k][j], hi, start, top, sc;
+
+            SlotRow(k, j, &pool, &dw);
+            hi = lo + dw;
+            start = Base[pool] + (Base[pool] & 1);
+            top = start + (Size[pool] & ~1u);
+            sc = Scr[pool] + (Scr[pool] & 1);
+            if (sc < kStripScratch[pool])
+                sc = kStripScratch[pool];
+            if (lo < start + sc || hi > top || (lo & 1))
+                *Inside = 0;
+            if (lo < g_StripTop[pool] - room[pool] || hi > g_StripTop[pool])
+                *InRoom = 0;
+            for (k2 = 0; k2 < STRIP_PLAN_SLOTS; k2++) {
+                if (!(Pm & (1u << k2)))
+                    continue;
+                for (j2 = 0; j2 < SlotRows(k2); j2++) {
+                    ULONG lo2 = a[k2][j2];
+
+                    SlotRow(k2, j2, &pool2, &dw2);
+                    if ((k2 != k || j2 != j) && lo < lo2 + dw2 && lo2 < hi)
+                        ok = 0;
+                }
+            }
+        }
+    }
+    return ok;
+}
+
+/* strip_adopt.h's validator before [Virtual] (version 1 only): what an older build does with a record. */
+static int OldRecordValid(const STRIP_RECORD *R, ULONG Bytes)
+{
+    return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == 1 &&
+           R->Size == sizeof(*R) && R->Check == StripRecordSum(R) && R->NumDsps <= STRIP_REC_DSPS &&
+           R->State <= STRIP_REC_UNKNOWN;
+}
+
+/* AdoptLive / AdoptNow (above) for a plan mask with Virtual strips, on the model's Mic room. */
+static void AdoptLivePm(STRIP_RECORD *R, ULONG Pm, ULONG MicSlots, ULONG Limit, ULONG Rate, ULONG Dsp, ULONG NumDsps,
+                        int Keep, const ULONG *Geom)
+{
+    static STRIP_PLAN p;
+
+    AdoptLive(R, Pm & STRIP_PM_MIC, Limit, Rate, Dsp, NumDsps, Keep, Geom);
+    R->Mask = Pm;
+    R->PlanHash = StripPlanHashPm(Pm, MicSlots, Limit, Rate, Dsp, NumDsps, &p);
+    StripPlanHeaders(Pm, R->Header);
+}
+
+static void AdoptNowPm(STRIP_ADOPT_NOW *N, ULONG Anchor, int Adopt, int Rebuild, ULONG Pm, ULONG MicSlots, ULONG Limit,
+                       ULONG Rate, ULONG Dsp, ULONG NumDsps, const ULONG *Geom)
+{
+    static STRIP_PLAN p;
+
+    AdoptNow(N, Anchor, 0, Adopt, Rebuild, Pm & STRIP_PM_MIC, Limit, Rate, Dsp, NumDsps, Geom);
+    N->Mask = Pm;
+    N->PlanHash = StripPlanHashPm(Pm, MicSlots, Limit, Rate, Dsp, NumDsps, &p);
+}
+
+/* VIRTUAL 1 on the x8p's layout (8 Mic strips), every word: docs/STRIPS.md 13.2 lists these. */
+static const ULONG kV1Addr[6] = { 0x0009CF10, 0x0009CEF2, 0x08FEDE80, 0x08FEDD80, 0x08FEDC80, 0x08FEDB80 };
+static const ULONG kV1Memspec[11] = {
+    0x0015000B, 0x0009CF16, 0x0009CEF2, 0x0009CF00, 0x08FEDE80, 0x0009CF01, 0x08FEDD80,
+    0x0009CEF8, 0x08FEDC80, 0x0009CEF9, 0x08FEDB80 };
+static const ULONG kV1Header[9] = { 0x00140009, 0x0009CF10, 0x24, 0x40000000, 1, 1, 0x22, 1, 0x83E };
+static const ULONG kV1Params[11] = {
+    0x0014000B, 0x0009CEF2, 0x00df7fe4, 0x40000000, 1, 1, 4, 0x100, 0xc8, 0x3a888889, 0x3b83126f };
+static const ULONG kV1Start[4][4] = {
+    { 0x001F0004, 0x00200018, 0x0009CF10, 0 }, { 0x001E0004, 0x18, 8, 0x20 }, { 0x001E0004, 0x18, 8, 0x20 },
+    { 0x001E0004, 0x18, 7, 0x0001FFFF } };
+
+static void CheckVirtual(void)
+{
+    static STRIP_PLAN p, q;
+    const STRIP_MODEL *x = StripModelFor(STRIP_MODEL_X8P), *t = StripModelFor(STRIP_MODEL_TWINX);
+    ULONG i, j, k, m, st, sum[4] = { 0, 0, 0, 0 }, room[4], h, kind, kind2, in, in2, ok;
+    int inside, inRoom, td;
+    char what[200];
+    STRIP_RECORD r, r2;
+    STRIP_ADOPT_NOW n;
+
+    /* the Input Strip's tables: upstream's, and the per-pool sums the room and the ledger use */
+    for (j = 0; j < STRIP_PLAN_VROWS; j++) {
+        sum[g_StripVRows[j].Pool & 3] += g_StripVRows[j].Dwords;
+        ok = g_StripVRows[j].Pool == oa_strip_input_rows[j].pool && g_StripVRows[j].Dwords == oa_strip_input_rows[j].dwords &&
+             g_StripVRows[j].Link == oa_strip_input_rows[j].link;
+        sprintf_s(what, sizeof(what), "virtual: Input Strip row %lu = ua_strip_input_rows[%lu]", j, j);
+        Check(ok, what);
+    }
+    Check(sum[1] == STRIP_VPOOL1_PER_STRIP && sum[2] == STRIP_VPOOL2_PER_STRIP && sum[3] == STRIP_VPOOL3_PER_STRIP &&
+          STRIP_VPOOL1_PER_STRIP == 0x26 && STRIP_VPOOL3_PER_STRIP == 0x400,
+          "virtual: rows per pool add up to 0x26 / 0 / 0x400 per Input Strip");
+    Check(memcmp(g_StripVM0, oa_strip_input_m0, sizeof(oa_strip_input_m0)) == 0 && STRIP_VM0_WORDS == 9,
+          "virtual: m0 words = ua_strip_input_m0 (9 words, 0.004f last)");
+    Check(STRIP_PLUGIN_INPUT == 0x83E && STRIP_VIRTUAL_SYNCH0 == 0x18 && STRIP_PLAN_SLOTS == 16 &&
+          STRIP_SLOT_VIRTUAL0 == STRIP_PLAN_INPUTS && STRIP_PLAN_ENT_SLOTS == 64,
+          "virtual: pluginId 0x83E, VIRTUAL 1 = DSP input 0x18, 16 slots, 64 START entries");
+    for (i = 0; i < 16; i++)
+        if (StripBusSlot(StripSlotSynch(i)) != i)
+            Check(0, "virtual: slot -> synch -> slot round trip");
+    Check(StripSlotSynch(0) == 0 && StripSlotSynch(7) == 7 && StripSlotSynch(8) == 0x18 && StripSlotSynch(15) == 0x1F &&
+          StripBusSlot(8) == STRIP_PLAN_SLOTS && StripBusSlot(0x0A) == STRIP_PLAN_SLOTS && StripBusSlot(0x17) == STRIP_PLAN_SLOTS &&
+          StripBusSlot(0x20) == STRIP_PLAN_SLOTS && StripBusSlot(0x18) == 8 && StripBusSlot(0x1F) == 15,
+          "virtual: synch of slot k (0-7 Mic, 8-15 VIRTUAL 1-8 = 0x18-0x1F); buses 8-0x17 and the talkback have no strip");
+    Check(StripPlanPm(0xFF, 0x01) == 0x1FF && StripPlanPm(0x1FF, 0x1FF) == 0xFFFF && StripPlanPm(0x03, 0) == 0x03,
+          "virtual: plan mask = StripMask | StripVirtualMask << 8 (8 bits each)");
+
+    /* models */
+    Check(x != NULL && t != NULL && x->VirtualAllowed == 0xFF && t->VirtualAllowed == 0x0F &&
+          x->FirstVirtual == STRIP_VIRTUAL_SYNCH0 && t->FirstVirtual == STRIP_VIRTUAL_SYNCH0,
+          "virtual: x8p VIRTUAL 1-8, Twin X 1-4 (virtual_max 4), both at DSP input 0x18");
+    Check(StripModelVirtualMask(x, 0xFFFFFFFFu) == 0xFF && StripModelVirtualMask(t, 0xFF) == 0x0F &&
+          StripModelVirtualMask(t, 0x30) == 0 && StripModelVirtualMask(NULL, 0x01) == 0 && StripModelVirtualMask(x, 0) == 0,
+          "virtual: StripVirtualMask as each model takes it");
+
+    /* the x8p's VIRTUAL 1, every word (8 Mic strips: the pass the x8p runs with StripMask 0xFF) */
+    Check(StripPlanVirtualAddrs(8, 0, p.Addr) == 0 && memcmp(p.Addr, kV1Addr, sizeof(kV1Addr)) == 0 &&
+          p.Addr[6] == 0 && p.Addr[9] == 0, "virtual: x8p VIRTUAL 1 at 0x9cf10 / 0x9cef2 / 0x08fede80..0x08fedb80");
+    Check(kV1Addr[0] + 8 == kAddr[7][5] && kV1Addr[2] + 0x100 == kAddr[7][9],
+          "virtual: VIRTUAL 1's blocks start right below Mic input 8's (pool 1 m4, pool 3 c3)");
+    ok = StripPlanPrepareSlot(8, 8, 0, 48000, &p) == 0 && p.N == STRIP_PLAN_VPREPARE_ENTS && p.Len == 11 + 9 + 11;
+    for (j = 0; ok && j < 6; j++)
+        ok = !p.Ent[j].Dma && p.Ent[j].W[0] == 0x00080004 && p.Ent[j].W[1] == kV1Addr[j] && p.Ent[j].W[2] == 0 &&
+             p.Ent[j].W[3] == oa_strip_input_rows[j].dwords;
+    ok = ok && p.Ent[6].Dma && p.Ent[6].Dwords == 11 && memcmp(&p.Payload[p.Ent[6].Off], kV1Memspec, sizeof(kV1Memspec)) == 0 &&
+         p.Ent[7].Dma && p.Ent[7].Dwords == 9 && memcmp(&p.Payload[p.Ent[7].Off], kV1Header, sizeof(kV1Header)) == 0 &&
+         p.Ent[8].Dma && p.Ent[8].Dwords == 11 && memcmp(&p.Payload[p.Ent[8].Off], kV1Params, sizeof(kV1Params)) == 0;
+    Check(ok, "virtual: x8p VIRTUAL 1 PREPARE: 6 zero-fills, memspec(11), header 0x83E(9), m0(11), word for word");
+    ok = StripPlanStartPm(0x1FF, 8, 0, &q) == 0 && q.N == 36;
+    for (j = 0; ok && j < 4; j++)
+        ok = !q.Ent[32 + j].Dma && memcmp(q.Ent[32 + j].W, kV1Start[j], sizeof(kV1Start[j])) == 0;
+    Check(ok, "virtual: x8p START 0x1ff: the 8 Mic strips' 32 entries, then VIRTUAL 1's SYNCH 0x00200018, span, span, route");
+    {
+        STRIP_PLAN q8;
+
+        ok = StripPlanStart(0xFF, 0, &q8) == 0 && q8.N == 32;
+        for (j = 0; ok && j < 32; j++)
+            ok = memcmp(&q.Ent[j], &q8.Ent[j], sizeof(q8.Ent[j])) == 0;
+        Check(ok, "virtual: ... and its first 32 entries are exactly the Mic-only START 0xff's");
+    }
+    for (j = 0; j < 6; j++)
+        if (IsLinkWordPm(0x100, 8, kV1Addr[1] + j) && (j == 0 || j == 1 || j == 2 || j == 4 || j == 5))
+            Check(0, "virtual: an m0 value word is a link word");
+
+    /* word for word against upstream's ua_strip_build_input, every stage, the layouts where both agree */
+    for (st = 0; st <= STRIP_STEP_ALL; st++) {
+        static const ULONG vmasks[] = { 0x01, 0x03, 0x0F, 0xFF };
+
+        for (m = 0; m < 4; m++) {
+            ok = 1;
+            for (i = 0; i < 8; i++)
+                if (vmasks[m] & (1u << i))
+                    ok = ok && VirtualMatchesUpstream(8, vmasks[m], i, st);
+            sprintf_s(what, sizeof(what), "virtual: x8p (8 Mic) + Virtual 0x%02lx stage %lu: every Input Strip = "
+                      "ua_strip_build_input's words at ua_strip_priv_addrs' addresses", vmasks[m], st);
+            Check(ok, what);
+        }
+        ok = 1;
+        for (i = 0; i < 4; i++)
+            ok = ok && VirtualMatchesUpstream(2, 0x0F, i, st);
+        sprintf_s(what, sizeof(what), "virtual: Twin X (2 Mic) + Virtual 0x0f (upstream's default) stage %lu: = upstream", st);
+        Check(ok, what);
+    }
+    {
+        /* the comparison can fail: VIRTUAL 1's plan against upstream's VIRTUAL 2, and against a Mic-strip header */
+        static OA_XACT ox;
+        unsigned char kinds[10] = { 0, 0, 0, 0, 0, 0, 0, 0, OA_KIND_INPUT, OA_KIND_INPUT };
+        ULONG a2[10];
+
+        oa_strip_priv_addrs(kinds, 9, a2);
+        memset(&ox, 0, sizeof(ox));
+        (void)oa_strip_build_input(&ox, a2, 0x19, 0);
+        (void)StripPlanPrepareSlot(8, 8, 0, 48000, &p);
+        (void)StripPlanStartPm(0x3FF, 8, 0, &q);
+        Check(!SameAsUpstream(&p, &q, 32, 4, &ox) && SameAsUpstream(&p, &q, 32, 4, &ox) == 0,
+              "virtual: the upstream comparison tells VIRTUAL 1 from VIRTUAL 2 (it is not vacuous)");
+        (void)StripPlanPrepareSlot(9, 8, 0, 48000, &p);
+        Check(SameAsUpstream(&p, &q, 36, 4, &ox) && a2[0] == 0x0009CEEA,
+              "virtual: ... and VIRTUAL 2 matches it (header 0x9ceea, below VIRTUAL 1's 0x26 words)");
+    }
+
+    /* the Pm functions with no Virtual strip are the Mic-only functions, entry for entry */
+    ok = 1;
+    for (m = 0; m <= 0x100 && ok; m++)
+        for (st = 0; st <= STRIP_STEP_ALL + 1 && ok; st++) {
+            ULONG e1 = StripPlanStart(m, st, &p), e2 = StripPlanStartPm(m, 8, st, &q);
+
+            ok = (m == 0x100) ? (e1 != 0 && e2 == 0) : (e1 == e2 && PlanSame(&p, &q));
+            for (k = 0; ok && k <= STRIP_PLAN_SLOTS + 1; k++) {
+                kind = StripPassStep(m & 0xFF, st, k, &in);
+                kind2 = StripPassStepPm(m & 0xFF, st, k, &in2);
+                ok = kind == kind2 && in == in2;
+            }
+        }
+    Check(ok, "virtual: StripPlanStartPm / StripPassStepPm on masks 0-0xff = StripPlanStart / StripPassStep");
+    ok = 1;
+    for (i = 0; i <= STRIP_PLAN_INPUTS && ok; i++)
+        for (st = 0; st <= STRIP_STEP_ALL + 1 && ok; st++) {
+            ULONG e1 = StripPlanPrepareRate(i, st, 96000, &p), e2 = StripPlanPrepareSlot(i, 8, st, 96000, &q);
+
+            ok = (i == STRIP_PLAN_INPUTS) ? (e1 != 0) : (e1 == e2 && PlanSame(&p, &q));
+        }
+    Check(ok, "virtual: StripPlanPrepareSlot of a Mic slot = StripPlanPrepareRate (96 kHz)");
+    Check(StripPlanPrepareSlot(16, 8, 0, 48000, &p) != 0 && StripPlanPrepareSlot(8, 9, 0, 48000, &p) != 0 &&
+          StripPlanPrepareSlot(8, 8, 0, 32000, &p) != 0 && StripPlanStartPm(0x10000, 8, 0, &p) != 0,
+          "virtual: refused: slot 16, more than 8 Mic slots, a rate without strip words, a plan mask past VIRTUAL 8");
+    ok = 1;
+    for (st = 0; st <= STRIP_STEP_ALL; st++)
+        ok = ok && StripPlanPrepareSlot(9, 8, st, 44100, &p) == 0 && StripPlanPrepareSlot(9, 8, st, 48000, &q) == 0 &&
+             PlanSame(&p, &q);
+    Check(ok, "virtual: the Input Strip's words are the same at every rate (upstream has no rate rule for them)");
+    {
+        static const ULONG wantEnts[10] = { 9, 0, 6, 7, 8, 9, 9, 9, 9, 9 };
+
+        ok = 1;
+        for (st = 0; st <= STRIP_STEP_ALL; st++)
+            ok = ok && StripPlanPrepareSlot(8, 8, st, 48000, &p) == 0 && p.N == wantEnts[st];
+        Check(ok, "virtual: PREPARE entries per stage 0-9: 9, 0, 6, 7, 8, 9, 9, 9, 9, 9");
+    }
+
+    /* the pass order and the stream checks with Virtual strips */
+    Check(StripPassStepPm(0x1FF, 0, 7, &in) == STRIP_XACT_PREPARE && in == 7 &&
+          StripPassStepPm(0x1FF, 0, 8, &in) == STRIP_XACT_PREPARE && in == 8 &&
+          StripPassStepPm(0x1FF, 0, 9, &in) == STRIP_XACT_START && StripPassStepPm(0x1FF, 0, 10, &in) == STRIP_XACT_END,
+          "virtual: pass 0x1ff: PREPARE inputs 1-8, PREPARE VIRTUAL 1, ONE START, end");
+    Check(StripPassStepPm(0x300, 0, 0, &in) == STRIP_XACT_PREPARE && in == 8 &&
+          StripPassStepPm(0x300, 0, 1, &in) == STRIP_XACT_PREPARE && in == 9 &&
+          StripPassStepPm(0x300, 0, 2, &in) == STRIP_XACT_START && StripPassStepPm(0x300, 5, 2, &in) == STRIP_XACT_END,
+          "virtual: Virtual strips alone (StripMask 0): PREPAREs then START; stage 5: no START");
+    {
+        static const ULONG pms[] = { 0x1FF, 0x101, 0x100, 0x8001, 0xA5A5, 0xFFFF };
+
+        for (j = 0; j < sizeof(pms) / sizeof(pms[0]); j++) {
+            for (st = 2; st <= STRIP_STEP_ALL; st++)
+                CheckPassPm(pms[j], 8, st, "x8p");
+            CheckPassPm(pms[j], 8, 0, "x8p");
+        }
+        CheckPassPm(0xF03, 2, 0, "Twin X");
+        CheckPassPm(0x103, 2, 7, "Twin X");
+    }
+    Check(StripPlanStartPm(0xFFFF, 8, 0, &q) == 0 && q.N == 64, "virtual: START of all 16 strips: 64 entries (one transaction)");
+
+    /* the room: where the blocks sit, the pool check, the refusal */
+    StripPlanRoom(8, 0, room);
+    Check(room[0] == 0 && room[1] == 8 * 0x54 && room[2] == 8 * 0x10 && room[3] == 8 * 0x2010,
+          "room: no Virtual strip = the 8 Mic strips' (the ledger as before)");
+    StripPlanRoom(8, 0x01, room);
+    Check(room[1] == 8 * 0x54 + 0x26 && room[2] == 8 * 0x10 && room[3] == 8 * 0x2010 + 0x400, "room: + VIRTUAL 1");
+    StripPlanRoom(8, 0x80, room);
+    Check(room[1] == 8 * 0x54 + 8 * 0x26 && room[3] == 8 * 0x2010 + 8 * 0x400 && StripVirtualSlots(0x80) == 8 &&
+          StripVirtualSlots(0x05) == 3 && StripVirtualSlots(0) == 0,
+          "room: VIRTUAL 8 alone needs 8 Virtual slots (each VIRTUAL n has its fixed place)");
+    Check(BlocksOk(0xFFFF, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: all 16 strips' 128 blocks disjoint, inside DSP 1's measured pools above the scratch, inside the booked room");
+    Check(BlocksOk(0xF03, 2, kTwxSize, kTwxBase, kTwxScr, &inside, &inRoom) && inside && inRoom,
+          "Twin X: Mic 1-2 + VIRTUAL 1-4 disjoint, inside its DSP 1 pools and the booked room");
+    StripPlanRoom(8, 0xFF, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, kScr, room, STRIP_CODE_WORDS) == 0,
+          "room: the x8p's DSP 1 pools fit 8 Mic + 8 Virtual strips");
+    StripPlanRoom(2, 0x0F, room);
+    Check(StripPlanLayoutCheckRoom(kTwxSize, kTwxBase, kTwxScr, room, STRIP_CODE_WORDS) == 0,
+          "room: the Twin X's DSP 1 pools fit 2 Mic + 4 Virtual strips");
+    {
+        ULONG sc[4], room8[4];
+
+        memcpy(sc, kScr, sizeof(sc));
+        StripPlanRoom(8, 0, room8);
+        sc[1] = 0x9D1B8 - 0x92800 - 8 * 0x54;                 /* pool 1: exactly the 8 Mic strips' room left */
+        StripPlanRoom(8, 0x01, room);
+        Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room8, STRIP_CODE_WORDS) == 0 &&
+              StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 9,
+              "room: pool 1 with room for the Mic strips only: Mic fit, StripVirtualMask 0x01 refused (code 9, pool 1)");
+        memcpy(sc, kScr, sizeof(sc));
+        sc[3] = 0x08FFE000 - 0x08008E96 - 8 * 0x2010 - 0x400 * 3;  /* pool 3: room for 3 Virtual strips */
+        StripPlanRoom(8, 0x07, room);
+        Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 0, "room: pool 3 fits VIRTUAL 1-3 exactly");
+        StripPlanRoom(8, 0x08, room);
+        Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 11,
+              "room: ... VIRTUAL 4 needs a 4th slot: refused (code 11, pool 3)");
+        Check(StripPlanLayoutCheck(kSize, kBase, kScr, 8, STRIP_CODE_WORDS) ==
+              StripPlanLayoutCheckRoom(kSize, kBase, kScr, room8, STRIP_CODE_WORDS),
+              "room: StripPlanLayoutCheck(8 strips) = the room check with the 8 Mic strips' room");
+    }
+
+    /* the plan hash: a plan mask without Virtual strips hashes as before (records of earlier builds match) */
+    h = StripPlanHashPm(0xFF, 8, 9, 48000, 1, 6, &p);
+    sprintf_s(what, sizeof(what), "adopt: StripPlanHashPm(0xff) = the pinned x8p plan hash %08lx (got %08lx)",
+              (ULONG)ADOPT_X8P_PLAN_HASH, h);
+    Check(h == ADOPT_X8P_PLAN_HASH, what);
+    ok = 1;
+    for (m = 0; m <= 0xFF && ok; m += 0x11)
+        for (st = 1; st <= STRIP_STEP_ALL && ok; st++)
+            ok = StripPlanHashPm(m, 8, st, 48000, 1, 6, &p) == StripPlanHash(m, st, 48000, 1, 6, &q) &&
+                 StripPlanHashPm(m, 2, st, 96000, 1, 2, &p) == StripPlanHash(m, st, 96000, 1, 2, &q);
+    Check(ok, "adopt: StripPlanHashPm = StripPlanHash for every StripMask without Virtual strips (masks, stages, rates)");
+    h = StripPlanHashPm(0x1FF, 8, 9, 48000, 1, 6, &p);
+    Check(h != 0 && h != ADOPT_X8P_PLAN_HASH && h != StripPlanHashPm(0x3FF, 8, 9, 48000, 1, 6, &p) &&
+          h != StripPlanHashPm(0x1FF, 2, 9, 48000, 1, 6, &p) && h != StripPlanHashPm(0x1FF, 8, 6, 48000, 1, 6, &p),
+          "adopt: a Virtual strip changes the hash (which ones, where they sit, the stage)");
+
+    /* the record: version 1 as before without Virtual strips, version 2 with them; an older build refuses version 2 */
+    memset(&r, 0, sizeof(r));
+    r.Anchored = 1;
+    AdoptLivePm(&r, 0xFF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r);
+    Check(r.Version == 1 && StripRecordValid(&r, sizeof(r)) && OldRecordValid(&r, sizeof(r)),
+          "record: StripMask 0xff, no Virtual strip: version 1, valid here and for an older build");
+    r2 = r;
+    AdoptLivePm(&r2, 0x1FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    Check(r2.Version == STRIP_REC_VERSION_VIRTUAL && StripRecordValid(&r2, sizeof(r2)) && !OldRecordValid(&r2, sizeof(r2)),
+          "record: + VIRTUAL 1: version 2, valid here, refused by an older build (it asks for a power cycle)");
+    r2.Version = 1;
+    r2.Check = StripRecordSum(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: Virtual strips under version 1: not trusted");
+    r2 = r;
+    r2.Version = 2;
+    r2.Check = StripRecordSum(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: version 2 without Virtual strips: not trusted");
+    r2 = r;
+    r2.Mask = 0x10000;
+    StripRecordSeal(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: a plan mask past VIRTUAL 8: not trusted");
+    r2 = r;
+    StripRecordClearStrips(&r2, STRIP_REC_NONE);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 1 && OldRecordValid(&r2, sizeof(r2)), "record: torn down (nothing of ours runs): version 1 again");
+
+    /* the decision with Virtual strips, x8p (record RUNNING, kept, anchored) */
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0xFF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_ADOPTED && !td,
+          "decide: a record of a build without Virtual strips, this start without them: ADOPTED (as before)");
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0x1FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS && !td,
+          "decide: ... this start with VIRTUAL 1: PLAN_DIFFERS (nothing adopted that the record does not cover)");
+    n.WarmRebuild = 1;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td,
+          "decide: ... with StripWarmRebuild (x8p default 1): REBUILD, the recorded Mic strips stopped first");
+    r2 = r;
+    AdoptLivePm(&r2, 0x1FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0x1FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_ADOPTED && !td,
+          "decide: a record with VIRTUAL 1, this start the same: ADOPTED (the record covers the Input Strip)");
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0xFF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS,
+          "decide: a record with VIRTUAL 1, this start without it (StripVirtualMask 0 or refused): PLAN_DIFFERS");
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0x3FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS, "decide: another Virtual mask: PLAN_DIFFERS");
+    {
+        /* the rebuild's teardown (strips.c StripsWarmDecide) stops every slot the record's plan mask names */
+        ULONG started = 0;
+
+        for (i = 0; i < STRIP_PLAN_SLOTS; i++)
+            if ((r2.Mask & (1u << i)) && r2.Limit >= STRIP_STEP_SYNCH)
+                started |= 1u << i;
+        Check(started == 0x1FF && StripSlotSynch(8) == 0x18,
+              "decide: a rebuild over a version 2 record stops inputs 1-8 and VIRTUAL 1 (SYNCH 0 at 0x18)");
+    }
+}
+
+/* --print-pm <plan mask>: the pass for the x8p (8 Mic slots), every transaction. */
+static void PrintPassPm(ULONG Pm)
+{
+    STRIP_PLAN p;
+    ULONG k, in, kind;
+    char name[16];
+
+    for (k = 0; k <= STRIP_PLAN_SLOTS + 1; k++) {
+        kind = StripPassStepPm(Pm, 0, k, &in);
+        if (kind == STRIP_XACT_PREPARE) {
+            (void)StripPlanPrepareSlot(in, 8, 0, 48000, &p);
+            if (in < STRIP_SLOT_VIRTUAL0)
+                sprintf_s(name, sizeof(name), "input %lu", in + 1);
+            else
+                sprintf_s(name, sizeof(name), "VIRTUAL %lu", in - STRIP_SLOT_VIRTUAL0 + 1);
+            printf("Transaction %lu: PREPARE %s (StripSteps 0), on the strip DSP:\n", k + 1, name);
+            PrintPlan(&p);
+        } else if (kind == STRIP_XACT_START) {
+            (void)StripPlanStartPm(Pm, 8, 0, &p);
+            printf("Transaction %lu: START plan mask 0x%04lx, on the strip DSP:\n", k + 1, Pm);
+            PrintPlan(&p);
+        } else {
+            break;
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     static STREAM old;
@@ -1563,6 +2396,7 @@ int main(int argc, char **argv)
     CheckProbe();
     CheckModels();          /* [Twin X G5] */
     CheckAdopt();           /* [Warm] */
+    CheckVirtual();         /* [Virtual] */
 
     if (argc > 1 && strcmp(argv[1], "--adopt-hash") == 0)
         printf("x8p plan hash (0xFF, stage 9, 48 kHz, DSP 1 of 6): 0x%08lXu; modules 0x%08lXu\n",
@@ -1572,6 +2406,8 @@ int main(int argc, char **argv)
         PrintPass(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFF : 0xFF);
     if (argc > 1 && strcmp(argv[1], "--print-probe") == 0)
         PrintProbe(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFF : 0xFF);
+    if (argc > 1 && strcmp(argv[1], "--print-pm") == 0)
+        PrintPassPm(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFFFF : 0x1FF);
     if (argc > 1 && strcmp(argv[1], "--digests") == 0) {
         unsigned long long d[PLAN_DIGESTS];
 

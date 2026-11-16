@@ -214,6 +214,28 @@ body:not(.pl-dragging) .plb-drop { display: none; }
 /* Settings: Plug-in hosting */
 .pl-set-actions { display: flex; align-items: center; gap: 8px; }
 
+/* [PlugSetup] Set up plug-ins: the box in the browser, the Settings row, the dialog */
+.plb-setup { margin: 0 6px 6px; padding: 7px 8px; border: var(--border-w) solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-2); flex: none; }
+.plb-setup[data-state="failed"], .plb-setup[data-state="stopped"] { border-color: var(--warn); }
+.pl-setup-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.plb-setup p { margin: 0 0 6px; font-size: 11px; }
+.pl-setup-error { color: var(--warn); overflow-wrap: anywhere; }
+.pl-setup-actions { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.pl-setup-run { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pl-setup-phase { font-family: var(--font-label); font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.pl-setup-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.pl-setup-bar > span { display: block; height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.pl-setup-text { font-size: 11px; overflow-wrap: anywhere; }
+.pl-set-setup { min-width: 220px; max-width: 360px; }
+.dlg.pl-setup-wide { width: min(580px, calc(100vw - 32px)); }
+.pl-setup-dlg { max-height: min(60vh, 520px); overflow-y: auto; padding-right: 4px; }
+.pl-setup-dlg h4 { margin: 10px 0 4px; font-size: 12px; color: var(--text); }
+.pl-setup-dlg p { margin: 0 0 6px; }
+.pl-setup-dl { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 6px; }
+.pl-setup-dl td { padding: 2px 6px 2px 0; border-bottom: var(--border-w) solid var(--line); color: var(--text-dim); vertical-align: top; }
+.pl-setup-dl td.num { text-align: right; white-space: nowrap; }
+.pl-setup-pick { display: flex; margin: 2px 0 4px; }
+
 /* ---------- [Ins] chains: four slot rows, the Unison slot, REC / MON, the chain's state, refusals inline ---------- */
 
 .st-ins-head { display: flex; align-items: center; justify-content: space-between; gap: 3px; min-width: 0; }

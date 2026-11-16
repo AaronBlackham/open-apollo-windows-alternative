@@ -42,9 +42,16 @@ The metaphor decides every layer below. Two themes that differ only in layers 6-
   are reviewed and how the screenshots are taken.
 - **UA art stays local.** Plug-in thumbnails come from Aaron's own UAD install at runtime; no theme ships UA art.
 
-## 3. The six themes
+## 3. The themes
 
-### Studio: the console (default)
+### Classic: the familiar console (default for new users, Nov 16 2026)
+- **Why:** people coming from the hardware maker's own console app should find their way at once (Aaron: "the normal theme that works just like the original", "same layout literally"). The other themes stay for everyone who picks them.
+- **Composition (`strips`, its own pack hooks: `themes/classic/renderers.js` ClassicDesk):** a View column on the left (OVERVIEW / INPUTS / INSERTS / SENDS, SHOW AUX / CTRL ROOM / PLUG-INS, CLEAR CLIPS, CLEAR SOLO with restore, SETTINGS); input strips top to bottom: number, MIC/LINE, 48V, PAD, LO CUT, polarity, gain, the Unison slot, inserts with REC/MON, AUX 1/2 and CUE 1/2 sends, pan, SOLO, MUTE, fader with its meter, label; the aux returns after the inputs; each unit's monitor section (meters, MUTE ALL, MUTE, DIM, the large monitor knob); a control-room column on the far right; the plug-in browser opens from an empty insert instead of being docked; the rate bar along the bottom.
+- **Controls:** flat knobs with a value arc, flat faders with a dB scale, rectangular lit buttons, solid green/yellow/red meters; condensed small-caps labels (Bahnschrift).
+- **Artwork:** all drawn here (CSS/SVG). No logo, product name, colour scheme, icon or bitmap of the original app.
+- **Signature:** none on purpose: it is the plain one.
+
+### Studio: the console (default until Nov 16)
 - **Metaphor:** a large-format analog console with an outboard rack.
 - **Composition:** full-height channel strips; a **meter bridge** across the top; scribble strips with channel names;
   each unit is a console section with its own master section; the plug-in browser is the outboard rack beside it.
