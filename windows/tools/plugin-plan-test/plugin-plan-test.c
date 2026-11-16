@@ -489,6 +489,79 @@ static void TestLedgerStrips(void)
         CHECK(ok3 && STRIP_PLAN_AUXES == 2 * PLUG_AUX_BUSES,
               "aux: the aux-return strips' DSP inputs are the aux insert pairs (0x10/0x11, 0x12/0x13): one AuxMask pair per aux bus");
     }
+
+    /*
+     * [TalkStrip] docs/STRIPS.md 15: plugin.c books StripPlanRoomTalkback (the Mic strips, StripVirtualMask's, StripAuxMask's
+     * and the talkback's Input Strips). StripTalkback 0: the aux build's booking. With it: still one block per pool from the
+     * top, the talkback's Input Strip block inside it, no plug-in reservation on it; the talkback stays refused as an insert.
+     */
+    {
+        static PLUG_LEDGER L7, L8;
+        PLUG_LEASE s7[4], s8[4], a;
+        ULONG room[4], am, vm, ok4 = 1, a4[STRIP_PLAN_ROWS], mic;
+        PLUG_USAGE u7[4];
+        const PLUG_MODEL *tx = PlugModelFor(PLUG_MODEL_TWINX);
+
+        for (vm = 0; vm <= 0xFF && ok4; vm = (vm << 1) | 1)
+            for (am = 0; am <= 0xF && ok4; am++) {
+                StripPlanRoomAux(8, vm, am, room);
+                ok4 = PlugLedgerInit(&L7, kBase, kSize, kScr) == PLUG_OK && PlugLedgerBookStripRoom(&L7, STRIP_CODE_WORDS, room, s7) == PLUG_OK;
+                StripPlanRoomTalkback(8, vm, am, 0, room);
+                ok4 = ok4 && PlugLedgerInit(&L8, kBase, kSize, kScr) == PLUG_OK &&
+                      PlugLedgerBookStripRoom(&L8, STRIP_CODE_WORDS, room, s8) == PLUG_OK && memcmp(s7, s8, sizeof(s7)) == 0;
+            }
+        CHECK(ok4, "talkback: StripTalkback 0: the ledger books exactly what the aux build booked, for every Virtual and aux mask");
+        for (am = 0; am <= 0xF && ok4; am += 0x5) {
+            for (vm = 0; vm <= 0xFF && ok4; vm = (vm << 1) | 1) {
+                StripPlanRoomTalkback(8, vm, am, 1, room);
+                ok4 = PlugLedgerInit(&L8, kBase, kSize, kScr) == PLUG_OK &&
+                      PlugLedgerBookStripRoom(&L8, STRIP_CODE_WORDS, room, s8) == PLUG_OK && LedgerInvariant(&L8);
+                for (j = 1; ok4 && j < 4; j++)
+                    ok4 = s8[j].Base + s8[j].Words == top[j] && s8[j].Words == room[j];
+                ok4 = ok4 && StripPlanTalkbackAddrs(8, a4) == 0;
+                for (j = 0; ok4 && j < STRIP_PLAN_VROWS; j++) {
+                    ULONG p = g_StripVRows[j].Pool;
+                    ok4 = a4[j] >= s8[p].Base && a4[j] + g_StripVRows[j].Dwords <= s8[p].Base + s8[p].Words;
+                }
+                PlugLedgerUsage(&L8, u7);
+                for (j = 1; ok4 && j < 4; j++) {
+                    ok4 = PlugLedgerReserve(&L8, j, u7[j].Largest, 0, 0, &a) == PLUG_OK && a.Base + a.Words <= s8[j].Base;
+                    (void)PlugLedgerRelease(&L8, &a, NULL);
+                }
+            }
+        }
+        CHECK(ok4, "talkback: x8p 8 Mic + every Virtual mask + aux 0, 0x5, 0xa, 0xf + the talkback: one block per pool from the top, "
+                   "the talkback's Input Strip block inside it, the largest plug-in reservation below it");
+        StripPlanRoomTalkback(8, 0x01, 0x05, 1, room);
+        CHECK(room[1] == 0x48E && room[2] == 0x80 && room[3] == 0x13480 &&
+              PlugLedgerInit(&L8, kBase, kSize, kScr) == PLUG_OK && PlugLedgerBookStripRoom(&L8, STRIP_CODE_WORDS, room, s8) == PLUG_OK &&
+              s8[1].Base == top[1] - 0x48E && s8[3].Base == top[3] - 0x13480,
+              "talkback: x8p 8 Mic + VIRTUAL 1 + aux 0x5 + talkback books 0x48e / 0x80 / 0x13480 words below the pool tops");
+        ok4 = tx != NULL;
+        for (mic = 0; ok4 && mic < 2; mic++) {
+            const ULONG *rg = tx->StripDspRegs;
+            ULONG tsize[4], tbase[4], tscr[4];
+
+            for (j = 0; j < 4; j++) {
+                tsize[j] = rg[j];
+                tbase[j] = rg[4 + j];
+                tscr[j] = j ? rg[7 + j] : 0;
+            }
+            StripPlanRoomTalkback(tx->Strips, mic ? 0x0F : 0, 0x05, 1, room);
+            ok4 = PlugLedgerInit(&L8, tbase, tsize, tscr) == PLUG_OK &&
+                  PlugLedgerBookStripRoom(&L8, STRIP_CODE_WORDS, room, s8) == PLUG_OK && LedgerInvariant(&L8) &&
+                  StripPlanTalkbackAddrs(tx->Strips, a4) == 0;
+            for (j = 0; ok4 && j < STRIP_PLAN_VROWS; j++) {
+                ULONG p = g_StripVRows[j].Pool;
+                ok4 = a4[j] >= s8[p].Base && a4[j] + g_StripVRows[j].Dwords <= s8[p].Base + s8[p].Words;
+            }
+        }
+        CHECK(ok4, "talkback: Twin X (its measured DSP 1 pools) 2 Mic + aux 0x5 (+ VIRTUAL 1-4) + talkback: booked, the talkback "
+                   "block inside the room");
+        CHECK(tx != NULL && tx->Talkback == STRIP_TALKBACK_SYNCH && PlugModelSynch(tx, STRIP_TALKBACK_SYNCH | (PLUG_SYNCH_MONO << 16)) != PLUG_OK &&
+              PlugModelSynch(PlugModelFor(PLUG_MODEL_X8P), STRIP_TALKBACK_SYNCH | (PLUG_SYNCH_MONO << 16)) != PLUG_OK,
+              "talkback: its DSP input (0x0a) stays refused as an insert on both models (a plain Input Strip, no Mic strip)");
+    }
 }
 
 /*

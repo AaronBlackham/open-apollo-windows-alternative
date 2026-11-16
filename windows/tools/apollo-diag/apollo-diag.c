@@ -1659,7 +1659,8 @@ static int CueUsage(void)
             "  A cue's send of an input (or the talkback mic, tb): DSP bus coefficients, no readback\n"
             "  (the driver keeps them and sends them again after a reconnect). Twin X: cue 1 = HP,\n"
             "  cue 2 = Line 3/4, inputs 1-2; the x8p: cues 1-4, inputs 1-8. vN = VIRTUAL N (bus 0x18+N-1),\n"
-            "  taken only where the unit's StripVirtualMask builds that Input Strip.\n");
+            "  taken only where the unit's StripVirtualMask builds that Input Strip. tb (bus 10) carries the mic\n"
+            "  only where StripTalkback builds its Input Strip ('apollo-diag talkback'), and only while TALK is on.\n");
     return 1;
 }
 
@@ -1807,7 +1808,8 @@ static int MixUsage(void)
             "  The monitor mix, what the monitor outputs play (DSP bus coefficients, param 0, no readback: the\n"
             "  driver keeps them and sends them again after a reconnect). Nothing is sent for an input until it\n"
             "  is set here; the unit keeps its own default (inputs on at 0 dB). Solo: every other input goes\n"
-            "  out as 0.0 while any input is soloed. Twin X: inputs 1-2; the x8p: inputs 1-8; tb = talkback mic.\n");
+            "  out as 0.0 while any input is soloed. Twin X: inputs 1-2; the x8p: inputs 1-8; tb = talkback mic\n"
+            "  (live only where StripTalkback builds its Input Strip, gated by TALK).\n");
     return 1;
 }
 
@@ -2698,9 +2700,9 @@ static int CmdStrips(void)
                 ret, (unsigned long)sizeof(s));
         return 1;
     }
-    if (ret < sizeof(s))    /* [Warm] [Virtual] [AuxStrips] an older driver: its part */
-        s.Version = (ret >= APOLLO_STRIPS_INFO_V4_SIZE) ? 4 : (ret >= APOLLO_STRIPS_INFO_V3_SIZE) ? 3 :
-                    (ret >= APOLLO_STRIPS_INFO_V2_SIZE) ? 2 : 1;
+    if (ret < sizeof(s))    /* [Warm] [Virtual] [AuxStrips] [TalkStrip] an older driver: its part */
+        s.Version = (ret >= APOLLO_STRIPS_INFO_V5_SIZE) ? 5 : (ret >= APOLLO_STRIPS_INFO_V4_SIZE) ? 4 :
+                    (ret >= APOLLO_STRIPS_INFO_V3_SIZE) ? 3 : (ret >= APOLLO_STRIPS_INFO_V2_SIZE) ? 2 : 1;
     s.Why[sizeof(s.Why) - 1] = 0;
     printf("State        %lu  %s\n", s.State, StripsStateName(s.State));
     printf("Why          ");
@@ -2844,6 +2846,22 @@ static int CmdStrips(void)
         if (s.AuxMask != 0)
             printf("(AUX 1 records on slot 28 and AUX 2 on slot 30 on the x8p and the Twin X; 'aux <n> send ...', "
                    "'aux <n> return ...')\n");
+    }
+    if (s.Version >= 6) {
+        /* [TalkStrip] GET_STRIPS version 6: the Input Strip on the talkback mic, DSP input 0x0A (docs/STRIPS.md 15) */
+        printf("Talkback     StripTalkback=0x%lX asked, %lu built", s.TalkbackAsked, s.Talkback);
+        if (s.TalkbackLayoutWhy != 0)
+            printf("  REFUSED by the pool check: %s (code %lu)", StripsLayoutText(s.TalkbackLayoutWhy), s.TalkbackLayoutWhy);
+        printf("\n");
+        if (s.Talkback != 0 || s.TalkbackAsked != 0 || s.TStripState != APOLLO_STRIP_NONE) {
+            printf("Talkback strip                 SYNCH  input  header    taken   bus on DSP\n");
+            printf("%-8s %-20s  %-5s  0x%02lx   0x%05lx   %4lu ms  %lu\n", "talkback",
+                   s.TStripState == APOLLO_STRIP_TAKEN ? "taken" :
+                   s.TStripState == APOLLO_STRIP_QUEUED ? "QUEUED (unproven)" : "-",
+                   s.TStripStarted ? "sent" : "-", s.TalkbackBus, s.TStripHeader, s.TStripAckMs, s.TBusOwner);
+            printf("(bus 10 = 'tb': 'mix tb ...', 'cue <n> send tb ...', 'aux <n> send tb ...'; the unit gates it with TALK, "
+                   "'mon talkback 1'; the Twin X records it on slots 32/33, 'apollo-diag talkback')\n");
+        }
     }
     printf("(input 1 = record slot 0: watch it with 'apollo-diag levels')\n");
     return 0;
@@ -3721,9 +3739,16 @@ static int CmdPanel(int n, char **a)
 static int CmdTalkback(void)
 {
     APOLLO_PANEL_INFO p;
+    APOLLO_STRIPS_INFO s;
+    DWORD ret = 0;
+    BOOL v6;
 
     if (!GetPanel(&p))
         return 1;
+    /* [TalkStrip] GET_STRIPS version 6: the talkback mic's Input Strip (StripTalkback, docs/STRIPS.md 15) */
+    ZeroMemory(&s, sizeof(s));
+    v6 = DeviceIoControl(g_dev, IOCTL_APOLLO_GET_STRIPS, NULL, 0, &s, (DWORD)sizeof(s), &ret, NULL) && ret >= sizeof(s) &&
+         s.Version >= 6;
     printf("Talkback         %s (readback word 6 bit 8; set it with: mon talkback 0|1)\n",
            !(p.Flags & APOLLO_PANEL_INFO_VALID) ? "unknown (no readback yet)" : p.Talk ? "ON" : "off");
     if (p.TalkSlot[0] != APOLLO_PANEL_NO_SLOT)
@@ -3731,10 +3756,26 @@ static int CmdTalkback(void)
                p.TalkRecChannels, p.TalkSlot[0], p.TalkSlot[1], p.TalkSlot[0], p.TalkSlot[1]);
     else
         printf("Record channel   AX_REC_CH %lu: TALKBACK 1/2 (0x0B01/0x0B02) are not in this unit's frame\n", p.TalkRecChannels);
-    printf("Mic              %s\n", p.TalkStrip ? "talkback input strip running" :
-           "no talkback input strip (module 0xC9, no recipe known): the mic carries silence into the cues and the record slots");
-    printf("Into the cues    the cue sends of bus 10 (cue <n> send tb <dB>); the unit gates them with TALK (UA's engine writes "
-           "only 0x46: unverified until the mic is live)\n");
+    if (p.TalkStrip) {
+        printf("Mic              talkback Input Strip (0x83E) running on DSP input 0x0a");
+        if (v6)
+            printf(" (StripTalkback %lu, header 0x%05lx, bus 10 mixed on DSP %lu and DSP 0)", s.TalkbackAsked, s.TStripHeader,
+                   s.TBusOwner);
+        printf(": the mic carries the room while TALK is on\n");
+    } else if (v6 && s.TalkbackLayoutWhy != 0) {
+        printf("Mic              no talkback Input Strip: StripTalkback 0x%lX REFUSED by the pool check (code %lu): the mic "
+               "carries silence\n", s.TalkbackAsked, s.TalkbackLayoutWhy);
+    } else if (v6 && s.Talkback != 0) {
+        printf("Mic              talkback Input Strip asked (StripTalkback 0x%lX), not running yet (strips: %s): the mic carries "
+               "silence until it does\n", s.TalkbackAsked, StripsStateName(s.State));
+    } else {
+        printf("Mic              no talkback Input Strip (%s): the mic carries silence into the cues, the aux buses and the "
+               "record slots\n", v6 ? (s.TalkbackAsked != 0 ? "this model or StripsEnable takes none" :
+                                       "StripTalkback is 0; 'param StripTalkback 1' and a restart build it") :
+               "this apollo.sys predates StripTalkback");
+    }
+    printf("Into the cues    the cue sends of bus 10 (cue <n> send tb <dB>), the aux sends (aux <n> send tb <dB>); the unit "
+           "gates the bus with TALK (exact zero with TALK off, Twin X Nov 16 2026)\n");
     printf("Dim on talkback  %s%s\n", (p.LinkFlags & APOLLO_PANEL_LINK_TALK_DIM) ? "the monitor link dims the monitor unit" :
            "off in the driver (panel link <unit> talkdim; Apollo Control's own setting dims from the host)",
            (p.Flags & APOLLO_PANEL_INFO_UNIT_DIMS) ? "; seen: this unit dims itself on talkback" : "");
@@ -3821,7 +3862,8 @@ static void Usage(void)
 "  param <name> <value>|--remove (elevated) store one in Units\\<key> for the unit's next start\n"
 "  log [--all]                   the driver's own log (bring-up steps, errors); with --unit,\n"
 "                                that unit's lines (tag [x8p], [twx]) and driver-wide ones\n"
-"  strips                        input-strip state: ownership, pools, modules, replies, Virtual and aux-return strips\n"
+"  strips                        input-strip state: ownership, pools, modules, replies, Virtual, aux-return and\n"
+"                                talkback strips\n"
 "  strips verify [dir]           find the five pinned strip modules (UAD install, or the\n"
 "                                DLLs in dir) and check the installed copies; no device\n"
 "  strips install [dir]          elevated: copy them to System32\\drivers\\ApolloStrips\n"

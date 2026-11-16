@@ -603,7 +603,9 @@ to the L input's left and right entries, `auxcue` / `auxcuepan` to its one cell 
 into a strip-backed aux take the left entry at the centre value (an aux send's pan does nothing there). The moment the
 strip starts every return and cue cell is written, the UI's value or 0.0, so a new strip never joins MON at the DSP's own
 level. GET_STRIPS version 5 (`AuxMask`, `AuxReturnStereo` = the strip runs) tells the UI whether an aux carries audio;
-without the strips (StripAuxMask 0) every write is the single left entry on bus 0x10 / 0x12 of before.
+without the strips (StripAuxMask 0) every write is the single left entry on bus 0x10 / 0x12 of before. The host passes them
+on as `live.strips.auxMask` / `auxLive`, and the Aux section shows a note on an aux without audio and locks the send pans
+of a mono one (1.13).
 
 Aux inserts: the chain runs on the aux return (DSP inputs 0x10/0x11, 0x12/0x13) with the plain Input Strip carrier,
 before the monitor and cue mixes, so "a reverb on the headphones while tracking dry" is AUX 1 with an insert, inputs'
@@ -822,9 +824,11 @@ x8p's legacy frame is 32 wide), `strip` false = the mic carries silence (below).
   Windows never travel, so nothing loops. Only units in the combined device take part.
 - **Talkback:** the button is readback word 6 bit 8 (and `monitor` 70 = 0x46). The Twin X records TALKBACK 1/2 on record
   slots 32/33 (its frame is 34 wide, AX_REC_CH 34 from its descriptor), and the combined layout lists them as Twin X
-  inputs. The mic carries silence until a talkback input strip (module 0xC9) runs on its DSP input; no recipe for it is
-  known, so this driver builds none. Its sends into the cues are the cue sends of bus 10; UA's engine writes only 0x46
-  when TALK changes, so the unit is taken to gate the talkback bus itself (to check once the mic carries signal).
+  inputs. The mic carries silence until an Input Strip runs on its DSP input (0x0A): UA's own talkback strip (module
+  0xC9) has no known recipe, but the plain Input Strip carries it where the unit value `StripTalkback` is 1 (default 0
+  until the hardware run; docs/STRIPS.md 15); then GET_PANEL `TalkStrip` (`talkbackChannel.strip`) is true and GET_STRIPS
+  version 6 has its row. Its sends into the cues are the cue sends of bus 10; UA's engine writes only 0x46 when TALK
+  changes, and the unit gates the talkback bus itself (Twin X, Nov 16 2026: exact zero with TALK off).
 
 Tests: `tools/rate-test` (7: sources per model against the live 0xC08C words, every refusal, digital channels per
 format and rate, the masked writes, the combined layout following a format), `tools/mon-plan-test` (8: the live readback
@@ -982,8 +986,9 @@ with a NOWAIT read (old ring entries are never posted) and posts `{"type":"event
 `GET_PARAMS` (0x57, user level): every per-unit Parameter as this start runs it, its source (D default, U unit key,
 M model key, G legacy global, X forced by Mode), the model default and what `Units\<key>` holds now (pending = applies at
 the next start). `SET_PARAM` (0x58, administrators): writes or removes `Units\<key>\<name>` for the next start. The
-host's `params-get {unit?}` answers `{"type":"params",...}`; the Device view shows a read-only table. apollo-diag:
-`params`, `param <name> <value>|--remove` (elevated).
+host's `params-get {unit?}` answers `{"type":"params",...}`; the Device view shows a read-only table (for the focused unit's
+id). [Virtual] One value is changed from the app: `params-set` stores `StripVirtualMask` elevated and restarts the unit
+(1.13.2). apollo-diag: `params`, `param <name> <value>|--remove` (elevated).
 
 #### 1.12.4 [Undo] Undo and redo (`app/ui/undo.js`)
 
@@ -1006,6 +1011,114 @@ apollo-control.log and the newest crash dump; the scripts' logs in a source tree
 `apollo-control.log` (same folder's parent, 1 MiB then `.1`) records start and quit, units arriving and leaving, refused
 settings and driver events. An unhandled exception writes a minidump to `crashes\` (the last 10 kept). Nothing is sent
 anywhere.
+
+### 1.13 [Virtual] [AuxStrips] The VIRTUAL inputs and the aux returns (Nov 16 2026)
+
+The driver builds plain Input Strips on extra DSP inputs (docs/STRIPS.md 13, 14). **VIRTUAL n** (x8p 1-8, Twin X 1-4) is
+DSP input and mixer bus 0x18 + n - 1 (decimal 24-31): what a DAW plays to the unit's VIRTUAL n playback channel over ASIO
+(Windows has no playback device for them). With its strip it records, joins the monitor mix and takes cue and aux sends;
+without one it is silent and the driver refuses its bus (87). Which ones get a strip is the unit value
+`StripVirtualMask` (bit n-1; 0 by default), read as the unit starts. **AUX 1 / AUX 2** carry audio only while the strip on
+their return runs (`StripAuxMask`, 0x5 by default on both models); those aux buses are mono, so an aux send's pan does
+nothing there.
+
+Host: `app/src/main.cpp` `LiveStrips` (the fields below), `app/src/params_host.h` (`params-set` and its elevated step,
+`--params-admin`). UI: `app/ui/virtual.js` (Settings), `app.js` (strips, buses, Cues page, demo), `auxbus.js` (the aux
+note and the mono pan), each look's `theme.css` (layout only). Checks: `app/tests/virtual.js`.
+
+#### 1.13.1 The live strips report, versions 4 and 5
+
+`live.strips` gains these fields when the driver's GET_STRIPS answer is long enough (`APOLLO_STRIPS_INFO_V4_SIZE`, and the
+version 5 part up to `AuxReturnStereo`); an older driver's report leaves them out (the UI reads absent as 0):
+
+| Field | GET_STRIPS | Meaning |
+|---|---|---|
+| `virtualMask` | v4 `VirtualMask` | the VIRTUAL inputs this start built or adopted (bit n-1 = VIRTUAL n) |
+| `virtualAsked` | v4 `VirtualAsked` | what `StripVirtualMask` asked at this start |
+| `virtualWhy` | v4 `VirtualLayoutWhy` | 0, or 8 + pool: the pools had no room, the whole mask was refused |
+| `auxMask` | v5 `AuxMask` | the aux-return strips built (bit k = DSP input 0x10 + k: bit 0 AUX 1, bit 2 AUX 2) |
+| `auxAsked` | v5 `AuxAsked` | `StripAuxMask` at this start |
+| `auxWhy` | v5 `AuxLayoutWhy` | as `virtualWhy` |
+| `auxLive` | v5 `AuxReturnStereo` & 3 | bit a: AUX a+1's return strip runs (the aux carries audio, mono) |
+
+```json
+"strips":{"version":5,"state":4,...,"started":[1,1,1,1,1,1,1,1],"virtualMask":3,"virtualAsked":3,"virtualWhy":0,
+          "auxMask":5,"auxAsked":5,"auxWhy":0,"auxLive":3}
+```
+
+#### 1.13.2 `params-set`: StripVirtualMask, elevated, then the unit restarts
+
+UI to host (a JSON string, as `endpoints-set`), `unit` the `units` list's id, `value` the whole mask:
+
+```json
+{"cmd":"params-set","unit":"SN20000000000001","name":"StripVirtualMask","value":7}
+```
+
+Host to UI: at once `{"type":"params-result","unit","name","value","pending":true,"code":"","detail":"asking for
+administrator rights to store StripVirtualMask and restart the unit"}`, then the final one and a fresh `params` for that
+unit (sent once the restarted unit is back, at most 15 s later):
+
+```json
+{"type":"params-result","unit":"SN20000000000001","name":"StripVirtualMask","value":7,"pending":false,"ok":true,
+ "stored":true,"restarted":true,"code":"","detail":"stored; the unit restarted (its audio stops for a few seconds) and builds the new set as it starts"}
+```
+
+| `code` | `stored` | Meaning |
+|---|---|---|
+| `""` | true | stored and the unit restarted (`ok` true) |
+| `reboot` | true | stored; Windows put the restart off (something holds the unit open and refused the query-remove, an ASIO host for one): close it and apply again, or power-cycle the unit |
+| `restart` | true | stored; the restart failed (`detail` has the Windows error): it applies at the unit's next start |
+| `cancelled` | false | the UAC prompt was declined: nothing changed |
+| `elevation` | false | the elevated step did not start, or ended without an answer (3 minutes) |
+| `driver` | false | SET_PARAM failed: a driver without it (1), one that does not know the name (87), or another error |
+| `registry` | false | the driver's registry write failed (`detail` has the NTSTATUS) |
+| `absent`, `unit`, `name`, `value`, `busy` | false | refused before any prompt: the unit is not there / has no key or model that takes the value / not a name the host changes / bits the model does not have / another change waits for its prompt |
+
+Rules: only `StripVirtualMask` is taken, with the model's bits (x8p 0xFF, Twin X 0x0F), checked by the host and again by
+the elevated step. The elevated step is `apollo-control.exe --params-admin <unit key> <name> <hex value>` (UAC, hidden): it
+finds the unit by its key, opens it read/write, sends `SET_PARAM` (the driver writes `Units\<key>\StripVirtualMask`),
+closes its handle, then restarts the device as Device Manager's disable / enable and devcon restart do (SetupAPI
+`DIF_PROPERTYCHANGE`, `DICS_PROPCHANGE`): Apollo Control's own handles close on the query-remove as for a driver update.
+Its exit code is `(what << 24) | detail` (0 done, 1 arguments, 2 unit, 3 SET_PARAM, 4 registry, 5 restart failed, 6 restart
+put off). The restart rebuilds the strips; no power cycle is needed.
+
+#### 1.13.3 What the UI does with it
+
+- **Settings, Virtual inputs** (beside Windows audio): per unit of a model with VIRTUAL inputs, a box per VIRTUAL n,
+  checked from what the next start reads (the `params` StripVirtualMask entry: stored, else in force; without one,
+  `virtualAsked`), with "Running" (in `virtualMask`), "Built at the restart" / "Removed at the restart" (the draft), "Asked,
+  not built". A draft until **Apply**, which asks first, plainly: the unit restarts, its audio stops for a few seconds, and
+  nothing plays through a VIRTUAL input until a DAW sends audio there over ASIO (Windows has no playback device for them).
+  Then one `params-set`; boxes locked while it is pending; the host's words after. A stored value that differs from what
+  runs (a put-off restart) says so with a "Restart the <unit>" button (the same value again). An older driver (no
+  `virtualMask`) or input strips off: said, boxes locked; a read-only unit: no boxes. `params-get` (every unit) goes out
+  when Settings opens, at most every 3 s, and after each final result.
+- **The mixer**: a VIRTUAL strip appears in the unit's segment after its Mic strips only where `virtualMask` has its bit
+  (the model's range only; the last mask is kept while the strips report nothing, e.g. during the restart; a new mask
+  rebuilds the segment). VIRTUAL 1-2, 3-4 ... are pairs (`V1 - V2`) with a LINK that links them in the monitor mix only, as
+  a Mic pair's mix follows its link: the first strip's fader, M and S drive both buses, pans go L100 / R100 (kept as
+  `cfg.mixes[...].vlinks`); a pair with one built input is a single strip without LINK. Each strip: number `V<n>`, name
+  `VIRTUAL <n>` (fixed), the AUX 1 / AUX 2 sends, pan, M, S, the fader and the meter of its record slot (the unit's
+  descriptor, else x8p 18-25, Twin X 4-7). No preamp, no insert (the driver hosts plug-ins on Mic inputs only). Names
+  `VIRTUAL 1 mix level`, `Twin X VIRTUAL 1 mute in the monitor mix`, ... Messages, decimal bus: `mix:24`..`mix:31`,
+  `mixpan:`, `mixmute:`, `mixsolo:`, `send:<cue>:24`, `pan:<cue>:24`, `auxsend:<a>:24`, `auxpan:<a>:24`, `auxpost:<a>:24`
+  (PRE / POST covers them), MUTE ALL and CLEAR SOLO cover them. The Cues page lists them between the last input and the
+  talkback; Classic adds their cue sends on the strip. Every look draws them from the input strip's markup (`.strip.vstrip`,
+  no `data-ch`); Lab and Arcade make them one-column panels, Day opens them like an input.
+- **Saved state**: the values live in the unit's mix under their bus (`main[24]`, `cues[c].sends[24]`, `aux[a].sends[24]`)
+  and `vlinks`, so config.json, sessions (still version 1: older builds read the file and ignore buses they do not mix) and
+  undo carry them like a Mic input's. They go out only to built buses: on connect with the rest, and when a VIRTUAL input
+  appears later in a connection (the first report after the app started, say) its kept values go out then, mutes first.
+- **The aux section**: while `auxLive` has the aux's bit the aux works as before, tagged MONO, and every aux send's pan is
+  locked (it does nothing on a mono bus; the tooltip says so; the layouts that show the pans dim them). Where the driver
+  reports no strip for it (an older driver, `auxMask` without the bit, strips off or failed, or a strip not running once the
+  strips settled) the aux strip shows an inline note, "No audio on this unit's driver", with the reason in its tooltip
+  (`aria-describedby`), and dims its controls; its settings are still kept and sent. Nothing is said while no strips report
+  arrived or while they are being built.
+- **Status**: the strip line adds `· VIRTUAL 1, 2` and `· AUX 1, 2 returns` for what runs.
+- **Demo**: `Virt.demoState(slot, {virtualMask, virtualAsked, auxMask, auxAsked, auxLive, ...})` sets what a demo unit
+  reports (default: no VIRTUAL, both aux returns running) and publishes it; Settings' Apply there answers like a host and a
+  restart (no prompt); a DAW loop plays into VIRTUAL 1-2 where built.
 
 ### 1.3 UI to host: `agg-get`, `agg-set`
 
@@ -1159,6 +1272,11 @@ Forget and Revert, observe read-only, advanced order, a unit in slot 2 with slot
 overflow at 980 px. `host-path.js` and `status.js` cover the G2 side: unit-tagged messages leave the
 x8p controls alone, `MODEL_CAPS` hides the x8p's headphone knobs, observe sections, slots opening
 and closing.
+`virtual.js` covers section 1.13 (stub host and demo): no VIRTUAL strip from an older report, strips per `virtualMask`
+(model range, after the Mic strips, pairs and LINK), their messages on buses 24 / 25 (mix, pan, M, S, cue and aux sends,
+POST, MUTE ALL), the Cues page, a refusal named, kept through a report without strips and rebuilt on a new mask, the kept
+values replayed when they appear, the aux notes and the locked mono pans, Settings to `params-set` and every answer, a
+session and undo with VIRTUAL values, the demo, and every look drawing them.
 `control-units.js` covers section 1.2a: the selector (present units only, remembered across a restart and
 a replug, the `--view` pin), the Twin X strips and monitor, per-unit state, readback, pending writes and
 meters, sends tagged with the unit, refusals inline and reverted, the no-preamp note, a read-only unit, the

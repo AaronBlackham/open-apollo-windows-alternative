@@ -18,3 +18,4 @@ node "%~dp0endpoints.js" %1 || exit /b 1
 node "%~dp0sessions.js" %1 || exit /b 1
 node "%~dp0undo.js" %1 || exit /b 1
 node "%~dp0clock.js" %1 || exit /b 1
+node "%~dp0virtual.js" %1 || exit /b 1

@@ -191,7 +191,8 @@ typedef struct _APOLLO_PANEL_INFO {
     /* talkback */
     ULONG   TalkRecChannels;    /* AX_REC_CH now (the Twin X: 34, its TALKBACK 1/2 at record slots 32/33) */
     ULONG   TalkSlot[2];        /* record slots of TALKBACK 1/2 (0x0B01/0x0B02), APOLLO_PANEL_NO_SLOT = not in the frame */
-    ULONG   TalkStrip;          /* 0: no talkback input strip (module 0xC9 has no recipe): the mic carries silence */
+    ULONG   TalkStrip;          /* 1: the talkback mic's Input Strip runs (StripTalkback, GET_STRIPS version 6, docs/STRIPS.md
+                                   15); 0: none: the mic carries silence */
     /* the monitor link (driver-wide) */
     ULONG   LinkFlags;          /* APOLLO_PANEL_LINK_* (0 = off) */
     ULONG   LinkApplied;        /* changes mirrored to the monitor unit */

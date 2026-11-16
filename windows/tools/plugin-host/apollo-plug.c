@@ -761,9 +761,11 @@ static const char *RbSkipped(const RB *C)
  * them. PLUG_OK, or the ledger's error (not a usable pool map). [Virtual] The room includes the Virtual Input Strips the unit
  * built (g_virtualMask, from its GET_STRIPS version 4; 0 offline and for an older driver), as plugin.c books them.
  * [AuxStrips] And its aux-return Input Strips (g_auxMask, GET_STRIPS version 5; 0 offline and for an older driver).
+ * [TalkStrip] And its talkback Input Strip (g_talkback, GET_STRIPS version 6; 0 offline and for an older driver).
  */
 static ULONG g_virtualMask;
 static ULONG g_auxMask;
+static ULONG g_talkback;
 
 static ULONG BuildLedger(PLUG_LEDGER *L, const ULONG Regs[11], BOOL StripDsp, PLUG_LEASE Book[4])
 {
@@ -776,7 +778,7 @@ static ULONG BuildLedger(PLUG_LEDGER *L, const ULONG Regs[11], BOOL StripDsp, PL
     }
     err = PlugLedgerInit(L, base, size, scr);
     if (err == PLUG_OK && StripDsp) {
-        StripPlanRoomAux(g_model->Strips, g_virtualMask, g_auxMask, room);
+        StripPlanRoomTalkback(g_model->Strips, g_virtualMask, g_auxMask, g_talkback, room);
         err = PlugLedgerBookStripRoom(L, STRIP_CODE_WORDS, room, Book);
         if (err == PLUG_OK && (Book[0].Base != APOLLO_STRIP_CODE_BASE || Book[1].Base + Book[1].Words != STRIP_TOP1 ||
                                Book[2].Base + Book[2].Words != STRIP_TOP2 || Book[3].Base + Book[3].Words != STRIP_TOP3)) {
@@ -2199,6 +2201,7 @@ static int HeadCheck(RECIPE *r, ULONG Page0, const APOLLO_PLUGIN_INSTANCE *inst,
  * this tool reads before [Virtual]). [Virtual] A version 4 driver also gives the Virtual strips it built: their room is
  * part of the strip DSP's ledger (BuildLedger); an older driver's VirtualMask stays 0 (none). [AuxStrips] A version 5
  * driver also gives the aux-return strips it built (their room is booked too); a version 4 driver's AuxMask stays 0.
+ * [TalkStrip] A version 6 driver also gives its talkback strip (its room is booked too); a version 5 driver's stays 0.
  */
 static BOOL GetStrips(APOLLO_STRIPS_INFO *s)
 {
@@ -2210,7 +2213,8 @@ static BOOL GetStrips(APOLLO_STRIPS_INFO *s)
          ret >= APOLLO_STRIPS_INFO_V3_SIZE && s->Version >= 2;
     if (ok) {
         g_virtualMask = (ret >= APOLLO_STRIPS_INFO_V4_SIZE && s->Version >= 4) ? (s->VirtualMask & 0xFFu) : 0;
-        g_auxMask = (ret >= sizeof(*s) && s->Version >= 5) ? (s->AuxMask & 0xFu) : 0;
+        g_auxMask = (ret >= APOLLO_STRIPS_INFO_V5_SIZE && s->Version >= 5) ? (s->AuxMask & 0xFu) : 0;
+        g_talkback = (ret >= sizeof(*s) && s->Version >= 6) ? (s->Talkback & 1u) : 0;
     }
     return ok;
 }
@@ -2485,8 +2489,9 @@ static int CmdCreateStart(int n, char **a)
             memcpy(baseRegs, c1.Dsp[dsp].Regs, sizeof(baseRegs));
             baseHow = "derived from the pool registers";
             Info("DSP %lu had no ledger before the CREATE (apollo.sys builds it inside the first CREATE after a power cycle): "
-                 "baseline derived from its pool registers as the driver builds it (the strips booked, Virtual 0x%02lx, Aux 0x%lx): "
-                 "used %lu / %lu / %lu / %lu, scratch 0x%lx / 0x%lx / 0x%lx", dsp, g_virtualMask, g_auxMask, base[0].Used, base[1].Used, base[2].Used,
+                 "baseline derived from its pool registers as the driver builds it (the strips booked, Virtual 0x%02lx, Aux 0x%lx, "
+                 "Talkback %lu): used %lu / %lu / %lu / %lu, scratch 0x%lx / 0x%lx / 0x%lx", dsp, g_virtualMask, g_auxMask, g_talkback,
+                 base[0].Used, base[1].Used, base[2].Used,
                  base[3].Used, base[1].Scratch, base[2].Scratch, base[3].Scratch);
         } else {
             Info("DSP %lu had no ledger before the CREATE, and %s after it: no ledger baseline", dsp,

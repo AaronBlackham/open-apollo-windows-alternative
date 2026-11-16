@@ -178,6 +178,9 @@
 /* ===== [Ins] Cyberpunk: aux strips are HUD cards too ===== */
 [data-look="cyber"] #view-control[data-comp="hud"] .aux-strip { border: 1px solid #2c2c50; background: #0a0a16; margin-left: 2px; clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); flex-basis: 60px; width: 60px; }
 [data-look="cyber"] #view-control[data-comp="hud"] .aux-strip .strip-num { color: var(--accent); }
+/* [AuxStrips] the MONO tag wraps under the name in the 60 px card; [Virtual] a lone VIRTUAL strip is one card wide */
+[data-look="cyber"] #view-control[data-comp="hud"] .aux-strip .strip-top { flex-wrap: wrap; row-gap: 0; }
+[data-look="cyber"] #view-control[data-comp="hud"] .pair.vpair.single { min-width: 64px; }
 [data-look="cyber"] .ins-uni { clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); border: 1px dashed #3a3a5e; }
 
 /* ===== [Sess] save states: HUD cards with cut corners and an angled header, stats in code, pills (layout "hud") */

@@ -38,6 +38,12 @@
  * ApolloAuxReturnCells / ApolloAuxCueCells); the moment they go live every cell is written, the host's value or 0.0.
  * Without them (StripAuxMask 0) every write is the single left-entry one of before, owner DSP 0.
  *
+ * [TalkStrip] The talkback mic is DSP input 0x0A, the mixer's bus 10, and carries sound only with an Input Strip on it
+ * (StripTalkback, docs/STRIPS.md 15). Its strip is slot 20 (strips.c ApolloStripsBusSlot), so bus 10 follows it like any
+ * strip's bus: the owner moves to the strip DSP when it goes live, ApolloCuesBusMoved re-sends what the host set (mix,
+ * cue and aux sends of tb) and writes every cue and aux send it never set as 0.0; when the strip goes, the owner is DSP 0
+ * again. Without it (StripTalkback 0) bus 10 stays on DSP 0, every write as before.
+ *
  * DevLock held for every function here (ioctl.c, strips.c, mixer.c ApolloMixerInit).
  *
  * SPDX-License-Identifier: GPL-2.0-only
@@ -75,6 +81,9 @@ C_ASSERT(APOLLO_MON_AUX_RETURN_BUS(1) < APOLLO_MON_BUSES && APOLLO_MON_AUX_BUSES
 /* [AuxStrips] the return inputs GET_STRIPS numbers are the encoder's return buses and their R partners */
 C_ASSERT(APOLLO_STRIP_AUX_BUS0 == APOLLO_MON_AUX_RETURN_BUS(0) && APOLLO_STRIP_AUX_RETURNS == APOLLO_MON_AUX_BUSES &&
          APOLLO_STRIP_AUXES == 2 * APOLLO_MON_AUX_BUSES && APOLLO_MON_AUX_RETURN_BUS(1) + 1 < APOLLO_MON_VIRTUAL_BUS0);
+/* [TalkStrip] the talkback strip's DSP input is the encoder's talkback bus, apart from every other strip's bus */
+C_ASSERT(APOLLO_STRIP_TALKBACK_BUS == APOLLO_MON_TALKBACK_BUS && APOLLO_STRIP_TALKBACK_BUS >= APOLLO_STRIP_INPUTS &&
+         APOLLO_STRIP_TALKBACK_BUS < APOLLO_STRIP_AUX_BUS0);
 
 #define CUES_LOG_BUSY_MAX   5       /* "ring full" lines per device, then only the counter */
 
@@ -92,6 +101,7 @@ static ULONG CuesUsable(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG D)
  * The DSP that mixes Bus: its strip's DSP once that strip runs (strips.c BusOwner), else DSP 0; DSP 0 for
  * anything unusable. A quarantined strip DSP gets nothing more.
  * [Virtual] An ANALOG bus is its Mic strip's slot, a VIRTUAL bus (0x18-0x1F) its Input Strip's (strips.c).
+ * [TalkStrip] The talkback bus (0x0A) is its Input Strip's, slot 20 (DSP 0 while that strip does not run).
  */
 static ULONG CuesOwner(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus)
 {
@@ -455,7 +465,9 @@ NTSTATUS ApolloCuesApply(_In_ PDEVICE_CONTEXT Ctx, _In_ const APOLLO_MON_WRITE *
  * same way), while Console's sends start off. So every cue and aux send the host has not set goes out as 0.0 to the
  * new owner; an aux return's own aux sends (0x10-0x13 into AUX 1/2, which Console does not have) are always 0.0. The
  * monitor-mix weight keeps the DSP default (Console's input fader starts at 0 dB). The return's own cue sends follow in
- * ApolloCuesAuxStrips.
+ * ApolloCuesAuxStrips. [TalkStrip] The talkback bus (10) the same way when its strip goes live: the host's tb mix weight
+ * if set, its cue and aux sends (set, else 0.0), so the mic reaches no cue or aux bus the host did not send it to; its
+ * monitor-mix weight keeps the DSP default until the host sets it, as every strip's.
  */
 ULONG ApolloCuesBusMoved(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus)
 {
@@ -467,7 +479,14 @@ ULONG ApolloCuesBusMoved(_In_ PDEVICE_CONTEXT Ctx, _In_ ULONG Bus)
         return 0;
     }
     owner = CuesOwner(Ctx, Bus);
-    if ((Ctx->Cues.Mix.Set & (1ul << Bus)) != 0 && NT_SUCCESS(MixSendCell(Ctx, Bus, TRUE, &pass))) {
+    if ((Ctx->Cues.Mix.Set & (1ul << Bus)) != 0) {
+        if (NT_SUCCESS(MixSendCell(Ctx, Bus, TRUE, &pass))) {
+            n++;
+        }
+    } else if (Bus == APOLLO_MON_BUS_TALKBACK &&
+               NT_SUCCESS(CuesPutCell(Ctx, owner, TRUE, Bus, APOLLO_MIX_SUB, 0, 0, FALSE, &pass))) {
+        /* [TalkStrip] the talkback mic stays out of the speakers until the host puts it in the monitor mix: the DSP's
+           default weight would put it there with TALK on (feedback); Console keeps it to the cues unless asked */
         n++;
     }
     for (c = 0; c < APOLLO_MON_CUES_MAX; c++) {

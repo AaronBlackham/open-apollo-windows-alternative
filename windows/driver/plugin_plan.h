@@ -1659,8 +1659,9 @@ static __inline ULONG PlugBuildBoardQuery(PLUG_XL *X, ULONG Date, ULONG Cookie)
  *     sends span and route on the strip DSP only (ua_plugin_instance.c:689-740), so nothing new;
  *   - the inputs: analog 1..Inputs = DSP inputs FirstSynch.. (0 on both), pairs 2k / 2k+1 below Inputs
  *     (Twin X: the pair 1/2 only); a Hi-Z jack feeds the same DSP input, so it shares that input's
- *     strip and insert; the talkback mic has no strip (no captured Talkback Input Strip recipe), so
- *     a chain on it is refused, as is any other DSP input outside InputMask.
+ *     strip and insert; the talkback mic has no Mic strip (no captured Talkback Input Strip recipe;
+ *     [TalkStrip] StripTalkback runs the plain Input Strip there, docs/STRIPS.md 15), so a chain on
+ *     it is refused, as is any other DSP input outside InputMask.
  * StripDspRegs: the strip DSP's pool registers as measured (CAPS Regs order: sizes 0-3, bases 0-3,
  * scratch 1-3), for the offline tools only; the driver reads the live ones.
  */
@@ -1679,7 +1680,7 @@ typedef struct _PLUG_MODEL {
     ULONG       InputMask;          /* DSP inputs with a Mic Input Strip (bit = DSP input) */
     ULONG       RouteDsps;          /* DSPs the strip pass sends route 0x1FFFF to: all but the strip DSP */
     ULONG       HizMask;            /* DSP inputs whose Hi-Z jack shares the input's strip */
-    ULONG       Talkback;           /* DSP input of the talkback mic (no strip: refused), PLUG_NONE = not looked up */
+    ULONG       Talkback;           /* DSP input of the talkback mic (no Mic strip: refused), PLUG_NONE = not looked up */
     ULONG       StripDspRegs[11];   /* measured, CAPS Regs order */
 } PLUG_MODEL;
 

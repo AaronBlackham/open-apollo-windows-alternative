@@ -22,6 +22,8 @@
  * thread of their own talks to the plug-in IOCTLs (0x40-0x42) through the x8p slot's
  * handle, so its instances live and die with it; --plugin-admin <file> is the
  * elevated step the app runs itself for (hosting on/off, the module store).
+ * --endpoints-admin and [Virtual] --params-admin <unit key> <name> <hex value> are the
+ * other two (endpoints_host.h, params_host.h: a unit's StripVirtualMask, then its restart).
  *
  * UI -> host: strings, fields separated by tabs (HandleUiMessage); a string
  * or object that is JSON ({"cmd": ...}) for the combined-device and plug-in commands.
@@ -72,7 +74,8 @@
 #include "endpoints_host.h"                 /* [Endpoints] the Windows endpoint set: endpoints-* commands (docs 1.7) */
 #include "clock_host.h"                     /* [Clock] clock source, digital formats, front panel: clock-*, digital-*,
                                                panel-* commands and the panel/clock messages (docs 1.10) */
-#include "params_host.h"                    /* [Params] the units' driver Parameters: params-get (read-only) */
+#include "params_host.h"                    /* [Params] the units' driver Parameters: params-get; [Virtual] params-set
+                                               (StripVirtualMask, elevated, then the unit restarts) */
 #include "..\..\include\apollo_events.h"  /* [Events] WAIT_EVENTS: the event pump below */
 #include "..\res\resource.h"
 
@@ -1051,7 +1054,19 @@ static void LiveStrips(std::wstring &j, Slot &u)
     for (ULONG i = 0; i < APOLLO_STRIP_INPUTS; i++) {
         Appendf(j, i ? L",%lu" : L"%lu", perInput && s.StripStarted[i] ? 1ul : 0ul);
     }
-    j += L"]}";
+    j += L"]";
+    /* [Virtual] [AuxStrips] versions 4 and 5 (docs/STRIPS.md 13.5, 14.6): the VIRTUAL inputs' and the aux returns' Input
+       Strips this start built, what the registry asks, a layout refusal, and which aux returns run (AuxReturnStereo,
+       bit a = AUX a+1). An older driver answers shorter: the fields stay out (docs/apollo-control-units.md 1.13). */
+    if (ret >= APOLLO_STRIPS_INFO_V4_SIZE) {
+        Appendf(j, L",\"virtualMask\":%lu,\"virtualAsked\":%lu,\"virtualWhy\":%lu", s.VirtualMask, s.VirtualAsked,
+                s.VirtualLayoutWhy);
+    }
+    if (ret >= (DWORD)(offsetof(APOLLO_STRIPS_INFO, AuxReturnStereo) + sizeof(ULONG))) {
+        Appendf(j, L",\"auxMask\":%lu,\"auxAsked\":%lu,\"auxWhy\":%lu,\"auxLive\":%lu", s.AuxMask, s.AuxAsked, s.AuxLayoutWhy,
+                s.AuxReturnStereo & 3ul);
+    }
+    j += L"}";
 }
 
 static void LiveEndpoints(std::wstring &j, Slot &u)
@@ -2048,7 +2063,7 @@ static void HandleUiJson(const std::wstring &json)
         return;
     }
     if (paramshost::Owns(cmd)) {
-        paramshost::Handle(Narrow(json), RatePost); /* [Params] params-get (params_host.h) */
+        paramshost::Handle(Narrow(json), RatePost); /* [Params] params-get, [Virtual] params-set (params_host.h) */
         return;
     }
     if (diaghost::Owns(cmd)) {
@@ -2581,6 +2596,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ 
         std::wstring scope = argv[2], arg = argv[3];
         LocalFree(argv);
         return ephost::AdminMain(scope, arg);
+    }
+    if (argv && argc == 5 && wcscmp(argv[1], L"--params-admin") == 0) {
+        /* [Virtual] the elevated SET_PARAM and unit restart params-set runs (UAC): no window (params_host.h) */
+        std::wstring key = argv[2], name = argv[3], arg = argv[4];
+        LocalFree(argv);
+        return paramshost::AdminMain(key, name, arg);
     }
     for (int i = 1; argv && i < argc; i++) {
         std::wstring a = argv[i];

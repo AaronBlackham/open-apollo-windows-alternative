@@ -341,7 +341,7 @@ typedef struct _APOLLO_BOARD_QUERY {
  *            input. Needs an explicit Dsp = the strip DSP with each input's plain strip live (it
  *            is retained and restored by DESTROY and by closing the handle).
  *            Synch = in1 | in2 << 16: mono, in2 0x20 (in1 = the DSP input: x8p 0-7 = inputs 1-8;
- *            Twin X 0-1 = inputs 1-2, its Hi-Z jack = input 1, its talkback (10) has no strip);
+ *            Twin X 0-1 = inputs 1-2, its Hi-Z jack = input 1, its talkback (10) has no Mic strip);
  *            or (FEAT_STEREO) a linked pair, in1 even and in2 = in1 + 1 below the unit's inputs
  *            (x8p 0x00010000, 0x00030002, 0x00050004, 0x00070006 = inputs 1/2, 3/4, 5/6, 7/8;
  *            Twin X 0x00010000 only;

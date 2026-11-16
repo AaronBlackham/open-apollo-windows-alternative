@@ -181,6 +181,8 @@
 [data-look="lab"] #view-control[data-comp="panels"] .st-aux { grid-area: aux; }
 [data-look="lab"] #view-control[data-comp="panels"] .aux-strip { width: 112px; flex-basis: 112px; border: 1px solid var(--line-strong); background: var(--panel); }
 [data-look="lab"] .ins-chain { color: var(--text); }
+/* [Virtual] a VIRTUAL input's panel has no preamp or insert: one column, as narrow as an aux panel */
+[data-look="lab"] #view-control[data-comp="panels"] .strip.vstrip { width: 112px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "stats" "name" "mix" "aux"; }
 
 /* ===== [Sess] the session table: numbers first, sortable columns, soft-keys, a status line (layout "table") */
 [data-look="lab"] .sess-pop { border-radius: 0; background: #0d1319; }

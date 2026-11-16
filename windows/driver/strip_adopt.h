@@ -78,10 +78,14 @@ static __inline ULONG StripRecordSum(const STRIP_RECORD *R)
 
 /*
  * [Virtual] The version a record is sealed as: 2 when its plan mask names Virtual strips, else 1 (strip_record.h).
- * [AuxStrips] 3 when it names aux-return strips (bits 16-19), whatever else it names.
+ * [AuxStrips] 3 when it names aux-return strips (bits 16-19), whatever else it names. [TalkStrip] 4 when it names the
+ * talkback strip (bit 20), whatever else it names.
  */
 static __inline ULONG StripRecordVersionOf(const STRIP_RECORD *R)
 {
+    if (((R->Mask >> 20) & 1u) != 0) {
+        return STRIP_REC_VERSION_TALKBACK;
+    }
     if (((R->Mask >> 16) & 0xFu) != 0) {
         return STRIP_REC_VERSION_AUX;
     }
@@ -99,12 +103,13 @@ static __inline void StripRecordSeal(STRIP_RECORD *R)
 /*
  * Bytes = what the registry value held. 1 = a record this build wrote and nobody changed. [Virtual] Version 1 (no
  * Virtual strips, every earlier build's) or 2 (Virtual strips in the plan mask), and the one its mask asks for.
- * [AuxStrips] Or 3 (aux-return strips, plan mask bits 16-19); nothing past bit 19.
+ * [AuxStrips] Or 3 (aux-return strips, plan mask bits 16-19). [TalkStrip] Or 4 (the talkback strip, bit 20); nothing past
+ * bit 20.
  */
 static __inline int StripRecordValid(const STRIP_RECORD *R, ULONG Bytes)
 {
     return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == StripRecordVersionOf(R) &&
-           (R->Mask >> 20) == 0 && R->Size == sizeof(*R) && R->Check == StripRecordSum(R) &&
+           (R->Mask >> 21) == 0 && R->Size == sizeof(*R) && R->Check == StripRecordSum(R) &&
            R->NumDsps <= STRIP_REC_DSPS && R->State <= STRIP_REC_UNKNOWN;
 }
 
@@ -172,7 +177,8 @@ static __inline ULONG StripPlanHash(ULONG Mask, ULONG Limit, ULONG Rate, ULONG D
  * [Virtual] The same identity for a plan mask Pm (StripMask | StripVirtualMask << 8, strip_plan.h StripPlanPm) with the
  * model's MicSlots (where the Virtual strips sit): every Mic and Virtual PREPARE, then the START, word for word. For a
  * Pm of 0..0xFF it is StripPlanHash's value, so a record any earlier build wrote matches a start without Virtual
- * strips exactly as before (strip-plan-test). 0 on a planner error.
+ * strips exactly as before (strip-plan-test). [AuxStrips] [TalkStrip] The aux-return and talkback slots the same way; a
+ * Pm without bit 20 hashes as the aux build did. 0 on a planner error.
  */
 static __inline ULONG StripPlanHashPm(ULONG Pm, ULONG MicSlots, ULONG Limit, ULONG Rate, ULONG Dsp, ULONG NumDsps,
                                       STRIP_PLAN *Plan)

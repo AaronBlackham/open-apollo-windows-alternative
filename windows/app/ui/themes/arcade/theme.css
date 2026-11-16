@@ -184,6 +184,8 @@
 [data-look="arcade"] .ins-uni { border-radius: 0; font-family: "Avium Pixel", var(--mono); }
 [data-look="arcade"] #view-control[data-comp="cards"] .aux-strip { width: 96px; flex-basis: 96px; border: 3px double var(--line-strong); background: #05050f; }
 [data-look="arcade"] #view-control[data-comp="cards"] .aux-strip .strip-num { font: 14px "Avium Pixel", var(--mono); color: var(--accent); }
+/* [Virtual] a VIRTUAL input's card has no preamp or power-up slots: one column, a little wider than an aux card */
+[data-look="arcade"] #view-control[data-comp="cards"] .strip.vstrip { width: 104px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "name" "mix" "aux"; }
 
 /* ===== [Sess] SAVE SLOTS: pixel frames, slot numbers, LOAD / SAVE / ERASE that press down (layout "slots") */
 [data-look="arcade"] .sess-pop { border-radius: 0; border: 2px solid var(--line-strong); box-shadow: 0 0 0 2px #000000, 0 0 0 4px var(--line-strong); background: #04040c; }

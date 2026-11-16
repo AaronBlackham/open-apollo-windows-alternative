@@ -1040,6 +1040,7 @@ const Units = (() => {
       strips: {
         version: 2, state: 4, flags: 0x79, enable: 1, mask: 0x03, stepsLimit: 9, stepsDone: 9, phantomState: 1, phantomMask: 0,
         why: 'stage 9 done on StripMask 0x03, DSP 1', perInput: true, taken: [2, 2, 0, 0, 0, 0, 0, 0], started: [1, 1, 0, 0, 0, 0, 0, 0],
+        ...Virt.demoFields(DEMO_TWX.index),            /* [Virtual] [AuxStrips] versions 4 and 5 (virtual.js) */
       },
       /* Combined: the x8p hosts the Windows endpoints, the Twin X creates none (spec 6.7). */
       endpoints: { version: 1, count: 0, enabledMask: 0, prepared: 0, layoutOk: true, rows: [] },
@@ -1108,6 +1109,7 @@ const Units = (() => {
 
   return {
     onUnits, onAgg, render, demo, demoScenario,
+    demoTwinLive,                      /* [Virtual] virtual.js publishes a changed demo Twin X at once */
     get state() { return U; },
   };
 })();

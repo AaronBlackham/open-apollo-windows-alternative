@@ -1946,3 +1946,117 @@ param StripAuxMask 0xF` and a restart of the unit: `strips` (AUX 1 L .. AUX 2 R 
 returns "stereo pair"), a -40 dBFS tone on playback slots 20/21 (VIRTUAL 1) with `aux 1 send v1 0`: record slots 28 and 29
 at about -43 dBFS (30/31 with `aux 2 send v1 0`), then `aux 1 return 0` / `-121` and MON (slots 26/27) left and right
 together.
+
+## 15. The talkback mic's Input Strip (Nov 16 2026)
+
+**Measured.** open-apollo's device maps give `talkback_synch_in = 10` on the x8p and the Twin X
+(`oa:devices/apollo-x8p.json`, `apollo-twin-x.json`): the talkback mic is DSP input 0x0A, the mixer's bus 10
+(`APOLLO_MON_BUS_TALKBACK`, `tb` in apollo-diag). Without a strip there it carries silence (`apollo-diag talkback` said "no
+talkback input strip (module 0xC9, no recipe known)"). UA's own Talkback Input Strip (0xC9) still has no recipe, but a
+throwaway build put the plain Input Strip (0x83E, the one the Virtual and aux-return strips use) on 0x0A as a moved Virtual
+slot. On the **Twin X**:
+
+- with TALK on (`apollo-diag --unit twinx mon talkback 1`) its TALKBACK 1/2 record slots 32/33 carried the room at
+  -45.9 dBFS; with TALK off they were exact zero again (so the unit gates bus 10 with TALK, 0x46, as UA's engine assumes);
+- nothing was quarantined, and every other input recorded as before.
+
+On the x8p nothing could be seen: its record frame is 32 channels (AX_REC_CH 32), so TALKBACK 1/2 (slots 32/33) are outside
+it; and that build did not move bus 10's owner to the strip DSP, so `aux 1 send tb 12` went to DSP 0 only while the strip
+mixes on DSP 1. This build does both right. 0x0A is an even DSP input, the safe kind for a mono strip (a mono strip on the
+odd aux returns 0x11/0x13 covered input 1's record slot, 14); nothing is ever built on 0x0B.
+
+Code: `driver/strip_plan.h` ("[TalkStrip]"), `driver/strips.c`, `driver/strip_adopt.h` / `strip_record.h` (record version 4),
+`driver/cues.c` (bus 10 follows slot 20), `driver/panel.c` (GET_PANEL `TalkStrip`), `driver/plugin.c` (ledger room),
+`include/apollo_ioctl.h` (GET_STRIPS version 6), `tools/apollo-diag` (`strips`, `talkback`), `tools/plugin-host/apollo-plug.c`
+(its offline ledger books the same room).
+
+### 15.1 Registry and what it builds
+
+`StripTalkback` (unit value id 22, after StripAuxMask; REG_DWORD, hex in the log), bit 0 = the plain Input Strip on DSP input
+0x0A; other bits are dropped with a log line. **Default: Twin X 1, x8p 0**, through one constant per model,
+`APOLLO_DEF_STRIP_TALKBACK_X8P` / `_TWINX` in `driver/apollo_unit.h` (ident-test checks them); every other model 0.
+Hardware run, Nov 16 2026: on the Twin X, TALK on put the room on its talkback record slots 32/33 (-45.5 dBFS) and,
+through `aux 1 send tb 12`, into AUX 1 (-34.9); the monitor mix stayed silent (cues.c writes bus 10's never-set monitor
+weight 0.0, so TALK never feeds the speakers); TALK off = exact zero; nothing else changed. On the x8p the strip builds
+and nothing else changes, but the talkback mic never reaches DSP input 0x0A (silent into MON at -20 dB and into AUX 1
+with TALK on), so its default stays 0 until the missing enable is found. Only
+models whose monitor plan has the talkback bus take it (`StripModelFor` `TalkbackAllowed` 1 on the x8p and the Twin X;
+strip-plan-test checks it against `monitor_plan.h` `TalkbackBus`). It needs `StripsEnable=1` and follows `StripSteps` like
+every strip. Turn it on per unit: `apollo-diag --unit twinx param StripTalkback 1`, then a restart of the unit (the warm
+start rebuilds, StripWarmRebuild). With StripTalkback 0 nothing changes anywhere: strip-plan-test pins one digest of
+everything the aux build planned (every PREPARE, START, pass order, address, room, plan hash and record version for plans
+without bit 20: 0x8CC640F040D2CC07, computed on 1538a1b's headers) and that build's plan hashes (x8p 0x501FF 0x91351318,
+0x50001 0xC86B3D48, all 20 0xF57BB188; Twin X 0x50003 0x9444BD6C, 0x50F03 at 96 kHz 0xB2A25754; the pinned 0xFF 0x209A8BDB).
+
+### 15.2 The strip: slot 20, one pass
+
+The same Input Strip as 13.2, word for word (`StripPlanPrepareInput`), on slot 20, synch 0x0A, Pm bit 20
+(`StripPlanPmTalkback`). Every PREPARE (Mic, Virtual, aux, then the talkback), then **one START** for all. `XACT_SLOTS` 25
+(21 PREPAREs held + the START, 3 spare as before), `XACT_ENTS_MAX` / `STRIP_PLAN_ENT_SLOTS` 84 (a START of 21 strips),
+`PlanScratch` 700 words. StripMask 0xFF + VIRTUAL 1 + aux 0x5 + talkback is 12 PREPAREs and a START of 48 entries.
+
+**Placement.** Input Strip 12, right below the four aux places (8 + 4): no Virtual or aux strip moves when it comes or goes;
+with every Virtual and aux strip built it is upstream's packing of Input Strip 13 (strip-plan-test compares, x8p and Twin X).
+
+| Model | synch | hdr | m0 | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|---|---|---|
+| x8p (8 Mic places) | 0x0A | 0x9CD48 | 0x9CD2A | 0x08FEAE80 | 0x08FEAD80 | 0x08FEAC80 | 0x08FEAB80 |
+| Twin X (2 Mic places) | 0x0A | 0x9CF40 | 0x9CF22 | 0x08FF6EE0 | 0x08FF6DE0 | 0x08FF6CE0 | 0x08FF6BE0 |
+
+START words: `{0x001F0004, 0x0020000A, hdr, 0}`, `{0x001E0004, 0x0A, 8, 0x20}` twice, `{0x001E0004, 0x0A, 7, 0x0001FFFF}`;
+from stage 8 the route word for input 0x0A to every other DSP. `strip-plan-test --print-pm 0x100000` prints the talkback's
+transactions, `--print-pm 0x1501ff` the x8p pass with VIRTUAL 1 and AUX 1/2.
+
+**Pool room** (`StripPlanRoomTalkback`): with the talkback strip all 13 Input Strip places, else the aux build's count.
+Checked after the aux room at every pool read; a StripTalkback that does not fit is refused (`strips: StripTalkback 0x1
+REFUSED: no room in pool p (code 8+p) ...; the talkback strip is off, the other strips go on`, GET_STRIPS
+`TalkbackLayoutWhy`). The plug-in ledger (plugin.c, apollo-plug) books the same room. `strip-plan-test --aux-room`:
+
+| Plan | pool 1 | pool 2 | pool 3 | free above the scratch (1 / 2 / 3) |
+|---|---|---|---|---|
+| x8p 8 Mic + aux 0x5 + talkback (any Virtual mask) | 0x48E | 0x80 | 0x13480 | 0xA7F8 / 0x1F7E / 0xFED16A |
+| x8p all 21 strips | 0x48E | 0x80 | 0x13480 | the same |
+| Twin X 2 Mic + aux 0x5 (+ VIRTUAL 1-4) + talkback | 0x296 | 0x20 | 0x7420 | 0xA7F8 / 0x1F7E / 0xFED1AE |
+
+### 15.3 Bus 10 follows the strip
+
+`StripBusSlot(0x0A)` is slot 20, so cues.c's owner rule maps the talkback bus to its strip (DSP 0 while it does not run, as
+before). From stage 8, when the strip starts (or is adopted), `BusOwner[20]` becomes the strip DSP and
+`ApolloCuesBusMoved(10)` runs: the host's tb monitor-mix weight if it set one, its cue sends and its aux sends (each set one
+re-sent; every one never set written 0.0, the rule of 14), to the strip DSP; from then on every `mix tb`, `cue <n> send tb`
+and `aux <n> send tb` goes to the strip DSP and DSP 0. So `aux 1 send tb 12` reaches AUX 1 (record slot 28) on both units.
+A never-set monitor-mix weight keeps the DSP default, as for every strip (`mix tb off` silences it). When the strip is
+forgotten (teardown, D0 exit, rate change, taint, a new bring-up) the owner is DSP 0 again. GET_PANEL `TalkStrip` is 1
+while the strip runs; `apollo-diag talkback` says so.
+
+### 15.4 Warm starts
+
+A record whose plan mask has bit 20 is sealed as **version 4**; versions 1-3 keep their meaning; the validator takes mask
+bits up to 20 (nothing past). The aux build (versions 1-3, nothing past bit 19) and older ones refuse a version 4 record
+(power cycle). Warm starts rebuild by default: a record with the talkback strip rebuilds the same way, its teardown stopping
+slot 20 too (SYNCH 0 at 0x0A); a record without it and a start with it (or the reverse) is PLAN_DIFFERS / REBUILD; with
+StripWarmRebuild 0 the same plan is ADOPTED and bus 10 moves as after a build.
+
+### 15.5 GET_STRIPS version 6
+
+Appended after version 5 (`APOLLO_STRIPS_INFO_V5_SIZE` = offset of `Talkback` = 936 bytes, the version 5 size):
+`Talkback` (0x3A8, 1 = built), `TalkbackAsked` (0x3AC), `TalkbackLayoutWhy` (0x3B0), `TalkbackBus` (0x3B4, 0x0A),
+`TStripState` (0x3B8), `TStripStarted` (0x3BC), `TStripHeader` (0x3C0), `TStripAckMs` (0x3C4), `TBusOwner` (0x3C8); 972 bytes.
+Version sizes: 2 = 588, 3 = 652, 4 = 828, 5 = 936, 6 = 972. A buffer of a version 5, 4, 3 or 2 size gets that whole part,
+marked so. `apollo-diag strips` prints the talkback row.
+
+### 15.6 Tests and the hardware run
+
+strip-plan-test 2361 (was 1962): slot 20 and its synch, the plan mask, both models against monitor_plan.h, the talkback word
+by word and at every stage against the port of `ua_strip_build_input` at its address and DSP input 0x0A (and not 0x0B),
+the single START (48 and 84 entries) and the pass order, the stream checks, blocks disjoint and inside the pools and the
+booked room, the refusal (codes 9 and 11), the aux build's digest and hashes unchanged with StripTalkback 0, record versions
+1-4, the decisions. ident-test 655 (the value, its id and defaults, a unit key wins, no legacy global on the Twin X).
+plugin-plan-test 467 (the ledger booking with and without it; the talkback stays refused as an insert). mon-plan-test 307:
+no coefficient rule changed.
+
+Hardware (not run): on the **Twin X**: `apollo-diag --unit twinx param StripTalkback 1`, restart the unit, `apollo-diag
+--unit twinx strips` (talkback taken, SYNCH sent, bus on DSP 1), `apollo-diag --unit twinx talkback` (strip running), `mon
+talkback 1`, `levels`: slots 32/33 carry the room, exact zero after `mon talkback 0`. On **both units** (x8p after `param
+StripTalkback 1` and a restart too; AUX 1's return strip runs by default): `aux 1 send tb 12` with TALK on reaches AUX 1's
+record slot 28, exact zero with TALK off; every other input records as before; nothing quarantined.

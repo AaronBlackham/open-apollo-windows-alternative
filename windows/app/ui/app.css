@@ -824,6 +824,9 @@ kbd {
 .ep-status.busy::before { content: "Waiting: "; font-weight: 700; }
 .ep-warn { color: var(--warn); }
 .ep-row input:disabled, .ep-row input:disabled + .ep-name { opacity: 0.55; cursor: default; }
+/* [Virtual] Settings, Virtual inputs (virtual.js): the same rows, several to a line */
+.vi-group { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 18px; }
+@media (max-width: 760px) { .vi-group { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* cards and panels: a loaded insert's name never widens its column (layer 2) */
 #view-control[data-comp="cards"] .strip > *, #view-control[data-comp="panels"] .strip > *, #view-control[data-comp="focus"] .strip > * { min-width: 0; }
@@ -852,6 +855,21 @@ kbd {
 .aux-ret .fd-row { justify-content: center; }
 .aux-strip.silent .aux-ret .fader { opacity: 0.5; }
 .aux-strip.silent .strip-num::after { content: " M"; color: var(--red); }
+/* [AuxStrips] an aux whose return has no strip on this driver: said inline, its controls dimmed (still set and kept);
+   a mono aux: the send pans are locked (their tooltip says why) */
+.aux-note {
+  font-size: 9.5px; line-height: 1.25; color: var(--warn); border: var(--border-w) dashed var(--warn);
+  border-radius: var(--radius-sm); padding: 2px 3px; flex: none; cursor: help;
+}
+.aux-strip[data-audio="none"] > :not(.strip-top):not(.aux-note) { opacity: 0.55; }
+.aux-send.noaudio .knob { opacity: 0.55; }
+.aux-send.mono .aux-pan .knob { opacity: 0.4; }
+.aux-send.mono .aux-pan .knob svg { cursor: not-allowed; }
+
+/* [Virtual] the VIRTUAL inputs' strips: the input strip's markup without a preamp or an insert; their name is fixed */
+.vs-name { cursor: default; color: var(--text-dim); }
+.vs-name:hover { background: none; }
+.vpair .pair-name { letter-spacing: 0.06em; }
 
 /* [Ins] the console layouts: AUX strips behind the master's AUX button (they need the width), AUX labels on the knobs */
 .mo-aux { display: none; }

@@ -46,6 +46,11 @@
  *                      mixer_inputs synch_in, talkback_synch_in 10). Send range -inf..+12 dB (device map).
  *                      [Virtual] VIRTUAL n = 0x18 + n - 1 (synch_in 24-31), only where the unit builds that input's
  *                      Input Strip (StripVirtualMask; ApolloMonEncodeEx's Extra).
+ *                      [TalkStrip] The talkback mic (bus 0x0A) carries silence without an Input Strip on its DSP input;
+ *                      StripTalkback builds the plain one there (docs/STRIPS.md 15; the Twin X, Nov 16 2026: TALKBACK 1/2
+ *                      held the room with TALK on, exact zero with TALK off: the unit gates the bus with 0x46). While it
+ *                      runs bus 0x0A is mixed on the strip DSP like any strip's bus (cues.c). The codes and laws here are
+ *                      the same with or without it.
  *   [Mix] monitor mix  the same command with param 0: UA_BUS_SUB_MAIN "control-room mix coefficient (fader x pan)"
  *                      (oa:driver/ua_apollo.h:825, ua_dsp.c:3644 "param: 0 CR"; hardware.py SUB_PARAM_MIX = 0, "0=main
  *                      mix"). Weights (DTrace-verified encode_mix_coeff / _r, hardware.py:1041-1068): left =

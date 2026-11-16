@@ -30,7 +30,7 @@ const ClassicDesk = (() => {
     const out = [];
     for (const sg of segs.values()) {
       if (sg.gone) continue;
-      for (const b of mixBuses(sg.k)) if (mixOfBus(sg.idx, b).solo) out.push([sg.idx, b]);
+      for (const b of mixBuses(sg.k, sg.idx)) if (mixOfBus(sg.idx, b).solo) out.push([sg.idx, b]);   /* [Virtual] theirs too */
     }
     return out;
   }
@@ -119,11 +119,14 @@ const ClassicDesk = (() => {
     if (D.solo.getAttribute('aria-label') !== aria) { D.solo.setAttribute('aria-label', aria); D.solo.title = aria; }
   }
 
-  /* each input strip's sends to the unit's cues, beside AUX 1 / AUX 2 (OVERVIEW shows the first two, SENDS every one) */
+  /* each input strip's sends to the unit's cues, beside AUX 1 / AUX 2 (OVERVIEW shows the first two, SENDS every one);
+     [Virtual] a VIRTUAL strip's too, on its bus */
   function syncCues() {
     for (const sg of segs.values()) {
       if (sg.gone) continue;
-      for (const s of sg.strips) {
+      const rows = sg.strips.map(s => ({ s, bus: s.ch, who: stripWho(sg.idx, s.ch) }))
+        .concat((sg.virt || []).map(s => ({ s, bus: s.bus, who: virtWho(sg.idx, s.n) })));
+      for (const { s, bus, who } of rows) {
         let rec = D.cues.get(s.node);
         if (!rec) {
           const grid = s.node.querySelector('.st-aux .aux-sends');
@@ -131,9 +134,9 @@ const ClassicDesk = (() => {
           rec = [];
           sg.k.cues.forEach((name, c) => {
             const kn = new Knob({
-              size: 22, min: SEND_OFF, max: SEND_MAX, step: 1, wheelStep: 2, pageStep: 12, value: sendOf(sg.idx, c, s.ch).level, label: name,
-              aria: `${stripWho(sg.idx, s.ch)} send to ${name}`, toPos: sendToPos, fromPos: sendFromPos,
-              format: fmtSendShort, editText: fmtSendShort, parse: parseSend, onChange: x => setSend(c, s.ch, 'level', x, sg.idx),
+              size: 22, min: SEND_OFF, max: SEND_MAX, step: 1, wheelStep: 2, pageStep: 12, value: sendOf(sg.idx, c, bus).level, label: name,
+              aria: `${who} send to ${name}`, toPos: sendToPos, fromPos: sendFromPos,
+              format: fmtSendShort, editText: fmtSendShort, parse: parseSend, onChange: x => setSend(c, bus, 'level', x, sg.idx),
             });
             const cell = el('div', { class: 'aux-send cl-cue', dataset: { cue: String(c) } }, kn.node);
             grid.append(cell);
@@ -142,10 +145,10 @@ const ClassicDesk = (() => {
           D.cues.set(s.node, rec);
         }
         for (const { kn, c } of rec) {
-          const lv = sendOf(sg.idx, c, s.ch).level;
+          const lv = sendOf(sg.idx, c, bus).level;
           if (kn.value !== lv && !kn.dragging && document.activeElement !== kn.node) kn.set(lv);
           kn.node.classList.toggle('off', lv <= SEND_OFF);
-          kn.node.classList.toggle('refused', refusedOn(sg.idx, `cue:send:${c + 1}:${s.ch}`));
+          kn.node.classList.toggle('refused', refusedOn(sg.idx, `cue:send:${c + 1}:${bus}`));
         }
       }
     }

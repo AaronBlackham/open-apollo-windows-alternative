@@ -179,6 +179,8 @@
 [data-look="day"] #view-control[data-comp="focus"] .strip.focus .aux-pan { display: block; }
 [data-look="day"] #view-control[data-comp="focus"] .strip.focus .aux-send { flex-direction: row; justify-content: center; gap: 6px; }
 [data-look="day"] #view-control[data-comp="focus"] .aux-strip { width: 110px; flex-basis: 110px; border-radius: 16px; border: 1px solid var(--line); background: #ffffff; }
+/* [Virtual] a VIRTUAL input opened: its aux sends beside its mix (it has no preamp or insert) */
+[data-look="day"] #view-control[data-comp="focus"] .strip.vstrip.focus { width: 300px; grid-template-areas: "top top" "name name" "aux mix" "more more"; }
 
 /* ===== [Sess] sessions in plain words: a friendly sheet, one column of cards, 44 px buttons (layout "plain") */
 [data-look="day"] .sess-pop { border-radius: 16px; width: min(560px, calc(100vw - 40px)); }

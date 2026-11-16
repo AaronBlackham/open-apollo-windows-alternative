@@ -473,14 +473,52 @@ static void TestParams(void)
           ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_AUX_MASK) == 0 &&
           wcscmp(ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->NameW, L"StripAuxMask") == 0 &&
           strcmp(ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->Name, "StripAuxMask") == 0 &&
-          ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->Hex && APOLLO_PARAM_STRIP_AUX_MASK == 21 && APOLLO_PARAM_COUNT == 22,
+          ApolloParamDef(APOLLO_PARAM_STRIP_AUX_MASK)->Hex && APOLLO_PARAM_STRIP_AUX_MASK == 21,
           "[AuxStrips] StripAuxMask: id 21 (after BusEnable), x8p and Twin X 0x5, 0 on every other model, "
           "logged in hex");
+    /* [TalkStrip] docs/STRIPS.md 15: StripTalkback, one constant per model (0 until the hardware run), hex like the others */
+    CHECK(ApolloParamDefault(APOLLO_MODEL_X8P, APOLLO_PARAM_STRIP_TALKBACK) == APOLLO_DEF_STRIP_TALKBACK_X8P &&
+          APOLLO_DEF_STRIP_TALKBACK_X8P == 0 &&
+          ApolloParamDefault(APOLLO_MODEL_TWINX, APOLLO_PARAM_STRIP_TALKBACK) == APOLLO_DEF_STRIP_TALKBACK_TWINX &&
+          APOLLO_DEF_STRIP_TALKBACK_TWINX == 1 &&
+          ApolloParamDefault(APOLLO_MODEL_NONE, APOLLO_PARAM_STRIP_TALKBACK) == 0 &&
+          ApolloParamDef(APOLLO_PARAM_STRIP_TALKBACK)->DefaultOther == 0 &&
+          wcscmp(ApolloParamDef(APOLLO_PARAM_STRIP_TALKBACK)->NameW, L"StripTalkback") == 0 &&
+          strcmp(ApolloParamDef(APOLLO_PARAM_STRIP_TALKBACK)->Name, "StripTalkback") == 0 &&
+          ApolloParamDef(APOLLO_PARAM_STRIP_TALKBACK)->Hex && APOLLO_PARAM_STRIP_TALKBACK == 22 &&
+          APOLLO_PARAM_STRIP_TALKBACK == APOLLO_PARAM_STRIP_AUX_MASK + 1 && APOLLO_PARAM_COUNT == 23,
+          "[TalkStrip] StripTalkback: id 22 (after StripAuxMask), x8p and Twin X their constants (0 today), 0 on every other "
+          "model, logged in hex; 23 values");
+    CHECK(APOLLO_PARAM_COUNT <= 32, "[TalkStrip] the values still fit GET_PARAMS (APOLLO_PARAMS_MAX 32)");
     CHECK(u.Value[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == 0 && u.Source[APOLLO_PARAM_STRIP_VIRTUAL_MASK] == APOLLO_SRC_DEFAULT,
           "[Virtual] x8p default StripVirtualMask 0 (built-in)");
     CHECK(u.Value[APOLLO_PARAM_STRIP_AUX_MASK] == APOLLO_DEF_STRIP_AUX_MASK_X8P &&
           u.Source[APOLLO_PARAM_STRIP_AUX_MASK] == APOLLO_SRC_DEFAULT,
           "[AuxStrips] x8p default StripAuxMask = APOLLO_DEF_STRIP_AUX_MASK_X8P (built-in)");
+    CHECK(u.Value[APOLLO_PARAM_STRIP_TALKBACK] == APOLLO_DEF_STRIP_TALKBACK_X8P &&
+          u.Source[APOLLO_PARAM_STRIP_TALKBACK] == APOLLO_SRC_DEFAULT,
+          "[TalkStrip] x8p default StripTalkback = APOLLO_DEF_STRIP_TALKBACK_X8P (built-in)");
+    {
+        /* [TalkStrip] a unit key's StripTalkback wins over the model's default, on both models; a Twin X never takes the
+           x8p's legacy global */
+        REG r2;
+        APOLLO_UNIT u2;
+
+        memset(&r2, 0, sizeof(r2));
+        Set(r2.Unit, APOLLO_PARAM_STRIP_TALKBACK, 1);
+        Pick(APOLLO_MODEL_TWINX, &r2, &u2);
+        CHECK(u2.Value[APOLLO_PARAM_STRIP_TALKBACK] == 1 && u2.Source[APOLLO_PARAM_STRIP_TALKBACK] == APOLLO_SRC_UNIT,
+              "[TalkStrip] Twin X: Units\\<key>\\StripTalkback 1 is used (param StripTalkback 1)");
+        Pick(APOLLO_MODEL_X8P, &r2, &u2);
+        CHECK(u2.Value[APOLLO_PARAM_STRIP_TALKBACK] == 1 && u2.Source[APOLLO_PARAM_STRIP_TALKBACK] == APOLLO_SRC_UNIT,
+              "[TalkStrip] x8p: Units\\<key>\\StripTalkback 1 is used");
+        memset(&r2, 0, sizeof(r2));
+        Set(r2.Global, APOLLO_PARAM_STRIP_TALKBACK, 1);
+        Pick(APOLLO_MODEL_TWINX, &r2, &u2);
+        CHECK(u2.Value[APOLLO_PARAM_STRIP_TALKBACK] == APOLLO_DEF_STRIP_TALKBACK_TWINX &&
+              u2.Source[APOLLO_PARAM_STRIP_TALKBACK] == APOLLO_SRC_DEFAULT,
+              "[TalkStrip] Twin X: the x8p's legacy global StripTalkback is not inherited");
+    }
     {
         int i, j;
 

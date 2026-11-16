@@ -36,10 +36,16 @@
  *     DSP input, the single START and the pass order (Mic, Virtual, aux), the stream checks, the room and its refusal on
  *     the x8p's and the Twin X's measured pools, the plan hash (the pinned x8p hash unchanged with StripAuxMask 0), the
  *     version 3 record (versions 1 and 2 as before) and the decisions (an aux plan rebuilds like any other).
+ *   - [TalkStrip] the Input Strip on the talkback mic, DSP input 0x0A (docs/STRIPS.md 15): slot 20, its place below the
+ *     aux places (upstream's packing of Input Strip 13), its words against ua_strip_build_input at that address and DSP
+ *     input, the single START and the pass order, the stream checks, the room and its refusal, the models (where
+ *     monitor_plan.h has the talkback bus), the version 4 record and the decisions; and with StripTalkback 0 everything
+ *     the aux build planned, word for word (one digest of it, and its plan hashes, pinned from that build).
  * Exit code 0 = all pass. "--print [mask]" prints the pass for a mask (default 0xff);
  * "--print-probe [mask]" prints the repair transactions; "--digests" prints the planner digests;
- * "--print-pm [plan mask]" prints the x8p pass for StripMask | StripVirtualMask << 8 | StripAuxMask << 16 (default 0x1ff);
- * "--aux-room" prints the pool words each plan books and what the measured pools hold.
+ * "--print-pm [plan mask]" prints the x8p pass for StripMask | StripVirtualMask << 8 | StripAuxMask << 16 |
+ * StripTalkback << 20 (default 0x1ff); "--aux-room" prints the pool words each plan books and what the measured pools
+ * hold; "--aux-digest" prints AuxBuildDigest.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -907,7 +913,7 @@ static void CheckModels(void)
             w[APOLLO_IODESC_HDR + i / 2] |= (unsigned long)kTwxRecIds[i] << ((i & 1) ? 16 : 0);
         Check(ApolloIoDescFind(w, 1, t->RecId[0]) == 0 && ApolloIoDescFind(w, 1, t->RecId[1]) == 1,
               "Twin X G3 descriptor: strips 1-2 record on slots 0/1 (as the probe and the endpoints expect)");
-        Check(ApolloIoDescFind(w, 1, 0x0B01) == 32, "Twin X G3 descriptor: TALKBACK 1 on slot 32 (no strip: silent)");
+        Check(ApolloIoDescFind(w, 1, 0x0B01) == 32, "Twin X G3 descriptor: TALKBACK 1 on slot 32 (silent without [TalkStrip] its Input Strip)");
     }
     /* Ownership: the boot words the hardware logged */
     Check(StripOwned(0x00000003) && StripOwned(0x00002703) && StripOwned(0x00002203),
@@ -1824,7 +1830,8 @@ static int BlocksOk(ULONG Pm, ULONG MicSlots, const ULONG *Size, const ULONG *Ba
 
     *Inside = 1;
     *InRoom = 1;
-    StripPlanRoomAux(MicSlots, (Pm & STRIP_PM_VIRTUAL) >> 8, (Pm & STRIP_PM_AUX) >> 16, room);     /* [AuxStrips] */
+    StripPlanRoomTalkback(MicSlots, (Pm & STRIP_PM_VIRTUAL) >> 8, (Pm & STRIP_PM_AUX) >> 16,       /* [AuxStrips] */
+                          (Pm & STRIP_PM_TALKBACK) >> STRIP_SLOT_TALKBACK, room);                  /* [TalkStrip] */
     for (k = 0; k < STRIP_PLAN_SLOTS; k++)
         if ((Pm & (1u << k)) && StripPlanSlotAddrs(k, MicSlots, a[k]) != 0)
             return 0;
@@ -1934,9 +1941,10 @@ static void CheckVirtual(void)
         if (StripBusSlot(StripSlotSynch(i)) != i)
             Check(0, "virtual: slot -> synch -> slot round trip");
     Check(StripSlotSynch(0) == 0 && StripSlotSynch(7) == 7 && StripSlotSynch(8) == 0x18 && StripSlotSynch(15) == 0x1F &&
-          StripBusSlot(8) == STRIP_PLAN_SLOTS && StripBusSlot(0x0A) == STRIP_PLAN_SLOTS && StripBusSlot(0x17) == STRIP_PLAN_SLOTS &&
+          StripBusSlot(8) == STRIP_PLAN_SLOTS && StripBusSlot(0x0A) == STRIP_SLOT_TALKBACK && StripBusSlot(0x17) == STRIP_PLAN_SLOTS &&
           StripBusSlot(0x20) == STRIP_PLAN_SLOTS && StripBusSlot(0x18) == 8 && StripBusSlot(0x1F) == 15,
-          "virtual: synch of slot k (0-7 Mic, 8-15 VIRTUAL 1-8 = 0x18-0x1F); buses 8-0x17 and the talkback have no strip");
+          "virtual: synch of slot k (0-7 Mic, 8-15 VIRTUAL 1-8 = 0x18-0x1F); buses 8-0x17 have no strip, but the talkback's "
+          "([TalkStrip] slot 20)");
     Check(StripPlanPm(0xFF, 0x01) == 0x1FF && StripPlanPm(0x1FF, 0x1FF) == 0xFFFF && StripPlanPm(0x03, 0) == 0x03,
           "virtual: plan mask = StripMask | StripVirtualMask << 8 (8 bits each)");
 
@@ -2155,9 +2163,9 @@ static void CheckVirtual(void)
     r2.Check = StripRecordSum(&r2);
     Check(!StripRecordValid(&r2, sizeof(r2)), "record: version 2 without Virtual strips: not trusted");
     r2 = r;
-    r2.Mask = 0x100000;
+    r2.Mask = 0x200000;
     StripRecordSeal(&r2);
-    Check(!StripRecordValid(&r2, sizeof(r2)), "record: a plan mask past the last slot ([AuxStrips] bit 20): not trusted");
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: a plan mask past the last slot ([TalkStrip] bit 21): not trusted");
     r2 = r;
     StripRecordClearStrips(&r2, STRIP_REC_NONE);
     StripRecordSeal(&r2);
@@ -2250,16 +2258,16 @@ static void CheckAux(void)
 
     /* slots, DSP inputs, the plan mask */
     Check(STRIP_SLOT_AUX0 == 16 && STRIP_PLAN_AUXES == 4 && STRIP_AUX_SYNCH0 == 0x10 && STRIP_PM_AUX == 0xF0000u &&
-          STRIP_PLAN_SLOTS == 20 && STRIP_PLAN_ENT_SLOTS == 80 && STRIP_PLAN_INPUT_STRIPS == 12,
-          "aux: slots 16-19 = DSP inputs 0x10-0x13 (AUX 1 L/R, AUX 2 L/R), plan mask bits 16-19, 80 START entries, 12 Input "
-          "Strip places");
+          STRIP_SLOT_AUX0 + STRIP_PLAN_AUXES == STRIP_SLOT_TALKBACK && STRIP_PLAN_INPUT_STRIPS == 12,
+          "aux: slots 16-19 = DSP inputs 0x10-0x13 (AUX 1 L/R, AUX 2 L/R), plan mask bits 16-19, 12 Virtual and aux Input "
+          "Strip places ([TalkStrip] the talkback's slot 20 after them)");
     ok = 1;
     for (i = 0; i < STRIP_PLAN_SLOTS; i++)
         ok = ok && StripBusSlot(StripSlotSynch(i)) == i;
     Check(ok && StripSlotSynch(16) == 0x10 && StripSlotSynch(17) == 0x11 && StripSlotSynch(19) == 0x13 &&
           StripBusSlot(0x10) == 16 && StripBusSlot(0x13) == 19 && StripBusSlot(0x0F) == STRIP_PLAN_SLOTS &&
-          StripBusSlot(0x14) == STRIP_PLAN_SLOTS && StripBusSlot(0x17) == STRIP_PLAN_SLOTS && StripBusSlot(0x0A) == STRIP_PLAN_SLOTS,
-          "aux: slot -> synch -> slot for all 20 slots; 0x0f, the talkback and 0x14-0x17 have no strip");
+          StripBusSlot(0x14) == STRIP_PLAN_SLOTS && StripBusSlot(0x17) == STRIP_PLAN_SLOTS && StripBusSlot(0x0A) == STRIP_SLOT_TALKBACK,
+          "aux: slot -> synch -> slot for every slot; 0x0f and 0x14-0x17 have no strip ([TalkStrip] the talkback: slot 20)");
     Check(StripPlanPmAux(0xFF, 0x01, 0x0F) == 0xF01FFu && StripPlanPmAux(0, 0, 0x30) == 0 && StripPlanPmAux(0x03, 0x0F, 0x01) == 0x10F03u,
           "aux: plan mask = StripMask | StripVirtualMask << 8 | StripAuxMask << 16 (4 bits)");
     ok = 1;
@@ -2301,7 +2309,7 @@ static void CheckAux(void)
     Check(ok, "aux: the aux return k = Input Strip 8 + k (StripPlanSlotAddrs of slot 16 + k); VIRTUAL n = Input Strip n - 1 as before");
     Check(StripPlanAuxAddrs(8, 4, a) != 0 && a[0] == 0 && StripPlanAuxAddrs(9, 0, a) != 0 && a[0] == 0 &&
           StripPlanSlotAddrs(STRIP_PLAN_SLOTS, 8, a) != 0,
-          "aux: refused: a fifth aux input, more than 8 Mic places, slot 20 (addresses all 0)");
+          "aux: refused: a fifth aux input, more than 8 Mic places, slot 21 (past [TalkStrip] the talkback's; addresses all 0)");
     {
         /* with every Virtual strip built, upstream's packing (ua_strip_priv_addrs: the Input Strips after every Mic strip)
            puts the next Input Strips exactly where the aux returns sit */
@@ -2531,6 +2539,464 @@ static void CheckAux(void)
     Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS, "decide: another aux mask: PLAN_DIFFERS");
 }
 
+/* ------------------------------------------------------------------ */
+/* [TalkStrip] the talkback mic's Input Strip (strip_plan.h, docs/STRIPS.md 15) */
+/* ------------------------------------------------------------------ */
+
+/* Every word of a plan: error, addresses, all N entries and the payload (FnvPlan stops at the Mic-only 32 entries). */
+static void FnvPlanAll(PLAN_FNV *F, const STRIP_PLAN *P)
+{
+    ULONG i, k;
+
+    FnvU32(F, P->N);
+    FnvU32(F, P->Len);
+    FnvU32(F, P->Err);
+    for (i = 0; i < STRIP_PLAN_ROWS; i++)
+        FnvU32(F, P->Addr[i]);
+    for (i = 0; i < P->N && i < 80; i++) {
+        FnvU32(F, P->Ent[i].Dma);
+        for (k = 0; k < 4; k++)
+            FnvU32(F, P->Ent[i].W[k]);
+        FnvU32(F, P->Ent[i].Off);
+        FnvU32(F, P->Ent[i].Dwords);
+    }
+    for (i = 0; i < P->Len && i < STRIP_PLAN_PAYLOAD_MAX; i++)
+        FnvU32(F, P->Payload[i]);
+}
+
+/*
+ * Everything the aux build's planner gives for plans without the talkback slot, as one FNV-1a 64 digest: the PREPARE of
+ * slots 0-19 and 21 (2 and 8 Mic places, every stage, four rates), the START and the pass order of 1032 plan masks across
+ * 0..0xFFFFF, every slot's addresses and Input Strip places 0-11 and 13, slot -> synch, bus -> slot (bus 0x0A apart),
+ * the room and Input Strip places of every Mic count, Virtual and aux mask, the plan hash of 64 plans and the record
+ * versions. kAuxBuildDigest: this function on the aux build's own headers (1538a1b, Nov 16 2026). So with StripTalkback 0
+ * the driver plans every word as before.
+ */
+static unsigned long long AuxBuildDigest(void)
+{
+    static STRIP_PLAN p;
+    static const ULONG kRates[4] = { 44100, 48000, 96000, 192000 };
+    static const ULONG kMic[2] = { 2, 8 };
+    static const ULONG kFixed[8] = { 0, 0xFF, 0x1FF, 0x501FF, 0xFFFFF, 0x10000, 0x50003, 0x50F03 };
+    PLAN_FNV f;
+    ULONG s, m, st, r, i, k, kind, in, pm, n, v, am, room[4];
+    STRIP_RECORD rec;
+
+    FnvInit(&f);
+    for (m = 0; m < 2; m++)
+        for (s = 0; s < 22; s++) {
+            if (s == 20)
+                continue;                       /* the talkback's slot: refused by the aux build */
+            for (st = 0; st <= STRIP_STEP_ALL + 1; st++)
+                for (r = 0; r < 4; r++) {
+                    FnvU32(&f, StripPlanPrepareSlot(s, kMic[m], st, kRates[r], &p));
+                    FnvPlanAll(&f, &p);
+                }
+        }
+    for (i = 0; i < 1032; i++) {
+        pm = (i < 8) ? kFixed[i] : (((i * 0x9E3779B1u) >> 9) & 0xFFFFFu);
+        for (m = 0; m < 2; m++)
+            for (st = 0; st <= STRIP_STEP_ALL + 1; st++) {
+                FnvU32(&f, StripPlanStartPm(pm, kMic[m], st, &p));
+                FnvPlanAll(&f, &p);
+            }
+        for (st = 0; st <= STRIP_STEP_ALL + 1; st++)
+            for (k = 0; k <= 22; k++) {
+                kind = StripPassStepPm(pm, st, k, &in);
+                FnvU32(&f, kind);
+                FnvU32(&f, in);
+            }
+        memset(&rec, 0, sizeof(rec));
+        rec.Mask = pm;
+        StripRecordSeal(&rec);
+        FnvU32(&f, rec.Version);
+        FnvU32(&f, (ULONG)StripRecordValid(&rec, sizeof(rec)));
+        if (i < 64)
+            FnvU32(&f, StripPlanHashPm(pm, 8, 9, 48000, 1, 6, &p));
+    }
+    for (m = 0; m <= 9; m++) {
+        for (s = 0; s < 22; s++) {
+            if (s == 20)
+                continue;
+            FnvU32(&f, StripPlanSlotAddrs(s, m, p.Addr));
+            for (k = 0; k < STRIP_PLAN_ROWS; k++)
+                FnvU32(&f, p.Addr[k]);
+        }
+        for (n = 0; n <= 13; n++) {
+            if (n == 12)
+                continue;                       /* the talkback's place */
+            FnvU32(&f, StripPlanInputAddrs(m, n, p.Addr));
+            for (k = 0; k < STRIP_PLAN_ROWS; k++)
+                FnvU32(&f, p.Addr[k]);
+        }
+    }
+    for (s = 0; s < 20; s++)
+        FnvU32(&f, StripSlotSynch(s));
+    for (s = 0; s < 0x40; s++)
+        if (s != 0x0A)
+            FnvU32(&f, StripBusSlot(s) == STRIP_PLAN_SLOTS ? 0xFFFFu : StripBusSlot(s));
+    for (m = 0; m <= 8; m++)
+        for (v = 0; v <= 0xFF; v++)
+            for (am = 0; am <= 0xF; am++) {
+                StripPlanRoomAux(m, v, am, room);
+                FnvU32(&f, room[1]);
+                FnvU32(&f, room[2]);
+                FnvU32(&f, room[3]);
+                FnvU32(&f, StripPlanInputSlots(v, am));
+            }
+    return f.H;
+}
+
+/* AuxBuildDigest and plan hashes from the aux build's headers (git 1538a1b driver\strip_plan.h, strip_adopt.h; Nov 16 2026) */
+#define AUX_BUILD_DIGEST        0x8CC640F040D2CC07ull   /* AuxBuildDigest compiled against 1538a1b's headers */
+#define AUX_HASH_X8P_501FF      0x91351318u /* x8p StripMask 0xFF + VIRTUAL 1 + aux 0x5, stage 9, 48 kHz, DSP 1 of 6 */
+#define AUX_HASH_X8P_50001      0xC86B3D48u /* x8p StripMask 0x01 + aux 0x5 */
+#define AUX_HASH_X8P_FFFFF      0xF57BB188u /* x8p all 20 strips */
+#define AUX_HASH_TWX_50003      0x9444BD6Cu /* Twin X 0x3 + aux 0x5, DSP 1 of 2 */
+#define AUX_HASH_TWX_50F03_96K  0xB2A25754u /* Twin X + VIRTUAL 1-4 + aux 0x5 at 96 kHz */
+
+/*
+ * The talkback strip in a pass over Pm with MicSlots Mic places: our PREPARE plus its START entries against open-apollo's
+ * ua_strip_build_input at our address and DSP input Synch (0x0A for the real one), at stage Steps.
+ */
+static int TalkMatchesUpstream(ULONG MicSlots, ULONG Pm, ULONG Synch, ULONG Steps)
+{
+    static OA_XACT x;
+    static STRIP_PLAN p, q;
+    ULONG addr[STRIP_PLAN_ROWS], i, from = 0, n;
+
+    if (!(Pm & STRIP_PM_TALKBACK) || StripPlanTalkbackAddrs(MicSlots, addr) != 0)
+        return 0;
+    memset(&x, 0, sizeof(x));
+    if (oa_strip_build_input(&x, addr, Synch, OaSteps(Steps)) != 0)
+        return 0;
+    if (StripPlanPrepareSlot(STRIP_SLOT_TALKBACK, MicSlots, Steps, 48000, &p) != 0 ||
+        StripPlanStartPm(Pm, MicSlots, Steps, &q) != 0)
+        return 0;
+    n = (StripPlanSteps(Steps) >= STRIP_STEP_INPUT) ? 4 : (StripPlanSteps(Steps) >= STRIP_STEP_SYNCH) ? 1 : 0;
+    for (i = 0; i < STRIP_SLOT_TALKBACK; i++)
+        if (Pm & (1u << i))
+            from += n;
+    return SameAsUpstream(&p, &q, from, n, &x);
+}
+
+/* strip_adopt.h's validator of the aux build (versions 1-3, nothing past bit 19): what it does with a record. */
+static int V3RecordValid(const STRIP_RECORD *R, ULONG Bytes)
+{
+    ULONG want = ((R->Mask >> 16) & 0xFu) != 0 ? 3u : ((R->Mask >> 8) & 0xFFu) != 0 ? 2u : 1u;
+
+    return Bytes == sizeof(*R) && R->Magic == STRIP_REC_MAGIC && R->Version == want && (R->Mask >> 20) == 0 &&
+           R->Size == sizeof(*R) && R->Check == StripRecordSum(R) && R->NumDsps <= STRIP_REC_DSPS &&
+           R->State <= STRIP_REC_UNKNOWN;
+}
+
+/* The talkback mic on the x8p's layout (8 Mic strips): Input Strip 12, right below AUX 2 R's place. */
+static const ULONG kTbAddr[6] = { 0x0009CD48, 0x0009CD2A, 0x08FEAE80, 0x08FEAD80, 0x08FEAC80, 0x08FEAB80 };
+
+static void CheckTalkback(void)
+{
+    static STRIP_PLAN p, q, q0;
+    const STRIP_MODEL *x = StripModelFor(STRIP_MODEL_X8P), *t = StripModelFor(STRIP_MODEL_TWINX);
+    ULONG i, j, k, m, v, am, st, ok, room[4], room0[4], a[STRIP_PLAN_ROWS], a2[STRIP_PLAN_ROWS], h, in, kind, sc[4];
+    unsigned long long d;
+    int inside, inRoom, td;
+    char what[240];
+    STRIP_RECORD r, r2;
+    STRIP_ADOPT_NOW n;
+    APOLLO_MON_WRITE w;
+
+    /* the slot, its DSP input, the plan mask */
+    Check(STRIP_SLOT_TALKBACK == 20 && STRIP_TALKBACK_SYNCH == 0x0A && STRIP_PM_TALKBACK == 0x100000u &&
+          STRIP_PLAN_SLOTS == 21 && STRIP_PLAN_ENT_SLOTS == 84 && STRIP_TALKBACK_PLACE == 12 && STRIP_PLAN_INPUT_PLACES == 13 &&
+          STRIP_TALKBACK_SYNCH == APOLLO_MON_TALKBACK_BUS && (STRIP_TALKBACK_SYNCH & 1u) == 0,
+          "talkback: slot 20 = DSP input 0x0a = the mixer's talkback bus (an even input), plan mask bit 20, 21 slots, 84 START "
+          "entries, Input Strip place 12 of 13");
+    ok = 1;
+    for (i = 0; i < STRIP_PLAN_SLOTS; i++)
+        ok = ok && StripBusSlot(StripSlotSynch(i)) == i;
+    Check(ok && StripSlotSynch(STRIP_SLOT_TALKBACK) == 0x0A && StripBusSlot(0x0A) == STRIP_SLOT_TALKBACK &&
+          StripBusSlot(0x09) == STRIP_PLAN_SLOTS && StripBusSlot(0x0B) == STRIP_PLAN_SLOTS && StripBusSlot(0x0C) == STRIP_PLAN_SLOTS,
+          "talkback: slot <-> synch for all 21 slots; 0x0a is the talkback's, 0x09, 0x0b (never a strip: odd) and 0x0c none");
+    Check(StripPlanPmTalkback(0xFF, 0x01, 0x05, 1) == 0x1501FFu && StripPlanPmTalkback(0, 0, 0, 1) == 0x100000u &&
+          StripPlanPmTalkback(0x03, 0, 0x05, 2) == 0x50003u,
+          "talkback: plan mask = StripMask | StripVirtualMask << 8 | StripAuxMask << 16 | StripTalkback << 20 (bit 0 only)");
+    ok = 1;
+    for (m = 0; m <= 0xFF && ok; m += 0x0F)
+        for (v = 0; v <= 0xFF && ok; v += 0x11)
+            for (am = 0; am <= 0xF && ok; am++)
+                ok = StripPlanPmTalkback(m, v, am, 0) == StripPlanPmAux(m, v, am);
+    Check(ok, "talkback: StripTalkback 0 gives the aux build's plan mask, bit for bit");
+
+    /* the models: both have the talkback bus 0x0A (monitor_plan.h takes its sends) and get the strip there */
+    Check(x != NULL && t != NULL && x->TalkbackAllowed == 1 && t->TalkbackAllowed == 1,
+          "talkback: x8p and Twin X: the talkback strip allowed");
+    for (i = 0; i < 2; i++) {
+        int model = (i == 0) ? STRIP_MODEL_X8P : STRIP_MODEL_TWINX;
+        const STRIP_MODEL *sm = StripModelFor((ULONG)model);
+        const APOLLO_MON_MODEL *mm = ApolloMonModelFor(model);
+        int hasTb = mm != NULL && mm->TalkbackBus == STRIP_TALKBACK_SYNCH &&
+                    ApolloMonEncode(mm, APOLLO_MP_CUE_SEND(0, 0x0A), 0, &w) == APOLLO_MON_OK &&
+                    ApolloMonEncode(mm, APOLLO_MP_AUX_SEND(0, 0x0A), 0, &w) == APOLLO_MON_OK &&
+                    ApolloMonEncode(mm, APOLLO_MP_MIX_LEVEL(0x0A), 0, &w) == APOLLO_MON_OK;
+
+        sprintf_s(what, sizeof(what), "talkback: %s: the strip allowed exactly where monitor_plan.h has the talkback bus 0x0a",
+                  sm->Name);
+        Check(hasTb && sm->TalkbackAllowed == 1, what);
+    }
+    Check(StripModelTalkback(x, 1) == 1 && StripModelTalkback(t, 1) == 1 && StripModelTalkback(x, 0xFFFFFFFFu) == 1 &&
+          StripModelTalkback(t, 2) == 0 && StripModelTalkback(x, 0) == 0 && StripModelTalkback(NULL, 1) == 0,
+          "talkback: StripTalkback as each model takes it (bit 0; other bits and no model: none)");
+
+    /* the addresses: Input Strip 12, below the aux places */
+    Check(StripPlanTalkbackAddrs(8, a) == 0 && memcmp(a, kTbAddr, sizeof(kTbAddr)) == 0 && a[6] == 0 && a[9] == 0,
+          "talkback: x8p at 0x9cd48 / 0x9cd2a / 0x08feae80..0x08feab80 (Input Strip 12)");
+    (void)StripPlanAuxAddrs(8, 3, a2);
+    Check(kTbAddr[0] + 0x26 == a2[0] && kTbAddr[2] + 0x100 == a2[5],
+          "talkback: its blocks start right below AUX 2 R's place (pool 1 header, pool 3 c3)");
+    ok = 1;
+    for (m = 0; m <= 8 && ok; m++)
+        ok = StripPlanTalkbackAddrs(m, a) == 0 && StripPlanInputAddrs(m, 12, a2) == 0 && memcmp(a, a2, sizeof(a)) == 0 &&
+             StripPlanSlotAddrs(STRIP_SLOT_TALKBACK, m, a2) == 0 && memcmp(a, a2, sizeof(a)) == 0;
+    for (k = 0; k < STRIP_PLAN_AUXES && ok; k++)
+        ok = StripPlanAuxAddrs(8, k, a) == 0 && StripPlanInputAddrs(8, STRIP_PLAN_VIRTUALS + k, a2) == 0 && memcmp(a, a2, sizeof(a)) == 0;
+    Check(ok, "talkback: Input Strip 12 = StripPlanSlotAddrs of slot 20 for every Mic count; the aux returns as before");
+    Check(StripPlanInputAddrs(8, 13, a) != 0 && a[0] == 0 && StripPlanTalkbackAddrs(9, a) != 0 && a[0] == 0 &&
+          StripPlanSlotAddrs(21, 8, a) != 0 && StripPlanPrepareSlot(21, 8, 0, 48000, &p) != 0,
+          "talkback: refused: a 14th Input Strip place, more than 8 Mic places, slot 21");
+    {
+        /* with every Virtual and aux strip built, upstream's packing puts the next Input Strip exactly at the talkback */
+        unsigned char kinds[21];
+
+        for (i = 0; i < 21; i++)
+            kinds[i] = (unsigned char)(i < 8 ? OA_KIND_MIC : OA_KIND_INPUT);
+        oa_strip_priv_addrs(kinds, 20, a2);
+        Check(StripPlanTalkbackAddrs(8, a) == 0 && memcmp(a, a2, 6 * sizeof(ULONG)) == 0,
+              "talkback: x8p, 8 Mic + VIRTUAL 1-8 + AUX 1-2 L/R: the talkback at upstream's packing of Input Strip 13");
+        for (i = 0; i < 21; i++)
+            kinds[i] = (unsigned char)(i < 2 ? OA_KIND_MIC : OA_KIND_INPUT);
+        oa_strip_priv_addrs(kinds, 14, a2);
+        Check(StripPlanTalkbackAddrs(2, a) == 0 && memcmp(a, a2, 6 * sizeof(ULONG)) == 0,
+              "talkback: Twin X (2 Mic places): the talkback at upstream's packing of the 13th Input Strip");
+    }
+
+    /* every word: the Input Strip at the talkback's address and DSP input 0x0A, as upstream's ua_strip_build_input builds it */
+    for (st = 0; st <= STRIP_STEP_ALL; st++) {
+        static const ULONG pms[] = { 0x100000, 0x1000FF, 0x100001, 0x1501FF, 0x150000, 0x1FFFFF };
+
+        ok = 1;
+        for (j = 0; j < sizeof(pms) / sizeof(pms[0]); j++)
+            ok = ok && TalkMatchesUpstream(8, pms[j], 0x0A, st);
+        sprintf_s(what, sizeof(what), "talkback: x8p stage %lu: its PREPARE + START = ua_strip_build_input's words at its address "
+                  "and DSP input 0x0a (plan masks 0x100000 .. 0x1fffff)", st);
+        Check(ok, what);
+        sprintf_s(what, sizeof(what), "talkback: Twin X (2 Mic) + VIRTUAL 1-4 + aux 0x5 + talkback stage %lu: = upstream's builder", st);
+        Check(TalkMatchesUpstream(2, 0x150F03, 0x0A, st) && TalkMatchesUpstream(2, 0x100003, 0x0A, st), what);
+    }
+    Check(!TalkMatchesUpstream(8, 0x0501FF, 0x0A, 0) && !TalkMatchesUpstream(8, 0x1501FF, 0x0B, 0) &&
+          !TalkMatchesUpstream(8, 0x1501FF, 0x12, 0),
+          "talkback: the comparison needs the slot in the plan mask and tells DSP input 0x0a from 0x0b and 0x12 (not vacuous)");
+    ok = 1;
+    for (st = 0; st <= STRIP_STEP_ALL; st++)
+        ok = ok && StripPlanPrepareSlot(STRIP_SLOT_TALKBACK, 8, st, 44100, &p) == 0 &&
+             StripPlanPrepareSlot(STRIP_SLOT_TALKBACK, 8, st, 192000, &q) == 0 && PlanSame(&p, &q);
+    Check(ok, "talkback: its words are the same at every rate (as every Input Strip's)");
+    (void)StripPlanPrepareSlot(STRIP_SLOT_TALKBACK, 8, 0, 48000, &p);
+    (void)StripPlanPrepareSlot(STRIP_SLOT_VIRTUAL0, 8, 0, 48000, &q);
+    Check(p.N == q.N && p.N == STRIP_PLAN_VPREPARE_ENTS && p.Len == q.Len && p.Len == 31 && p.Payload[11] == 0x00140009 &&
+          p.Payload[11 + 1] == kTbAddr[0] && p.Payload[11 + 8] == STRIP_PLUGIN_INPUT,
+          "talkback: PREPARE = the plain Input Strip's (9 entries, 31 payload dwords, pluginId 0x83E), header 0x9cd48");
+
+    /* the START and the pass order: Mic, Virtual, aux, talkback, ONE START */
+    ok = StripPlanStartPm(0x1501FF, 8, 0, &q) == 0 && q.N == 48 && StripPlanStartPm(0x501FF, 8, 0, &q0) == 0 && q0.N == 44;
+    for (j = 0; ok && j < 44; j++)
+        ok = memcmp(&q.Ent[j], &q0.Ent[j], sizeof(q.Ent[j])) == 0;
+    ok = ok && !q.Ent[44].Dma && q.Ent[44].W[0] == 0x001F0004 && q.Ent[44].W[1] == 0x0020000Au && q.Ent[44].W[2] == kTbAddr[0] &&
+         q.Ent[44].W[3] == 0 && q.Ent[45].W[0] == 0x001E0004 && q.Ent[45].W[1] == 0x0A && q.Ent[45].W[2] == 8 &&
+         q.Ent[45].W[3] == 0x20 && q.Ent[46].W[1] == 0x0A && q.Ent[46].W[2] == 8 && q.Ent[47].W[1] == 0x0A &&
+         q.Ent[47].W[2] == 7 && q.Ent[47].W[3] == 0x0001FFFF;
+    Check(ok, "talkback: START 0x1501ff: the 44 entries of START 0x501ff, then SYNCH 0x0020000a at its header, span, span, route");
+    Check(StripPlanStartPm(0x1FFFFF, 8, 0, &q) == 0 && q.N == 84 && StripPlanStartPm(0x3FFFFF, 8, 0, &q) != 0,
+          "talkback: START of all 21 strips: 84 entries (one transaction); a plan mask past bit 20 refused");
+    {
+        static const ULONG want[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 18, 20 };
+
+        ok = 1;
+        for (k = 0; k < 12 && ok; k++)
+            ok = StripPassStepPm(0x1501FF, 0, k, &in) == STRIP_XACT_PREPARE && in == want[k];
+        ok = ok && StripPassStepPm(0x1501FF, 0, 12, &in) == STRIP_XACT_START && StripPassStepPm(0x1501FF, 0, 13, &in) == STRIP_XACT_END;
+    }
+    Check(ok, "talkback: pass 0x1501ff: PREPARE inputs 1-8, VIRTUAL 1, AUX 1 L, AUX 2 L, the talkback, then ONE START, end");
+    Check(StripPassStepPm(0x100000, 0, 0, &in) == STRIP_XACT_PREPARE && in == STRIP_SLOT_TALKBACK &&
+          StripPassStepPm(0x100000, 0, 1, &in) == STRIP_XACT_START && StripPassStepPm(0x100000, 5, 1, &in) == STRIP_XACT_END,
+          "talkback: the talkback strip alone: PREPARE, START; stage 5: no START");
+    ok = 1;
+    for (m = 0; m <= 0xFFFFF && ok; m += 0x10101)
+        for (st = 0; st <= STRIP_STEP_ALL && ok; st++)
+            for (k = 0; k <= STRIP_PLAN_SLOTS + 1 && ok; k++) {
+                kind = StripPassStepPm(m, st, k, &in);
+                ok = kind != STRIP_XACT_PREPARE || in != STRIP_SLOT_TALKBACK;
+            }
+    Check(ok, "talkback: a plan mask without bit 20 never PREPAREs the talkback slot");
+
+    /* the stream checks with the talkback strip */
+    {
+        static const ULONG pms[] = { 0x100000, 0x1000FF, 0x1501FF, 0x1FFFFF, 0x100001 };
+
+        for (j = 0; j < sizeof(pms) / sizeof(pms[0]); j++) {
+            for (st = 2; st <= STRIP_STEP_ALL; st++)
+                CheckPassPm(pms[j], 8, st, "x8p talkback");
+            CheckPassPm(pms[j], 8, 0, "x8p talkback");
+        }
+        CheckPassPm(0x150F03, 2, 0, "Twin X talkback");
+        CheckPassPm(0x100003, 2, 7, "Twin X talkback");
+    }
+
+    /* the room: where the block sits, the pool check, the refusal */
+    Check(StripPlanInputSlotsTalkback(0, 0, 1) == 13 && StripPlanInputSlotsTalkback(0xFF, 0xF, 1) == 13 &&
+          StripPlanInputSlotsTalkback(0x01, 0x05, 0) == 11 && StripPlanInputSlotsTalkback(0x01, 0, 2) == 1,
+          "talkback: Input Strip places: all 13 with the talkback strip, else the aux build's count (bit 0 only)");
+    ok = 1;
+    for (m = 0; m <= 8 && ok; m++)
+        for (v = 0; v <= 0xFF && ok; v++)
+            for (am = 0; am <= 0xF && ok; am++) {
+                StripPlanRoomTalkback(m, v, am, 0, room);
+                StripPlanRoomAux(m, v, am, room0);
+                ok = memcmp(room, room0, sizeof(room)) == 0 && StripPlanInputSlotsTalkback(v, am, 0) == StripPlanInputSlots(v, am);
+            }
+    Check(ok, "talkback: StripTalkback 0: the room is the aux build's, for every Mic count, Virtual and aux mask (the ledger as before)");
+    StripPlanRoomTalkback(8, 0x01, 0x05, 1, room);
+    sprintf_s(what, sizeof(what), "talkback: x8p 8 Mic + VIRTUAL 1 + aux 0x5 + talkback: room %lx / %lx / %lx words (8 x 0x54 + 13 x 0x26, "
+              "8 x 0x10, 8 x 0x2010 + 13 x 0x400)", room[1], room[2], room[3]);
+    Check(room[0] == 0 && room[1] == 8 * 0x54 + 13 * 0x26 && room[1] == 0x48E && room[2] == 8 * 0x10 &&
+          room[3] == 8 * 0x2010 + 13 * 0x400 && room[3] == 0x13480, what);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, kScr, room, STRIP_CODE_WORDS) == 0,
+          "talkback: the x8p's DSP 1 pools (measured Nov 14) fit 8 Mic + VIRTUAL 1 + aux 0x5 + the talkback");
+    StripPlanRoomTalkback(8, 0xFF, 0x0F, 1, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, kScr, room, STRIP_CODE_WORDS) == 0,
+          "talkback: ... and all 21 strips (8 Mic + VIRTUAL 1-8 + aux 0x0f + the talkback)");
+    Check(BlocksOk(0x1501FF, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: 8 Mic + VIRTUAL 1 + aux 0x5 + talkback: every block disjoint, inside DSP 1's pools above the scratch, inside the "
+          "booked room");
+    Check(BlocksOk(0x1FFFFF, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: all 21 strips' blocks disjoint, inside the pools and the booked room");
+    Check(BlocksOk(0x100000, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom &&
+          BlocksOk(0x100001, 8, kSize, kBase, kScr, &inside, &inRoom) && inside && inRoom,
+          "x8p: the talkback alone, and with input 1: inside the booked room (it reaches down to its place)");
+    StripPlanRoomTalkback(2, 0x0F, 0x05, 1, room);
+    Check(room[1] == 0x296 && room[2] == 0x20 && room[3] == 0x7420 &&
+          StripPlanLayoutCheckRoom(kTwxSize, kTwxBase, kTwxScr, room, STRIP_CODE_WORDS) == 0 &&
+          BlocksOk(0x150F03, 2, kTwxSize, kTwxBase, kTwxScr, &inside, &inRoom) && inside && inRoom,
+          "Twin X: 2 Mic + VIRTUAL 1-4 + aux 0x5 + talkback: room 0x296 / 0x20 / 0x7420, fits its DSP 1 pools (G3 log), blocks "
+          "disjoint and inside the booked room");
+
+    /* pools with room for 12 Input Strip places only: the talkback refused (code 9 / 11), the rest goes on */
+    memcpy(sc, kScr, sizeof(sc));
+    sc[1] = 0x9D1B8 - 0x92800 - (8 * 0x54 + 12 * 0x26);         /* pool 1: exactly 8 Mic + 12 Input Strip places left */
+    StripPlanRoomAux(8, 0x01, 0x05, room0);
+    StripPlanRoomTalkback(8, 0x01, 0x05, 1, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room0, STRIP_CODE_WORDS) == 0 &&
+          StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 9,
+          "talkback: pool 1 with room for 8 Mic + 12 Input Strip places: VIRTUAL 1 + aux 0x5 fit, StripTalkback refused (code 9, pool 1)");
+    memcpy(sc, kScr, sizeof(sc));
+    sc[3] = 0x08FFE000 - 0x08008E96 - 8 * 0x2010 - 0x400 * 12;  /* pool 3: room for 12 Input Strip places */
+    StripPlanRoomAux(8, 0xFF, 0x0F, room0);
+    StripPlanRoomTalkback(8, 0xFF, 0x0F, 1, room);
+    Check(StripPlanLayoutCheckRoom(kSize, kBase, sc, room0, STRIP_CODE_WORDS) == 0 &&
+          StripPlanLayoutCheckRoom(kSize, kBase, sc, room, STRIP_CODE_WORDS) == 11,
+          "talkback: pool 3 with 12 Input Strip places: all 20 aux-build strips fit, the talkback's 13th refused (code 11, pool 3)");
+
+    /* with StripTalkback 0: the aux build's planner word for word, and its plan hashes */
+    d = AuxBuildDigest();
+    sprintf_s(what, sizeof(what), "talkback: StripTalkback 0: every PREPARE, START, pass, address, room, hash and record version "
+              "of the aux build, word for word (digest %016llX, the aux build's %016llX)", d, (unsigned long long)AUX_BUILD_DIGEST);
+    Check(d == AUX_BUILD_DIGEST, what);
+    Check(StripPlanHashPm(StripPlanPmTalkback(0xFF, 0x01, 0x05, 0), 8, 9, 48000, 1, 6, &p) == AUX_HASH_X8P_501FF &&
+          StripPlanHashPm(StripPlanPmTalkback(0x01, 0, 0x05, 0), 8, 9, 48000, 1, 6, &p) == AUX_HASH_X8P_50001 &&
+          StripPlanHashPm(0xFFFFF, 8, 9, 48000, 1, 6, &p) == AUX_HASH_X8P_FFFFF &&
+          StripPlanHashPm(StripPlanPmTalkback(0x03, 0, 0x05, 0), 2, 9, 48000, 1, 2, &p) == AUX_HASH_TWX_50003 &&
+          StripPlanHashPm(0x50F03, 2, 9, 96000, 1, 2, &p) == AUX_HASH_TWX_50F03_96K &&
+          StripPlanHashPm(StripPlanPmTalkback(0xFF, 0, 0, 0), 8, 9, 48000, 1, 6, &p) == ADOPT_X8P_PLAN_HASH,
+          "talkback: StripTalkback 0: the aux build's plan hashes (x8p 0x501ff, 0x50001, all 20; Twin X 0x50003, 0x50f03 at 96 kHz) "
+          "and the pinned x8p hash, unchanged");
+    h = StripPlanHashPm(0x1501FF, 8, 9, 48000, 1, 6, &p);
+    Check(h != 0 && h != AUX_HASH_X8P_501FF && h != StripPlanHashPm(0x1500FF, 8, 9, 48000, 1, 6, &p) &&
+          h != StripPlanHashPm(0x1501FF, 8, 6, 48000, 1, 6, &p) && h != StripPlanHashPm(0x1501FF, 8, 9, 48000, 2, 6, &p),
+          "adopt: the talkback strip changes the plan hash (with it, the other strips, the stage, the DSP)");
+
+    /* the record: version 4 with the talkback strip; versions 1-3 as before; the aux build and older ones refuse version 4 */
+    memset(&r, 0, sizeof(r));
+    r.Anchored = 1;
+    AdoptLivePm(&r, 0x1501FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r);
+    Check(r.Version == STRIP_REC_VERSION_TALKBACK && r.Version == 4 && StripRecordValid(&r, sizeof(r)) &&
+          !V3RecordValid(&r, sizeof(r)) && !V2RecordValid(&r, sizeof(r)) && !OldRecordValid(&r, sizeof(r)),
+          "record: + talkback: version 4, valid here, refused by the aux build and every older one (they ask for a power cycle)");
+    r2 = r;
+    AdoptLivePm(&r2, 0x100000, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 4 && StripRecordValid(&r2, sizeof(r2)), "record: the talkback strip alone: version 4");
+    r2 = r;
+    r2.Version = 3;
+    r2.Check = StripRecordSum(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: the talkback strip under version 3: not trusted");
+    r2 = r;
+    r2.Mask = 0x501FF;
+    r2.Version = 4;
+    r2.Check = StripRecordSum(&r2);
+    Check(!StripRecordValid(&r2, sizeof(r2)), "record: version 4 without the talkback strip: not trusted");
+    r2 = r;
+    AdoptLivePm(&r2, 0x501FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 3 && StripRecordValid(&r2, sizeof(r2)) && V3RecordValid(&r2, sizeof(r2)),
+          "record: VIRTUAL 1 + aux 0x5, no talkback: version 3 as before, valid here and for the aux build");
+    ok = 1;
+    for (m = 0; m <= 0xFFFFF && ok; m += 0x1111) {
+        r2 = r;
+        r2.Mask = m;
+        StripRecordSeal(&r2);
+        ok = StripRecordValid(&r2, sizeof(r2)) && V3RecordValid(&r2, sizeof(r2));
+    }
+    Check(ok, "record: every plan mask without bit 20: sealed as the aux build seals it (it reads them all)");
+    r2 = r;
+    StripRecordClearStrips(&r2, STRIP_REC_NONE);
+    StripRecordSeal(&r2);
+    Check(r2.Version == 1 && OldRecordValid(&r2, sizeof(r2)), "record: torn down: version 1 again");
+
+    /* the decision: a talkback plan rebuilds as every plan does (StripWarmRebuild, both models' default 1) */
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 1, 0x1501FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td,
+          "decide: a record with the talkback strip, this start the same, rebuilds on: REBUILD after a teardown");
+    {
+        /* the rebuild's teardown (strips.c StripsWarmDecide, StripsTeardownXact) stops every slot the record names */
+        ULONG started = 0, tbSynch = 0;
+
+        for (i = 0; i < STRIP_PLAN_SLOTS; i++)
+            if ((r.Mask & (1u << i)) && r.Limit >= STRIP_STEP_SYNCH) {
+                started |= 1u << i;
+                if (i == STRIP_SLOT_TALKBACK)
+                    tbSynch = StripSlotSynch(i);
+            }
+        Check(started == 0x1501FF && tbSynch == 0x0A, "decide: that teardown stops inputs 1-8, VIRTUAL 1, AUX 1/2 L and SYNCH 0 at 0x0a");
+    }
+    n.WarmRebuild = 0;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_ADOPTED && !td,
+          "decide: ... with StripWarmRebuild 0: ADOPTED (the record covers the talkback strip word for word)");
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0x501FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS,
+          "decide: a record with the talkback strip, this start without it (StripTalkback 0 or refused): PLAN_DIFFERS");
+    n.WarmRebuild = 1;
+    Check(StripAdoptDecide(&r, &n, &td) == STRIP_ADOPT_REBUILD && td, "decide: ... with rebuilds: REBUILD after a teardown");
+    r2 = r;
+    AdoptLivePm(&r2, 0x501FF, 8, 9, 48000, 1, 6, 1, kX8pGeom);
+    StripRecordSeal(&r2);
+    AdoptNowPm(&n, STRIP_ANCHOR_OK, 1, 0, 0x1501FF, 8, 9, 48000, 1, 6, kX8pGeom);
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_PLAN_DIFFERS,
+          "decide: a record of the aux build, this start with the talkback strip: PLAN_DIFFERS (nothing adopted the record does "
+          "not cover)");
+    n.WarmRebuild = 1;
+    Check(StripAdoptDecide(&r2, &n, &td) == STRIP_ADOPT_REBUILD && td, "decide: ... with rebuilds: REBUILD after a teardown");
+}
+
 /* --print-pm <plan mask>: the pass for the x8p (8 Mic slots), every transaction. */
 static void PrintPassPm(ULONG Pm)
 {
@@ -2546,8 +3012,10 @@ static void PrintPassPm(ULONG Pm)
                 sprintf_s(name, sizeof(name), "input %lu", in + 1);
             else if (in < STRIP_SLOT_AUX0)
                 sprintf_s(name, sizeof(name), "VIRTUAL %lu", in - STRIP_SLOT_VIRTUAL0 + 1);
-            else
+            else if (in < STRIP_SLOT_TALKBACK)
                 sprintf_s(name, sizeof(name), "AUX %lu %c", ((in - STRIP_SLOT_AUX0) >> 1) + 1, ((in - STRIP_SLOT_AUX0) & 1) ? 'R' : 'L');
+            else
+                sprintf_s(name, sizeof(name), "talkback");
             printf("Transaction %lu: PREPARE %s (StripSteps 0), on the strip DSP:\n", k + 1, name);
             PrintPlan(&p);
         } else if (kind == STRIP_XACT_START) {
@@ -2756,21 +3224,29 @@ int main(int argc, char **argv)
     CheckAdopt();           /* [Warm] */
     CheckVirtual();         /* [Virtual] */
     CheckAux();             /* [AuxStrips] */
+    CheckTalkback();        /* [TalkStrip] */
 
+    if (argc > 1 && strcmp(argv[1], "--aux-digest") == 0)
+        printf("AuxBuildDigest: 0x%016llXull\n", AuxBuildDigest());
     if (argc > 1 && strcmp(argv[1], "--aux-room") == 0) {
-        /* [AuxStrips] the pool words each plan books below the tops, and what the measured pools have above the scratch */
-        static const struct { const char *Who; ULONG Mic, V, A; const ULONG *Size, *Base, *Scr; } rows[] = {
-            { "x8p  8 Mic",                       8, 0x00, 0x0, kSize, kBase, kScr },
-            { "x8p  8 Mic + VIRTUAL 1",           8, 0x01, 0x0, kSize, kBase, kScr },
-            { "x8p  8 Mic + VIRTUAL 1 + aux 0xf", 8, 0x01, 0xF, kSize, kBase, kScr },
-            { "x8p  all 20 strips",               8, 0xFF, 0xF, kSize, kBase, kScr },
-            { "TwX  2 Mic + VIRTUAL 1-4 + aux 0xf", 2, 0x0F, 0xF, kTwxSize, kTwxBase, kTwxScr },
+        /* [AuxStrips] the pool words each plan books below the tops, and what the measured pools have above the scratch;
+           [TalkStrip] with the talkback strip too */
+        static const struct { const char *Who; ULONG Mic, V, A, T; const ULONG *Size, *Base, *Scr; } rows[] = {
+            { "x8p  8 Mic",                            8, 0x00, 0x0, 0, kSize, kBase, kScr },
+            { "x8p  8 Mic + VIRTUAL 1",                8, 0x01, 0x0, 0, kSize, kBase, kScr },
+            { "x8p  8 Mic + VIRTUAL 1 + aux 0xf",      8, 0x01, 0xF, 0, kSize, kBase, kScr },
+            { "x8p  all 20 strips",                    8, 0xFF, 0xF, 0, kSize, kBase, kScr },
+            { "x8p  8 Mic + aux 0x5 + talkback",       8, 0x00, 0x5, 1, kSize, kBase, kScr },
+            { "x8p  all 21 strips",                    8, 0xFF, 0xF, 1, kSize, kBase, kScr },
+            { "TwX  2 Mic + VIRTUAL 1-4 + aux 0xf",    2, 0x0F, 0xF, 0, kTwxSize, kTwxBase, kTwxScr },
+            { "TwX  2 Mic + aux 0x5 + talkback",       2, 0x00, 0x5, 1, kTwxSize, kTwxBase, kTwxScr },
+            { "TwX  2 Mic + V 1-4 + aux 0x5 + talkback", 2, 0x0F, 0x5, 1, kTwxSize, kTwxBase, kTwxScr },
         };
         ULONG room[4], pool, ii;
 
         for (ii = 0; ii < sizeof(rows) / sizeof(rows[0]); ii++) {
-            StripPlanRoomAux(rows[ii].Mic, rows[ii].V, rows[ii].A, room);
-            printf("%-36s check %2lu, room", rows[ii].Who, StripPlanLayoutCheckRoom(rows[ii].Size, rows[ii].Base, rows[ii].Scr,
+            StripPlanRoomTalkback(rows[ii].Mic, rows[ii].V, rows[ii].A, rows[ii].T, room);
+            printf("%-40s check %2lu, room", rows[ii].Who, StripPlanLayoutCheckRoom(rows[ii].Size, rows[ii].Base, rows[ii].Scr,
                                                                                         room, STRIP_CODE_WORDS));
             for (pool = 1; pool < 4; pool++) {
                 ULONG start = rows[ii].Base[pool] + (rows[ii].Base[pool] & 1), top = start + (rows[ii].Size[pool] & ~1u);
@@ -2792,7 +3268,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--print-probe") == 0)
         PrintProbe(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFF : 0xFF);
     if (argc > 1 && strcmp(argv[1], "--print-pm") == 0)
-        PrintPassPm(argc > 2 ? strtoul(argv[2], NULL, 0) & 0xFFFFF : 0x1FF);
+        PrintPassPm(argc > 2 ? strtoul(argv[2], NULL, 0) & 0x1FFFFF : 0x1FF);
     if (argc > 1 && strcmp(argv[1], "--digests") == 0) {
         unsigned long long d[PLAN_DIGESTS];
 

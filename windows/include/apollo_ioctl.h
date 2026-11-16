@@ -59,6 +59,8 @@ DEFINE_GUID(GUID_DEVINTERFACE_APOLLO,
    on a unit whose StripVirtualMask builds their strips */
 /* [AuxStrips] still 8: GET_STRIPS grows at its end again (Version 5, the aux returns' Input Strips; a buffer of the
    version 4 size gets version 4, then 3 or 2 as before); every SET_MONITOR_PARAM code unchanged */
+/* [TalkStrip] still 8: GET_STRIPS grows at its end again (Version 6, the talkback mic's Input Strip; a buffer of the
+   version 5 size gets version 5, then 4, 3 or 2 as before); every SET_MONITOR_PARAM code unchanged (bus 0x0A as before) */
 
 #define FILE_DEVICE_APOLLO          0x8A70u     /* unsigned: << 16 overflows int */
 #define APOLLO_CTL(fn, access) \
@@ -404,6 +406,8 @@ typedef struct _APOLLO_MIXER_SETTING {
 #define APOLLO_MON_CUE_PAN(c, b)    (0x2000u | ((c) << 8) | (b))    /* -100 left .. 100 right */
 #define APOLLO_MON_CUE_MUTE(c)      (0x3000u | ((c) << 8))          /* 0/1: the cue's sends go out as 0.0 */
 #define APOLLO_MON_SEND_OFF     (-121)
+/* [TalkStrip] The talkback mic's bus carries audio only where the unit's StripTalkback builds its Input Strip (GET_STRIPS
+   version 6 Talkback); while it runs the bus is mixed on the strip DSP and the unit gates it with TALK (0x46) */
 #define APOLLO_MON_BUS_TALKBACK 0x0A
 /* [Virtual] VIRTUAL n (1-8) = bus 0x18 + n - 1, for the mix, cue and aux codes, on a unit whose registry StripVirtualMask
    has bit n-1 (the driver builds its Input Strip; GET_STRIPS version 4 VirtualMask); refused (invalid parameter) elsewhere */
@@ -618,6 +622,8 @@ typedef struct _APOLLO_READBACK {
 #define APOLLO_STRIP_AUXES              4   /* [AuxStrips] the aux returns AUX 1 L/R, AUX 2 L/R (GET_STRIPS version 5) */
 #define APOLLO_STRIP_AUX_BUS0           0x10    /* DSP input = bus of AUX 1 L (aux return k = 0x10 + k) */
 #define APOLLO_STRIP_AUX_RETURNS        2   /* AUX 1, AUX 2: return k/2 */
+#define APOLLO_STRIP_TALKBACKS          1   /* [TalkStrip] the talkback mic's Input Strip (GET_STRIPS version 6) */
+#define APOLLO_STRIP_TALKBACK_BUS       0x0A    /* its DSP input = mixer bus 10 (APOLLO_MON_BUS_TALKBACK) */
 
 #define APOLLO_STRIP_NONE               0   /* per input: nothing sent */
 #define APOLLO_STRIP_QUEUED             1   /* its transaction published, not proven taken */
@@ -722,11 +728,27 @@ typedef struct _APOLLO_STRIPS_INFO {
                                                        the strip DSP while its strips run, an aux insert chain's DSP */
     ULONG   AuxReturnStereo;    /* bit a: AUX a+1's return and its cue sends go out as a stereo pair (L input left entry,
                                    R input right entry), because its Input Strips run; 0 = the single left-entry write */
+    /*
+     * Version 6 [TalkStrip]: the Input Strip on the talkback mic, DSP input TalkbackBus (docs/STRIPS.md 15). A driver
+     * fills as much of the structure as the caller's buffer holds, down to the version 5 size (APOLLO_STRIPS_INFO_V5_SIZE),
+     * then 4, 3, 2.
+     */
+    ULONG   Talkback;           /* 1: this start builds or adopted the talkback Input Strip (StripTalkback as the model and
+                                   the pools take it), 0: none (the mic carries silence) */
+    ULONG   TalkbackAsked;      /* registry StripTalkback */
+    ULONG   TalkbackLayoutWhy;  /* 0, or the pool check's code (8 + pool: no room) that refused TalkbackAsked */
+    ULONG   TalkbackBus;        /* APOLLO_STRIP_TALKBACK_BUS: its DSP input and mixer bus (10) */
+    ULONG   TStripState;        /* APOLLO_STRIP_NONE/QUEUED/TAKEN */
+    ULONG   TStripStarted;      /* 1 = its SYNCH went out */
+    ULONG   TStripHeader;       /* instance header address on the strip DSP */
+    ULONG   TStripAckMs;        /* its PREPARE: publish to taken */
+    ULONG   TBusOwner;          /* DSP that mixes bus 10 besides DSP 0 (0 = DSP 0 only): the strip DSP while it runs */
 } APOLLO_STRIPS_INFO, *PAPOLLO_STRIPS_INFO;
 
 #define APOLLO_STRIPS_INFO_V2_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, Adopt))
 #define APOLLO_STRIPS_INFO_V3_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, VirtualMask))
 #define APOLLO_STRIPS_INFO_V4_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, AuxMask))
+#define APOLLO_STRIPS_INFO_V5_SIZE      ((ULONG)FIELD_OFFSET(APOLLO_STRIPS_INFO, Talkback))     /* [TalkStrip] */
 
 /* Version 3: Adopt (= driver\strip_adopt.h STRIP_ADOPT_*) */
 #define APOLLO_STRIPS_ADOPT_NONE            0   /* not a warm start, or strips off */

@@ -25,6 +25,9 @@
  * [AuxStrips] (docs/STRIPS.md 14) The same Input Strip on the aux returns, DSP inputs 0x10-0x13 (AUX 1 L/R,
  * AUX 2 L/R): Pm bits 16-19, PREPAREd after every Virtual strip, started in the same single START.
  *
+ * [TalkStrip] (docs/STRIPS.md 15) The same Input Strip on the talkback mic, DSP input 0x0A: Pm bit 20, PREPAREd after
+ * every aux strip, started in the same single START.
+ *
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #pragma once
@@ -35,7 +38,8 @@
 #define STRIP_PLAN_START_ENTS   4       /* per input: SYNCH, span, span, route */
 #define STRIP_PLAN_ENTS_MAX     (STRIP_PLAN_START_ENTS * STRIP_PLAN_INPUTS)    /* 32: a Mic-only transaction */
 #define STRIP_PLAN_PAYLOAD_MAX  96      /* dwords: memspec 19 + header 9 + parameters 55 = 83 */
-#define STRIP_PLAN_ENT_SLOTS    80      /* [Virtual] entries a plan holds: the START of 8 Mic + 8 Virtual + [AuxStrips] 4 aux Input Strips */
+#define STRIP_PLAN_ENT_SLOTS    84      /* [Virtual] entries a plan holds: the START of 8 Mic + 8 Virtual + [AuxStrips] 4 aux
+                                           + [TalkStrip] the talkback Input Strip */
 
 #define STRIP_CMD_ZERO          0x00080004u     /* {cmd, addr, 0, dwords} */
 #define STRIP_CMD_SYNCH         0x001F0004u     /* {cmd, 0x20 << 16 | synch, header (0 = stop), 0} */
@@ -533,7 +537,8 @@ static __inline ULONG StripPassStep(ULONG Mask, ULONG Steps, ULONG K, ULONG *Inp
  */
 #define STRIP_PLAN_VIRTUALS     8u      /* VIRTUAL 1-8 */
 #define STRIP_PLAN_VROWS        6u      /* Input Strip: instance header, m0, c0-c3 */
-#define STRIP_PLAN_SLOTS        20u     /* a pass's strips: 0-7 Mic, 8-15 Virtual, [AuxStrips] 16-19 the aux returns */
+#define STRIP_PLAN_SLOTS        21u     /* a pass's strips: 0-7 Mic, 8-15 Virtual, [AuxStrips] 16-19 the aux returns,
+                                           [TalkStrip] 20 the talkback mic */
 #define STRIP_SLOT_VIRTUAL0     8u      /* slot of VIRTUAL 1 */
 #define STRIP_VIRTUAL_SYNCH0    0x18u   /* DSP input (synch) of VIRTUAL 1 = its mixer bus; every model's FirstVirtual */
 #define STRIP_PLAN_VPREPARE_ENTS 9u     /* 6 zero-fills + 3 DMA refs */
@@ -600,7 +605,37 @@ static __inline ULONG StripPlanPmAux(ULONG Mask, ULONG VMask, ULONG AMask)
     return StripPlanPm(Mask, VMask) | ((AMask & 0xFu) << 16);
 }
 
-/* The DSP input (= the mixer bus) of slot Slot: preamp i -> i, VIRTUAL n -> 0x18 + n - 1, [AuxStrips] aux k -> 0x10 + k. */
+/*
+ * ---- [TalkStrip] The talkback mic's Input Strip (docs/STRIPS.md 15) ----
+ *
+ * The talkback mic is DSP input 0x0A on the x8p and the Twin X alike (oa:devices/apollo-x8p.json / apollo-twin-x.json
+ * talkback_synch_in 10; monitor_plan.h APOLLO_MON_TALKBACK_BUS, the mixer's bus 10). Like a Virtual input or an aux return
+ * it carries silence without an Input Strip: measured on the Twin X Nov 16 2026, the plain Input Strip (0x83E) on 0x0A
+ * carried the room into TALKBACK 1/2 (record slots 32/33) at -45.9 dBFS with TALK on and exact zero with TALK off, nothing
+ * quarantined, every other input unchanged. 0x0A is an even DSP input, the safe kind for a mono strip (the odd aux returns
+ * covered input 1's record slot, STRIPS.md 14). The same strip, the same words (StripPlanPrepareInput), on slot 20 (Pm
+ * bit 20 = StripTalkback).
+ *
+ * Placement: Input Strip 12, right below the aux returns' four places (8 + 4), so no Virtual or aux strip moves when it
+ * comes or goes; with every Virtual and aux strip built it is upstream's packing of Input Strip 13. x8p, 8 Mic strips:
+ * header 0x9cd48.
+ */
+#define STRIP_SLOT_TALKBACK     20u     /* slot of the talkback mic (DSP input 0x0A) */
+#define STRIP_TALKBACK_SYNCH    0x0Au   /* its DSP input (synch) = its mixer bus (talkback_synch_in 10) */
+#define STRIP_PM_TALKBACK       0x00100000u
+#define STRIP_TALKBACK_PLACE    (STRIP_PLAN_VIRTUALS + STRIP_PLAN_AUXES)    /* Input Strip 12 */
+#define STRIP_PLAN_INPUT_PLACES (STRIP_TALKBACK_PLACE + 1u)                 /* 13 Input Strip places */
+
+/* [TalkStrip] The plan mask with the talkback strip: StripMask | StripVirtualMask << 8 | StripAuxMask << 16 | StripTalkback << 20. */
+static __inline ULONG StripPlanPmTalkback(ULONG Mask, ULONG VMask, ULONG AMask, ULONG TMask)
+{
+    return StripPlanPmAux(Mask, VMask, AMask) | ((TMask & 1u) << STRIP_SLOT_TALKBACK);
+}
+
+/*
+ * The DSP input (= the mixer bus) of slot Slot: preamp i -> i, VIRTUAL n -> 0x18 + n - 1, [AuxStrips] aux k -> 0x10 + k,
+ * [TalkStrip] the talkback -> 0x0A.
+ */
 static __inline ULONG StripSlotSynch(ULONG Slot)
 {
     if (Slot < STRIP_SLOT_VIRTUAL0) {
@@ -609,7 +644,10 @@ static __inline ULONG StripSlotSynch(ULONG Slot)
     if (Slot < STRIP_SLOT_AUX0) {
         return STRIP_VIRTUAL_SYNCH0 + ((Slot - STRIP_SLOT_VIRTUAL0) & 7u);
     }
-    return STRIP_AUX_SYNCH0 + ((Slot - STRIP_SLOT_AUX0) & 3u);
+    if (Slot < STRIP_SLOT_TALKBACK) {
+        return STRIP_AUX_SYNCH0 + ((Slot - STRIP_SLOT_AUX0) & 3u);
+    }
+    return STRIP_TALKBACK_SYNCH;
 }
 
 /* The slot whose strip mixes bus Bus (DSP input), or STRIP_PLAN_SLOTS: none. */
@@ -624,13 +662,16 @@ static __inline ULONG StripBusSlot(ULONG Bus)
     if (Bus >= STRIP_AUX_SYNCH0 && Bus < STRIP_AUX_SYNCH0 + STRIP_PLAN_AUXES) {
         return STRIP_SLOT_AUX0 + (Bus - STRIP_AUX_SYNCH0);      /* [AuxStrips] */
     }
+    if (Bus == STRIP_TALKBACK_SYNCH) {
+        return STRIP_SLOT_TALKBACK;                             /* [TalkStrip] */
+    }
     return STRIP_PLAN_SLOTS;
 }
 
 /*
  * Input Strip N's six private addresses (Addr[6..9] = 0): below the room of MicSlots Mic strips, place after place,
- * top-down in each pool (N 0-7 = VIRTUAL N+1, [AuxStrips] 8-11 = the aux return N-8). 0, or 1 for N or MicSlots out of
- * range (Addr all 0).
+ * top-down in each pool (N 0-7 = VIRTUAL N+1, [AuxStrips] 8-11 = the aux return N-8, [TalkStrip] 12 = the talkback mic).
+ * 0, or 1 for N or MicSlots out of range (Addr all 0).
  */
 static __inline ULONG StripPlanInputAddrs(ULONG MicSlots, ULONG N, ULONG Addr[STRIP_PLAN_ROWS])
 {
@@ -639,7 +680,7 @@ static __inline ULONG StripPlanInputAddrs(ULONG MicSlots, ULONG N, ULONG Addr[ST
     for (j = 0; j < STRIP_PLAN_ROWS; j++) {
         Addr[j] = 0;
     }
-    if (N >= STRIP_PLAN_INPUT_STRIPS || MicSlots > STRIP_PLAN_INPUTS) {
+    if (N >= STRIP_PLAN_INPUT_PLACES || MicSlots > STRIP_PLAN_INPUTS) {
         return 1;
     }
     cur[0] = 0;
@@ -678,6 +719,12 @@ static __inline ULONG StripPlanAuxAddrs(ULONG MicSlots, ULONG A, ULONG Addr[STRI
     return StripPlanInputAddrs(MicSlots, STRIP_PLAN_VIRTUALS + A, Addr);
 }
 
+/* [TalkStrip] The talkback mic's six private addresses: Input Strip 12, below the aux places. 0, or 1. */
+static __inline ULONG StripPlanTalkbackAddrs(ULONG MicSlots, ULONG Addr[STRIP_PLAN_ROWS])
+{
+    return StripPlanInputAddrs(MicSlots, STRIP_TALKBACK_PLACE, Addr);
+}
+
 /* Slot Slot's private addresses (Mic rows 0-9, or the Input Strip's 0-5). 0, or 1 for a slot out of range. */
 static __inline ULONG StripPlanSlotAddrs(ULONG Slot, ULONG MicSlots, ULONG Addr[STRIP_PLAN_ROWS])
 {
@@ -688,7 +735,7 @@ static __inline ULONG StripPlanSlotAddrs(ULONG Slot, ULONG MicSlots, ULONG Addr[
         return 0;
     }
     if (Slot < STRIP_PLAN_SLOTS) {
-        return StripPlanInputAddrs(MicSlots, Slot - STRIP_SLOT_VIRTUAL0, Addr);    /* Virtual, then the aux returns */
+        return StripPlanInputAddrs(MicSlots, Slot - STRIP_SLOT_VIRTUAL0, Addr);    /* Virtual, the aux returns, the talkback */
     }
     for (j = 0; j < STRIP_PLAN_ROWS; j++) {
         Addr[j] = 0;
@@ -697,8 +744,8 @@ static __inline ULONG StripPlanSlotAddrs(ULONG Slot, ULONG MicSlots, ULONG Addr[
 }
 
 /*
- * The PREPARE transaction for Input Strip N (N 0-7 = VIRTUAL N+1, [AuxStrips] 8-11 = the aux return N-8;
- * ua_strip_build_input's stages 2-5, nothing started): zero-fills of its six blocks (stage 2), the 11-word memspec (3),
+ * The PREPARE transaction for Input Strip N (N 0-7 = VIRTUAL N+1, [AuxStrips] 8-11 = the aux return N-8, [TalkStrip] 12 =
+ * the talkback mic; ua_strip_build_input's stages 2-5, nothing started): zero-fills of its six blocks (stage 2), the 11-word memspec (3),
  * the header {0x00140009, hdr, 0x24, 0x40000000, 1, 1, 0x22, 1, 0x83E} (4), the m0 parameters {0x0014000B, m0,
  * g_StripVM0} (5). Each DMA command is its own DMA_REF, as ua_strip_dma packs them. The words depend on the strip's
  * addresses only, never on its DSP input. Returns 0, or nonzero on a planner error.
@@ -771,7 +818,8 @@ static __inline ULONG StripPlanPrepareVirtual(ULONG V, ULONG MicSlots, ULONG Ste
 
 /*
  * Slot Slot's PREPARE at Rate (the Mic strip's rate words; the Input Strip's are the same at every rate). [AuxStrips]
- * Slots 8-19 are Input Strips 0-11: VIRTUAL 1-8, then the aux returns 0x10-0x13.
+ * Slots 8-19 are Input Strips 0-11: VIRTUAL 1-8, then the aux returns 0x10-0x13; [TalkStrip] slot 20 Input Strip 12, the
+ * talkback mic.
  */
 static __inline ULONG StripPlanPrepareSlot(ULONG Slot, ULONG MicSlots, ULONG Steps, ULONG Rate, STRIP_PLAN *P)
 {
@@ -788,10 +836,10 @@ static __inline ULONG StripPlanPrepareSlot(ULONG Slot, ULONG MicSlots, ULONG Ste
 
 /*
  * The START transaction for every slot in Pm (Mic input 1 first, then VIRTUAL 1, ..., [AuxStrips] then the aux returns
- * 0x10-0x13), up to stage Steps: per slot SYNCH {0x001F0004, 0x20 << 16 | synch, header, 0} (stage 6), then span none
- * twice and the route word (stage 7; ua_strip_build_start: the same words for every kind). Inline only, at most 80
- * entries. A Pm of 0..0xFF gives StripPlanStart's entries, a Pm of 0..0xFFFF the Virtual build's. Returns 0, or
- * nonzero on a planner error.
+ * 0x10-0x13, [TalkStrip] then the talkback 0x0A), up to stage Steps: per slot SYNCH {0x001F0004, 0x20 << 16 | synch,
+ * header, 0} (stage 6), then span none twice and the route word (stage 7; ua_strip_build_start: the same words for every
+ * kind). Inline only, at most 84 entries. A Pm of 0..0xFF gives StripPlanStart's entries, a Pm of 0..0xFFFF the Virtual
+ * build's, a Pm of 0..0xFFFFF the aux build's. Returns 0, or nonzero on a planner error.
  */
 static __inline ULONG StripPlanStartPm(ULONG Pm, ULONG MicSlots, ULONG Steps, STRIP_PLAN *P)
 {
@@ -827,8 +875,8 @@ static __inline ULONG StripPlanStartPm(ULONG Pm, ULONG MicSlots, ULONG Steps, ST
 
 /*
  * The pass over Pm: transaction K is STRIP_XACT_PREPARE (*Slot) for every slot in Pm, ascending (every Mic
- * strip, then every Virtual one, [AuxStrips] then every aux return), then one STRIP_XACT_START at SYNCH or beyond,
- * then STRIP_XACT_END. A Pm of 0..0xFF gives StripPassStep's list.
+ * strip, then every Virtual one, [AuxStrips] then every aux return, [TalkStrip] then the talkback), then one
+ * STRIP_XACT_START at SYNCH or beyond, then STRIP_XACT_END. A Pm of 0..0xFF gives StripPassStep's list.
  */
 static __inline ULONG StripPassStepPm(ULONG Pm, ULONG Steps, ULONG K, ULONG *Slot)
 {
@@ -891,17 +939,35 @@ static __inline ULONG StripPlanInputSlots(ULONG VMask, ULONG AMask)
 }
 
 /*
- * [AuxStrips] Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Input Strip places of
- * VMask and AMask (StripPlanInputSlots). An AMask of 0 gives StripPlanRoom's words.
+ * [TalkStrip] Input Strip places the room must hold with the talkback strip too: with it all 13 (its place, Input Strip
+ * 12, sits below every Virtual and aux place, StripPlanTalkbackAddrs), else StripPlanInputSlots's.
  */
-static __inline void StripPlanRoomAux(ULONG MicSlots, ULONG VMask, ULONG AMask, ULONG Room[4])
+static __inline ULONG StripPlanInputSlotsTalkback(ULONG VMask, ULONG AMask, ULONG TMask)
 {
-    ULONG v = StripPlanInputSlots(VMask, AMask);
+    return (TMask & 1u) ? STRIP_PLAN_INPUT_PLACES : StripPlanInputSlots(VMask, AMask);
+}
+
+/*
+ * [TalkStrip] Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Input Strip places of
+ * VMask, AMask and TMask (StripPlanInputSlotsTalkback). A TMask of 0 gives StripPlanRoomAux's words.
+ */
+static __inline void StripPlanRoomTalkback(ULONG MicSlots, ULONG VMask, ULONG AMask, ULONG TMask, ULONG Room[4])
+{
+    ULONG v = StripPlanInputSlotsTalkback(VMask, AMask, TMask);
 
     Room[0] = 0;
     Room[1] = STRIP_POOL1_PER_STRIP * MicSlots + STRIP_VPOOL1_PER_STRIP * v;
     Room[2] = STRIP_POOL2_PER_STRIP * MicSlots + STRIP_VPOOL2_PER_STRIP * v;
     Room[3] = STRIP_POOL3_PER_STRIP * MicSlots + STRIP_VPOOL3_PER_STRIP * v;
+}
+
+/*
+ * [AuxStrips] Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Input Strip places of
+ * VMask and AMask (StripPlanInputSlots). An AMask of 0 gives StripPlanRoom's words.
+ */
+static __inline void StripPlanRoomAux(ULONG MicSlots, ULONG VMask, ULONG AMask, ULONG Room[4])
+{
+    StripPlanRoomTalkback(MicSlots, VMask, AMask, 0, Room);
 }
 
 /* Pool words (1-3) the strips need below the pool tops: MicSlots Mic strips and the Virtual slots of VMask. */
@@ -1068,6 +1134,7 @@ typedef struct _STRIP_MODEL {
     ULONG           ModuleId[STRIP_MODULE_IDS];     /* uploaded in this order; apollo_strip_pins.h must agree */
     unsigned short  RecId[STRIP_PLAN_INPUTS];       /* record channel ID strip i feeds (0 = none) */
     ULONG           AuxAllowed;         /* [AuxStrips] StripAuxMask is ANDed with this (bit k = DSP input 0x10 + k) */
+    ULONG           TalkbackAllowed;    /* [TalkStrip] StripTalkback is ANDed with this (1: the Input Strip on DSP input 0x0A) */
 } STRIP_MODEL;
 
 /* The plan of a model that builds strips, or 0. */
@@ -1086,6 +1153,10 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
                zero with either one built, live with 0x10/0x12 alone) and never reached slots 29/31; a stereo strip
                (SYNCH in2 = the R input) is unproven. AUX 1 L / AUX 2 L record on slots 28/30. */
             0x05,
+            /* [TalkStrip] its built-in talkback mic, DSP input 0x0A (talkback_synch_in 10; monitor_plan.h TalkbackBus). Its
+               legacy record frame is 32 wide: TALKBACK 1/2 (0x0B01/0x0B02) are not in it; the mic reaches the cues and
+               the aux buses (AUX 1 on slot 28). Not run on the x8p yet. */
+            1,
         },
         {
             /*
@@ -1093,8 +1164,9 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
              * DSP input, not on the jack), DSP 1 (a Duo has DSPs 0-1; 0 = record only, no monitor
              * mix, oa:HARDWARE-SESSIONS.md:327-328), the Mic Input Strip modules unchanged, room
              * for its 2 strips (its DSP 1 pools, measured, fit 8: tops 0x9D1B8 / 0xC6FFE / 0x08FFE000);
-             * record slots 0/1 = 0x0001/0x0002 MIC/LINE/HIZ 1-2 (its IO descriptor). No talkback
-             * strip (module 0xC9, no captured recipe): TALKBACK 1-2 stay silent.
+             * record slots 0/1 = 0x0001/0x0002 MIC/LINE/HIZ 1-2 (its IO descriptor). [TalkStrip] The
+             * talkback mic has no Talkback Input Strip recipe (module 0xC9, none captured); the plain
+             * Input Strip on its DSP input carries it (StripTalkback, below): TALKBACK 1-2 record it.
              * [Virtual] VIRTUAL 1-4 (oa:devices/apollo-twin-x.json virtual_max 4; VIRTUAL 1-4 play and record).
              */
             STRIP_MODEL_TWINX, "Apollo Twin X (Gen 1)", 2, 0x03, 0, 0x18, 0x0F, 1, 0x03, 2,
@@ -1103,6 +1175,10 @@ static __inline const STRIP_MODEL *StripModelFor(ULONG Model)
             /* [AuxStrips] the left return inputs only, as on the x8p (0x10, 0x12: mono aux buses; its record descriptor
                has AUX1 L .. AUX2 R, 0x0201-0x0204, at slots 28-31). Run on a Twin X Nov 16 2026: AUX 1/2 as on the x8p. */
             0x05,
+            /* [TalkStrip] the built-in talkback mic, DSP input 0x0A (talkback_synch_in 10). Nov 16 2026, a throwaway build's
+               plain Input Strip there: TALKBACK 1/2 (record slots 32/33, AX_REC_CH 34) carried the room at -45.9 dBFS with
+               TALK on, exact zero with TALK off; every other input unchanged. */
+            1,
         },
     };
     ULONG i;
@@ -1131,6 +1207,12 @@ static __inline ULONG StripModelVirtualMask(const STRIP_MODEL *M, ULONG VMask)
 static __inline ULONG StripModelAuxMask(const STRIP_MODEL *M, ULONG AMask)
 {
     return (M != 0) ? (AMask & M->AuxAllowed & 0xFu) : 0;
+}
+
+/* [TalkStrip] StripTalkback as the model takes it: bit 0 where the model has a talkback mic with a strip, else 0. */
+static __inline ULONG StripModelTalkback(const STRIP_MODEL *M, ULONG TMask)
+{
+    return (M != 0) ? (TMask & M->TalkbackAllowed & 1u) : 0;
 }
 
 /* StripDsp as the model takes it: an allowed DSP the unit has, else the default. */

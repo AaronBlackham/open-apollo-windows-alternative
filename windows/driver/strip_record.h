@@ -23,6 +23,13 @@
  * know. Versions 1 and 2 keep their meaning and are read as before.
  */
 #define STRIP_REC_VERSION_AUX   3u
+/*
+ * [TalkStrip] (docs/STRIPS.md 15) The same 50 words; Mask bit 20 names the talkback mic's Input Strip (StripTalkback << 20,
+ * DSP input 0x0A), with or without the other kinds. Such a record is sealed as version 4: a build that knows versions 1-3
+ * only (and refuses any Mask bit past 19) never adopts, rebuilds over or keeps a strip it does not know. Versions 1-3
+ * keep their meaning and are read as before.
+ */
+#define STRIP_REC_VERSION_TALKBACK 4u
 #define STRIP_REC_DSPS          8u              /* = APOLLO_MAX_DSPS */
 #define STRIP_REC_INPUTS        8u              /* = STRIP_PLAN_INPUTS */
 
@@ -54,7 +61,8 @@ typedef struct _STRIP_RECORD {
     ULONG   BootWord[STRIP_REC_DSPS];   /* right after this driver's last ring connect */
     ULONG   State;                  /* STRIP_REC_* */
     ULONG   Keep;                   /* RUNNING strips are left running at the D0 exit */
-    ULONG   Dsp, Mask, Rate, Limit; /* the plan: strip DSP, StripMask [| StripVirtualMask << 8] [| StripAuxMask << 16], Hz, stage */
+    ULONG   Dsp, Mask, Rate, Limit; /* the plan: strip DSP, StripMask [| StripVirtualMask << 8] [| StripAuxMask << 16]
+                                       [| StripTalkback << 20], Hz, stage */
     ULONG   ModuleHash;             /* the pins the strips were built from (strips.c StripsModulesHash) */
     ULONG   PlanHash;               /* strip_adopt.h StripPlanHash (StripPlanHashPm: the Virtual strips' words too) */
     ULONG   Header[STRIP_REC_INPUTS];   /* the Mic strips' (the Virtual headers follow from the plan, which the hash covers) */

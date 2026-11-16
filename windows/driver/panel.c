@@ -25,10 +25,12 @@
  *
  * Talkback: the button is readback word 6 bit 8 (and SET_MONITOR_PARAM 0x46). Its mic records on the TALKBACK 1/2
  * record slots (0x0B01/0x0B02): the Twin X runs AX_REC_CH 34 from its descriptor, so they are slots 32/33 of its frame;
- * the x8p's legacy frame is 32 wide and has none. The mic carries silence on both until a talkback input strip
- * (module 0xC9) runs on its DSP input, and no recipe for it is known (spec-twinx 5.2, oa:driver/ua_strips.c:27-31):
- * GET_PANEL says so (TalkStrip 0). Its sends into the cues are the cue sends of bus 0x0A (monitor_plan.h); UA's engine
- * writes only 0x46 on TALK, so the unit itself is taken to gate the talkback bus (unverified until the mic is live).
+ * the x8p's legacy frame is 32 wide and has none. The mic carries silence without a strip on its DSP input (0x0A). No
+ * recipe for UA's own Talkback Input Strip (module 0xC9) is known (spec-twinx 5.2, oa:driver/ua_strips.c:27-31), but the
+ * plain Input Strip carries it ([TalkStrip] StripTalkback, docs/STRIPS.md 15: on the Twin X, Nov 16 2026, TALKBACK 1/2 held
+ * the room at -45.9 dBFS with TALK on and exact zero with TALK off). GET_PANEL TalkStrip says whether it runs. Its sends
+ * into the cues are the cue sends of bus 0x0A (monitor_plan.h); UA's engine writes only 0x46 on TALK, and the unit itself
+ * gates the talkback bus with it (the TALK-off zero above).
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -350,7 +352,7 @@ static VOID PanelFill(_In_ PDEVICE_CONTEXT Ctx, _Out_ PAPOLLO_PANEL_INFO I)
         s = ApolloIoDescFind((const unsigned long *)Ctx->IoDescIn, 1, (unsigned short)(APOLLO_CHAN_TALKBACK_1 + k));
         I->TalkSlot[k] = (s >= 0 && (ULONG)s < Ctx->RecChannels) ? (ULONG)s : APOLLO_PANEL_NO_SLOT;
     }
-    I->TalkStrip = 0;
+    I->TalkStrip = ApolloStripsTalkbackLive(Ctx) ? 1 : 0;      /* [TalkStrip] its Input Strip runs (StripTalkback) */
     I->LinkFlags = flags;
     I->LinkMonitorUid = mon;
     I->LinkApplied = (ULONG)ReadNoFence(&g_LinkApplied);

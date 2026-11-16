@@ -73,17 +73,18 @@ const MODE_NAMES = ['observe', 'bring-up', 'full'];     /* Units\<key>\Mode 0..2
  * every cue; the x8p's CUE 3 / CUE 4 there follow the kext's encoder but were never captured.
  * Both units' HP sources are on: the same kext field (S12 [26:24] / [29:27]) on every model, clear of
  * the x8p's preamp 5-8 bits.
+ * [Virtual] virtuals: the VIRTUAL inputs the model can give an Input Strip (driver StripVirtualMask: x8p 1-8, Twin X 1-4).
  */
 const MODEL_CAPS = {
   0x22: { short: 'x8p', hpLevel: false, hpSource: true, hps: 2, preamps: 8, hiz: 2, linkPairs: 0xF, hizLoad: 0,
-    monSource: true, dimLevel: true, talkback: true,
+    monSource: true, dimLevel: true, talkback: true, virtuals: 8,
     cues: ['CUE 1', 'CUE 2', 'CUE 3', 'CUE 4'], alts: ['Line 1-2', 'Line 3-4'] },
   0x99: { short: 'Twin X', hpLevel: true, hpSource: true, hps: 1, preamps: 2, hiz: 1, linkPairs: 0x1, hizLoad: 0x1,
-    monSource: true, dimLevel: false, talkback: true,
+    monSource: true, dimLevel: false, talkback: true, virtuals: 4,
     cues: ['HP', 'LINE 3/4'], alts: ['Line 3/4'] },
 };
 const NO_CAPS = { short: '', hpLevel: false, hpSource: false, hps: 0, preamps: 0, hiz: 0, linkPairs: 0, hizLoad: 0,
-  monSource: false, dimLevel: false, talkback: false, cues: [], alts: [] };
+  monSource: false, dimLevel: false, talkback: false, virtuals: 0, cues: [], alts: [] };
 /* Hi-Z input impedance codes 0-7 (APOLLO_PARAM_HIZ_IMP, preamp_plan.h ApolloPreampHizName). No readback
    field: the app keeps the last value it set, per unit. */
 const HIZ_LOADS = ['2.2M', '1M', '453k', '232k', '100k', '70k', '47k', '21k'];
@@ -106,6 +107,9 @@ const MON_CONFIRMED = new Set(['level', 'hp1', 'mute', 'mono', 'dim', 'talkback'
 /* [Monitor] cue sends (driver/monitor_plan.h): half-dB steps, -121 = off; buses ANALOG n = n-1, talkback 10 */
 const SEND_OFF = -121, SEND_MAX = 24;
 const TALKBACK_BUS = 10;
+/* [Virtual] VIRTUAL n is mixer bus 0x18 + n - 1 (decimal 24-31) in every mix, cue and aux name, on a unit whose driver
+   built its Input Strip (live strips.virtualMask; docs/STRIPS.md 13.6). Elsewhere the driver refuses the bus. */
+const VIRT_BUS0 = 24;
 const ALT_TRIM_UNITY = 60;             /* raw ALT trim = 60 + 2 * dB, -30..+30 dB */
 /* [Mix] the monitor mix (driver/monitor_plan.h APOLLO_MON_MIX_*): per bus a level (half-dB as a send, 0 = 0 dB, UA's default
    while untouched), pan, mute, solo. The record slots of the monitor-mix loopback: what the monitor outputs play. */
@@ -212,6 +216,8 @@ function cleanMix(m) {
       if (Object.keys(o).length) out.main[b] = o;
     }
   }
+  /* [Virtual] VIRTUAL 1-2, 3-4, 5-6, 7-8 linked as stereo channels here (no hardware link: the mix follows, as a Mic pair) */
+  if (Array.isArray(m.vlinks) && m.vlinks.some(v => v === true)) out.vlinks = [0, 1, 2, 3].map(p => m.vlinks[p] === true);
   out.aux = Aux.clean(m.aux);                  /* [Ins] the aux buses (auxbus.js) */
   out.out = Outs.clean(m.out);                 /* [Out] output and front-panel settings (outputs.js) */
   /* [Sess] the monitor routing (no readback): source, headphone sources, dim level as set here */
@@ -364,6 +370,7 @@ function newCtl() {
     levelsValid: false, peaks: new Array(64).fill(-Infinity),
     tbDimmed: false,                   /* [Monitor] this app dimmed the monitor for talkback */
     mixTmp: null,                      /* [Monitor] the mix of a unit with no key (no id yet, or the demo) */
+    virtMask: 0,                       /* [Virtual] the VIRTUAL inputs its driver built, as last reported (virtMaskOf) */
   };
 }
 function ctl(idx) { return S.ctl[idx] || (S.ctl[idx] = newCtl()); }
@@ -763,8 +770,61 @@ const sendOf = (idx, cue, bus) => {
 };
 /* An ALT output is on: set so here, or the unit is using it right now (readback). */
 const altOn = (idx, n) => mixOf(idx).alt[n].on === true || ctl(idx).mon.alt === n + 1;
-/* The mixer buses of a model's sources: its inputs (ANALOG n = n-1) and the talkback mic. */
-const cueBuses = k => [...Array.from({ length: k.preamps }, (_, i) => i), TALKBACK_BUS];
+/* The mixer buses of a model's sources: its inputs (ANALOG n = n-1) and the talkback mic; [Virtual] given the unit's slot,
+   also the VIRTUAL inputs its driver built (bus 24 + n - 1). Without a slot: the model's own buses, as before. */
+const cueBuses = (k, idx) => [...Array.from({ length: k.preamps }, (_, i) => i), ...(idx === undefined ? [] : virtBuses(idx)), TALKBACK_BUS];
+
+/* ---------- [Virtual] the VIRTUAL inputs (docs/STRIPS.md 13, docs/apollo-control-units.md 1.13) ---------- */
+
+/* The VIRTUAL inputs unit idx runs with an Input Strip, bit n-1 = VIRTUAL n: its live strips' virtualMask within the
+   model's range, kept while the unit restarts or reconnects (its strips report null until it is up again). */
+function virtMaskOf(idx) {
+  const n = capsOf(unitType(idx)).virtuals || 0, c = S.ctl[idx];
+  return n && c ? (c.virtMask >>> 0) & ((1 << n) - 1) : 0;
+}
+function virtBuses(idx) {
+  const m = virtMaskOf(idx), out = [];
+  for (let n = 0; n < 8; n++) if ((m >>> n) & 1) out.push(VIRT_BUS0 + n);
+  return out;
+}
+const isVirtBus = b => b >= VIRT_BUS0 && b < VIRT_BUS0 + 8;
+/* "VIRTUAL 3" on the x8p, "Twin X VIRTUAL 1" on another unit: the start of its controls' accessible names */
+const virtWho = (idx, n) => (idx ? `${unitShort(idx)} VIRTUAL ${n}` : `VIRTUAL ${n}`);
+/* VIRTUAL n's record slot (its meter): the unit's descriptor (id 0x07nn) when the host lists it, else 18 + n - 1 on
+   both models (the x8p's REC_GROUPS; the Twin X's own descriptor, driver log Nov 16 2026: "rec 18 0701 VIRTUAL 1");
+   -1 = none */
+function virtSlot(idx, n) {
+  const e = listedUnit(idx), ins = e && Array.isArray(e.inputs) ? e.inputs : null;
+  if (ins) { const i = ins.findIndex(x => x && Number(x.id) === 0x0700 + n); if (i >= 0) return i; }
+  const t = unitType(idx);
+  return t === 0x22 || t === 0x99 ? 17 + n : -1;
+}
+/* A VIRTUAL pair (p: VIRTUAL 2p+1 and 2p+2) linked here: one stereo channel in the monitor mix (cfg.mixes[...].vlinks) */
+const vlinkOf = (idx, p) => !!(mixOf(idx).vlinks || [])[p];
+function setVLink(idx, p, on) {
+  const m = mixOf(idx), a = VIRT_BUS0 + 2 * p, b = a + 1;
+  if (!writable(idx) || vlinkOf(idx, p) === !!on || !virtBuses(idx).includes(b) || !virtBuses(idx).includes(a)) return;
+  m.vlinks = [0, 1, 2, 3].map(i => (i === p ? !!on : vlinkOf(idx, i)));
+  if (!m.vlinks.some(Boolean)) delete m.vlinks;
+  saveMix(idx);
+  linkMix(idx, a, b, !!on);
+  renderMixFor(idx);
+}
+/* The set of built VIRTUAL inputs changed (a restart, or the first report after a connect): the segment, the Cues page and
+   Settings follow, and once this connection's saved mix went out, what is kept for a VIRTUAL input that is newly built goes
+   out too, in the connect's order (mutes and solos first): the driver refused or never had it before its strip existed. */
+const VIRT_WRITE = /^(?:mix|mixpan|mixmute|mixsolo|send|pan|auxsend|auxpan|auxpost):(?:\d+:)?(\d+)$/;
+function virtChanged(idx, prev) {
+  syncSegments();
+  if (idx === S.sel) renderCues();
+  Virt.render();
+  const c = S.ctl[idx], added = virtBuses(idx).filter(b => !((prev >>> (b - VIRT_BUS0)) & 1));
+  if (!c || !c.mixApplied || S.demo || !added.length || unitReadOnly(idx)) return;
+  for (const [name, v] of savedMixOut(idx)) {
+    const x = VIRT_WRITE.exec(name);
+    if (x && added.includes(Number(x[1]))) hwSend(idx, 'monitor', name, v);
+  }
+}
 
 /* A write with no readback: the value before the first write of a run is what a refusal restores. */
 function noteUndo(c, key, prev) {
@@ -782,7 +842,7 @@ function mixWritable(idx, key) {
 /* A cue send's level (half-dB, SEND_OFF = off) or pan (-100..100), monitor param send:<cue>:<bus> / pan:... */
 function setSend(cue, bus, field, value, idx = S.sel) {
   const k = capsOf(unitType(idx)), c = ctl(idx);
-  if (cue >= k.cues.length || !cueBuses(k).includes(bus)) return;
+  if (cue >= k.cues.length || !cueBuses(k, idx).includes(bus)) return;
   const before = sendOf(idx, cue, bus)[field];
   if (before === value) return;
   const name = `${field === 'level' ? 'send' : 'pan'}:${cue + 1}:${bus}`, key = `cue:${name}`;
@@ -843,7 +903,8 @@ function mixOfBus(idx, bus) {
   const s = (mixOf(idx).main || {})[bus] || {};
   return { level: s.level ?? 0, pan: s.pan ?? 0, mute: !!s.mute, solo: !!s.solo };
 }
-/* The buses a model mixes: its inputs (ANALOG n = n-1) and the talkback mic, as its cue sources. */
+/* The buses a model mixes: its inputs (ANALOG n = n-1) and the talkback mic, as its cue sources ([Virtual] given the slot,
+   with the unit's built VIRTUAL inputs). */
 const mixBuses = cueBuses;
 
 function storeMix(idx, bus, field, value) {
@@ -855,9 +916,14 @@ function storeMix(idx, bus, field, value) {
   saveMix(idx);
 }
 
-/* The linked pair (first input first) a monitor-mix row belongs to, or null (linkedPair; never the talkback). */
+/* The linked pair (first input first) a monitor-mix row belongs to, or null (linkedPair; never the talkback). [Virtual] A
+   VIRTUAL pair is linked here only (vlinks), and only while both its inputs are built. */
 function mixPair(idx, bus) {
   const k = capsOf(unitType(idx));
+  if (isVirtBus(bus)) {
+    const a = bus & ~1, built = virtBuses(idx);
+    return vlinkOf(idx, (a - VIRT_BUS0) >> 1) && built.includes(a) && built.includes(a + 1) ? [a, a + 1] : null;
+  }
   return bus === TALKBACK_BUS || bus >= k.preamps ? null : linkedPair(ctl(idx), bus, k);
 }
 
@@ -870,7 +936,7 @@ function mixPair(idx, bus) {
  */
 function setMix(bus, field, value, idx = S.sel) {
   const k = capsOf(unitType(idx)), c = ctl(idx);
-  if (!mixBuses(k).includes(bus) || (field === 'pan' && bus === TALKBACK_BUS) || !MIX_NAME[field]) return;
+  if (!mixBuses(k, idx).includes(bus) || (field === 'pan' && bus === TALKBACK_BUS) || !MIX_NAME[field]) return;
   const pair = field === 'pan' ? null : mixPair(idx, bus);
   const targets = pair || [bus];
   if (targets.every(b => mixStored(idx, b, field) === value)) return;
@@ -891,7 +957,7 @@ function setMix(bus, field, value, idx = S.sel) {
 /* The safety button: every input and the talkback muted (or unmuted) in the monitor mix at once, monitor param
    mixmuteall (one driver call). Each row's own mute follows; a refusal puts every row back. */
 function setMixMuteAll(on, idx = S.sel) {
-  const k = capsOf(unitType(idx)), c = ctl(idx), key = 'mix:mixmuteall', buses = mixBuses(k);
+  const k = capsOf(unitType(idx)), c = ctl(idx), key = 'mix:mixmuteall', buses = mixBuses(k, idx);
   if (!k.preamps || !mixWritable(idx, key)) return;
   c.undo.set(key, { prev: buses.map(b => [b, mixStored(idx, b, 'mute')]), t: now() });
   for (const b of buses) {
@@ -909,7 +975,7 @@ function setMixMuteAll(on, idx = S.sel) {
  */
 function linkMix(idx, a, b, on) {
   const k = capsOf(unitType(idx));
-  if (b >= k.preamps) return;
+  if (b >= k.preamps && !isVirtBus(b)) return;
   setMix(a, 'pan', on ? -100 : 0, idx);
   setMix(b, 'pan', on ? 100 : 0, idx);
   if (!on) return;
@@ -949,7 +1015,8 @@ function setMixModel(idx, m) {
 }
 function savedMixOut(idx) {
   const k = capsOf(unitType(idx)), m = mixOf(idx), out = [];
-  const main = m.main || {}, set = mixBuses(k).filter(b => main[b]);
+  /* [Virtual] the VIRTUAL buses go out only where the driver built them (elsewhere it refuses them); kept either way */
+  const main = m.main || {}, set = mixBuses(k, idx).filter(b => main[b]);
   for (const f of ['mute', 'solo']) {
     for (const b of set) if (main[b][f] !== undefined) out.push([`${MIX_NAME[f]}:${b}`, main[b][f] ? 1 : 0]);
   }
@@ -969,7 +1036,7 @@ function savedMixOut(idx) {
     if (q.mix !== undefined) out.push([`cue${c + 1}mix`, q.mix]);
     if (q.mono !== undefined) out.push([`cue${c + 1}mono`, q.mono ? 1 : 0]);
     for (const [bus, s] of Object.entries(q.sends || {})) {
-      if (!cueBuses(k).includes(Number(bus))) continue;
+      if (!cueBuses(k, idx).includes(Number(bus))) continue;
       if (s.pan) out.push([`pan:${c + 1}:${bus}`, s.pan]);
       out.push([`send:${c + 1}:${bus}`, s.level]);
     }
@@ -1048,7 +1115,8 @@ function onHostMessage(m) {
       Sess.onHost(m);                                          /* [Sess] sessions.js */
       break;
     case 'rate': if (!S.demo) onRate(m); break;                   /* [Rate] */
-    case 'params': if (!S.demo) onParams(m); break;               /* [Params] */
+    case 'params': if (!S.demo) { onParams(m); Virt.render(); } break;   /* [Params]; [Virtual] Settings' next-start values */
+    case 'params-result': if (!S.demo) Virt.onHost(m); break;     /* [Virtual] params-set (virtual.js) */
     case 'event': if (!S.demo) onDriverEvent(m); break;           /* [Events] */
     case 'driver-switch':                                          /* [Switch] */
       if (m.ok) toast(m.why || 'The driver switch window is open: follow it there.', 'info', 8000);
@@ -1227,6 +1295,7 @@ function writeKey(m) {
 
 /* "Input 2" / "Talkback" on a unit, for a cue send. */
 function cueSourceName(bus, idx) {
+  if (isVirtBus(Number(bus))) return virtWho(idx, Number(bus) - VIRT_BUS0 + 1);      /* [Virtual] */
   return Number(bus) === TALKBACK_BUS ? (idx ? `${unitShort(idx)} talkback` : 'Talkback') : inputLabel(Number(bus), idx);
 }
 const cueName = (idx, c) => capsOf(unitType(idx)).cues[c] || `CUE ${c + 1}`;
@@ -1460,7 +1529,7 @@ const demo = { timer: 0, hw: [], seen: [], seq: 0, t0: 0, last: 0, lastLive: 0 }
 /* Any unit's control state is reset when the demo starts or ends: refusals and pending writes
    belong to the host's units, not the simulated ones. */
 function resetCtlWrites() {
-  for (const c of S.ctl) if (c) { c.pending.clear(); c.undo.clear(); c.refused.clear(); c.mixTmp = null; c.tbDimmed = false; }
+  for (const c of S.ctl) if (c) { c.pending.clear(); c.undo.clear(); c.refused.clear(); c.mixTmp = null; c.tbDimmed = false; c.virtMask = 0; }
 }
 
 function enterDemo() {
@@ -1508,6 +1577,7 @@ function exitDemo() {
   Units.demo(false);                   /* units.js: drop the demo's page state */
   Plug.demoExit();                     /* [Plug-ins] */
   Endpoints.demoExit();                /* [Endpoints] */
+  Virt.demoExit();                     /* [Virtual] */
   if (host) Plug.hello();
   if (c0.hostReadback) onReadback(0, c0.hostReadback);
   else c0.rbValid = false;
@@ -1623,13 +1693,19 @@ function demoTick() {
     const mix = Math.max(peaks[0], peaks[1], peaks[2]) * 0.7;
     peaks[24] = h.mon.mute ? 0 : Math.round(mix);
     peaks[25] = h.mon.mute ? 0 : Math.round(mix * 0.96);
+    // [Virtual] A DAW plays a loop into VIRTUAL 1-2 where the demo built their strips; the other VIRTUAL inputs are silent.
+    for (const b of virtBuses(idx)) {
+      const n = b - VIRT_BUS0 + 1, sl = virtSlot(idx, n);
+      if (n <= 2 && sl >= 0 && sl < 24) peaks[sl] = Math.round(FULL_SCALE * Math.pow(10, (-20 + 8 * Math.abs(Math.sin(t * 1.7 + n)) - rnd()) / 20));
+    }
     // [Mix] The monitor-mix loopback (slots 26-27, before the monitor level): the inputs through the mix set here.
-    const ins = mixBuses(capsOf(unitType(idx))).filter(b => b !== TALKBACK_BUS), vals = ins.map(b => mixOfBus(idx, b));
+    const slotOf = b => (isVirtBus(b) ? virtSlot(idx, b - VIRT_BUS0 + 1) : b);
+    const ins = mixBuses(capsOf(unitType(idx)), idx).filter(b => b !== TALKBACK_BUS), vals = ins.map(b => mixOfBus(idx, b));
     const solo = vals.some(v => v.solo);
     let out = 0;
     ins.forEach((b, i) => {
       const v = vals[i];
-      if (!v.mute && !(solo && !v.solo) && v.level > SEND_OFF) out = Math.max(out, peaks[b] * Math.pow(10, v.level / 40));
+      if (!v.mute && !(solo && !v.solo) && v.level > SEND_OFF) out = Math.max(out, (peaks[slotOf(b)] || 0) * Math.pow(10, v.level / 40));
     });
     peaks[26] = peaks[27] = Math.min(FULL_SCALE, Math.round(out));
     onLevels(idx, true, peaks);
@@ -1660,6 +1736,7 @@ function demoLive() {
       version: 2, state: 4, flags: 0x79, enable: 1, mask: 0xFF, stepsLimit: 9, stepsDone: 9, phantomState: 1,
       phantomMask: 0x02, why: 'stage 9 (+ 48V resync) done on StripMask 0xff, DSP 1', perInput: true,
       taken: new Array(PREAMPS).fill(2), started: new Array(PREAMPS).fill(1),
+      ...Virt.demoFields(0),           /* [Virtual] [AuxStrips] versions 4 and 5: VIRTUAL and aux-return strips (virtual.js) */
     },
     endpoints: {
       version: 1, count: 2, enabledMask: 0x3, prepared: 1, layoutOk: true,
@@ -2296,7 +2373,8 @@ function syncSegments() {
   if (!root) return;
   const list = controlUnits(), here = new Set(list.map(u => u.index));
   for (const [idx, sg] of [...segs]) {
-    if (here.has(idx) && unitType(idx) !== sg.type) { dropSeg(idx); continue; }
+    /* a model change, or [Virtual] another set of built VIRTUAL inputs (the unit restarted): rebuilt */
+    if (here.has(idx) && (unitType(idx) !== sg.type || virtMaskOf(idx) !== sg.vmask)) { dropSeg(idx); continue; }
     const gone = !here.has(idx);
     if (gone && !sg.seen) { dropSeg(idx); continue; }
     if (gone !== sg.gone) { sg.gone = gone; sg.goneAt = gone ? new Date() : null; }
@@ -2369,6 +2447,28 @@ function buildSeg(idx) {
     }
     sg.body.append(node);
   }
+  /* [Virtual] the VIRTUAL inputs the driver built, after the Mic strips, as pairs 1-2, 3-4 ... (LINK links a pair in the
+     monitor mix only: there is no hardware link); a pair with one built input is a single strip */
+  sg.vmask = virtMaskOf(idx);
+  sg.virt = [];
+  sg.vpairs = [];
+  for (let p = 0; k.preamps && p < (k.virtuals || 0) >> 1; p++) {
+    const ns = [p * 2 + 1, p * 2 + 2].filter(n => (sg.vmask >>> (n - 1)) & 1);
+    if (!ns.length) continue;
+    const both = ns.length === 2;
+    const link = both ? sw('LINK', { cls: 'link-btn', title: `Link VIRTUAL ${ns[0]} and ${ns[1]} in the monitor mix: one fader, M and S for both, pans left and right`,
+      aria: `Link ${virtWho(idx, ns[0])} and ${ns[1]}`, onClick: () => setVLink(idx, p, !vlinkOf(idx, p)) }) : null;
+    const head = el('div', { class: 'pair-head' }, el('span', { class: 'pair-name num', text: both ? `V${ns[0]} - V${ns[1]}` : `V${ns[0]}` }), link);
+    const body = el('div', { class: 'pair-body' });
+    const node = el('div', { class: `pair vpair${both ? '' : ' single'}`, dataset: { vpair: String(p) } }, head, body);
+    sg.vpairs.push({ p, node, link });
+    for (const n of ns) {
+      const s = buildVirtStrip(idx, n, sg);
+      sg.virt.push(s);
+      body.append(s.node);
+    }
+    sg.body.append(node);
+  }
   if (!k.preamps) sg.body.append(el('p', { class: 'fine', text: 'Inputs of this model are not shown yet.' }));
   if (k.preamps && k.talkback) { sg.tb = buildTbStrip(idx, sg); sg.body.append(sg.tb.node); }
   sg.aux = k.preamps ? Aux.section(idx) : null;       /* [Ins] AUX 1 / AUX 2: inserts, cue sends, PRE / POST, return */
@@ -2383,10 +2483,10 @@ function buildSeg(idx) {
 
 /* [Ins] a segment's minimum width (the strip area scrolls sideways below it): the AUX strips count while shown */
 function sizeSeg(sg) {
-  const k = sg.k, open = !!sg.aux && cfg.auxStrips.open;
+  const k = sg.k, open = !!sg.aux && cfg.auxStrips.open, nv = (sg.virt || []).length;    /* [Virtual] its strips too */
   if (sg.aux) sg.aux.dataset.open = open ? '1' : '0';
-  const minW = k.preamps * STRIP_MIN + (sg.tb ? TB_W : 0) + (open ? 2 * Aux.W : 0) + MASTER_W + 8;
-  sg.node.style.flex = `${Math.max(1, k.preamps)} 1 ${minW}px`;
+  const minW = (k.preamps + nv) * STRIP_MIN + (sg.tb ? TB_W : 0) + (open ? 2 * Aux.W : 0) + MASTER_W + 8;
+  sg.node.style.flex = `${Math.max(1, k.preamps + nv)} 1 ${minW}px`;
   sg.node.style.minWidth = `${minW}px`;
 }
 
@@ -2480,14 +2580,9 @@ function buildStrip(ch, k, idx, sg) {
     el('button', { class: 'btn st-guide', type: 'button', title: 'Guided gain: speak or play for 5 seconds, then a gain for good headroom',
       onclick: e => { e.stopPropagation(); Sig.guide(idx, ch); } }, 'Set my level'));
   node.insertBefore(stats, node.children[2]);
-  /* the focus composition (Day): a press on the strip, not on a control, opens it; again closes it */
-  node.addEventListener('click', e => {
-    const comp = document.getElementById('view-control').dataset.comp;
-    /* the panels composition (Lab): a press on a panel's title bar folds it to its numbers */
-    if (comp === 'panels' && e.target.closest('.strip-top')) { node.classList.toggle('collapsed'); return; }
-    if (comp !== 'focus' || e.target.closest('button, .knob, .fader, select, input, .meter-wrap')) return;
-    focusStrip(idx, ch);
-  });
+  /* the focus composition (Day): a press on the strip, not on a control, opens it; again closes it. The panels composition
+     (Lab): a press on a panel's title bar folds it to its numbers */
+  stripPress(node, idx, ch);
   return { ch, node, name, hiz, gain, ml, p48, pad, lc, ph, load, meter, peak, lastPeak: '', mix, stats, lastStats: '' };
 }
 
@@ -2506,6 +2601,47 @@ function mixChannel(idx, bus, who) {
     el('span', { text: 'LINKED' }));
   const top = el('div', { class: 'mix-top' }, pan ? pan.node : el('span', { class: 'mix-nopan' }), el('div', { class: 'mix-ms' }, mute, solo));
   return { bus, fader, pan, mute, solo, linked, top };
+}
+
+/*
+ * [Virtual] A VIRTUAL input's strip: what a DAW plays to it (ASIO), with no preamp and no insert (the driver hosts plug-ins
+ * on the Mic inputs only): its aux sends, then its monitor-mix channel (pan, M, S, fader) and the meter of its record slot.
+ * Its cue sends are on the Cues page (and on the strip in Classic). The same strip markup as an input, so every look draws
+ * it; class vstrip and data-virt mark it, data-ch is left out (that is a preamp's).
+ */
+function buildVirtStrip(idx, n, sg) {
+  const bus = VIRT_BUS0 + n - 1, who = virtWho(idx, n);
+  const mix = mixChannel(idx, bus, who);
+  const slot = virtSlot(idx, n);
+  const meter = slot >= 0 ? new Meter({ slot, group: 'control', unit: idx, scale: false }) : null;
+  if (meter) sg.meters.push(meter);
+  const peak = el('div', { class: 'strip-peak num', text: '--', title: 'Peak of what the DAW plays here, dBFS (hold). Click the meter to clear.' });
+  const stats = el('div', { class: 'st-stats num', 'aria-hidden': 'true' });
+  const more = el('button', { class: 'btn btn-quiet st-more', type: 'button', 'aria-expanded': 'false', title: 'Pan, mute and solo of this channel',
+    onclick: e => { e.stopPropagation(); const on = node.classList.toggle('more'); more.setAttribute('aria-expanded', on ? 'true' : 'false'); more.textContent = on ? 'Less' : 'More'; } }, 'More');
+  const node = el('div', { class: 'strip vstrip', dataset: { virt: String(n), bus: String(bus), unit: String(idx) } },
+    el('div', { class: 'strip-top' }, el('div', { class: 'strip-num num', text: `V${n}` }),
+      el('span', { class: 'tag', title: 'Played by a DAW over ASIO (Windows has no playback device for the VIRTUAL inputs)', text: 'DAW' })),
+    el('div', { class: 'strip-name vs-name', text: `VIRTUAL ${n}`, title: `VIRTUAL ${n}: the unit's playback channel of that name, mixed like an input` }),
+    stats,
+    el('div', { class: 'st-sec st-aux' }, el('span', { class: 'st-lbl', 'aria-hidden': 'true', text: 'AUX' }), Aux.stripSends(idx, bus, who)),
+    el('div', { class: 'st-sec st-mix' }, el('span', { class: 'st-lbl', 'aria-hidden': 'true', text: 'MON MIX' }), mix.top,
+      el('div', { class: 'strip-meter' },
+        el('div', { class: 'fd-row' }, mix.fader.node, mix.linked, meter ? meter.node : null),
+        el('div', { class: 'fd-foot' }, mix.fader.readout, peak))),
+    el('div', { class: 'st-out num', 'aria-hidden': 'true', text: `${slot >= 0 ? `→ REC ${String(slot + 1).padStart(2, '0')} · ` : '→ '}MIX` }), more);
+  stripPress(node, idx, `v${n}`);
+  return { n, bus, key: `v${n}`, node, mix, meter, peak, lastPeak: '', stats, lastStats: '' };
+}
+
+/* The Day focus view opens a strip on a press that is not on a control; Lab's panels fold one at its title bar. */
+function stripPress(node, idx, key) {
+  node.addEventListener('click', e => {
+    const comp = document.getElementById('view-control').dataset.comp;
+    if (comp === 'panels' && e.target.closest('.strip-top')) { node.classList.toggle('collapsed'); return; }
+    if (comp !== 'focus' || e.target.closest('button, .knob, .fader, select, input, .meter-wrap')) return;
+    focusStrip(idx, key);
+  });
 }
 
 /* The talkback mic's monitor-mix channel (no record slot of its own here, so no meter). */
@@ -2539,7 +2675,7 @@ function buildMaster(idx, k, sg) {
   /* [Mix] Console's SoloClear: every solo of this unit's monitor mix off at once (shown while one is on) */
   const clrSolo = el('button', { class: 'btn btn-quiet mo-clrsolo', type: 'button', hidden: true,
     title: idx ? `Clear every ${short} solo in the monitor mix` : 'Clear every solo in the monitor mix',
-    onclick: () => { for (const b of mixBuses(capsOf(unitType(idx)))) if (mixOfBus(idx, b).solo) setMix(b, 'solo', false, idx); } }, 'CLR SOLO');
+    onclick: () => { for (const b of mixBuses(capsOf(unitType(idx)), idx)) if (mixOfBus(idx, b).solo) setMix(b, 'solo', false, idx); } }, 'CLR SOLO');
   const auxBtn = el('button', { class: 'btn btn-quiet mo-aux', type: 'button', 'aria-expanded': cfg.auxStrips.open ? 'true' : 'false',
     title: 'Show or hide the AUX 1 / AUX 2 strips (returns, cue sends, inserts)', onclick: () => setAuxOpen(!cfg.auxStrips.open) }, 'AUX');
   const focus = el('button', { class: 'btn btn-quiet mo-focus', 'aria-pressed': 'false', 'aria-label': `Show the ${short} monitor settings`,
@@ -2562,8 +2698,9 @@ function buildMaster(idx, k, sg) {
 
 /* [Themes] the focus view (Day): one input open with everything about it, the others an overview */
 function focusStrip(idx, ch) {
-  for (const sg of segs.values()) for (const s of sg.strips) {
-    const on = sg.idx === idx && s.ch === ch && !s.node.classList.contains('focus');
+  /* ch: an input's number, or [Virtual] a VIRTUAL strip's key ('v1') */
+  for (const sg of segs.values()) for (const s of [...sg.strips, ...(sg.virt || [])]) {
+    const on = sg.idx === idx && (s.key !== undefined ? s.key : s.ch) === ch && !s.node.classList.contains('focus');
     s.node.classList.toggle('focus', on);
   }
   const vc = document.getElementById('view-control');
@@ -2680,10 +2817,16 @@ function renderMixFor(idx) {
   const sg = segs.get(idx);
   if (!sg || sg.gone) return;
   Aux.render(idx);                     /* [Ins] the aux sends and strips */
-  const k = sg.k, buses = mixBuses(k);
+  const k = sg.k, buses = mixBuses(k, idx);
   const vals = new Map(buses.map(b => [b, mixOfBus(idx, b)]));
   const anySolo = buses.some(b => vals.get(b).solo);
-  const chans = sg.strips.map(s => ({ ...s.mix, box: s.node })).concat(sg.tb ? [{ ...sg.tb.mix, box: sg.tb.node }] : []);
+  const chans = sg.strips.map(s => ({ ...s.mix, box: s.node })).concat(sg.tb ? [{ ...sg.tb.mix, box: sg.tb.node }] : [],
+    (sg.virt || []).map(s => ({ ...s.mix, box: s.node })));          /* [Virtual] */
+  for (const vp of sg.vpairs || []) {
+    const on = vlinkOf(idx, vp.p);
+    if (vp.link) setPressed(vp.link, on);
+    vp.node.classList.toggle('linked', on && !!vp.link);
+  }
   for (const r of chans) {
     const v = vals.get(r.bus) || mixOfBus(idx, r.bus), pair = mixPair(idx, r.bus);
     const follower = !!pair && pair[1] === r.bus;
@@ -3114,17 +3257,19 @@ const parsePan = s => {
   return Number.isFinite(v) ? clamp(v, -100, 100) : null;
 };
 
-const cueSrcLabel = (idx, bus) => (bus === TALKBACK_BUS ? 'Talkback' : (chanCfg(idx, bus).name || `Input ${bus + 1}`));
+const cueSrcLabel = (idx, bus) => (bus === TALKBACK_BUS ? 'Talkback' : isVirtBus(bus) ? `VIRTUAL ${bus - VIRT_BUS0 + 1}`
+  : (chanCfg(idx, bus).name || `Input ${bus + 1}`));
 
 function buildCues() {
   cues.root = document.getElementById('cues');
   if (!cues.root) return;
   const type = unitType(S.sel), k = capsOf(type);
   cues.built = type;
+  cues.vbuilt = virtMaskOf(S.sel);     /* [Virtual] the unit's built VIRTUAL inputs send to the cues too */
   if (cues.sel >= k.cues.length) cues.sel = 0;
   cues.pick = seg(k.cues, i => { cues.sel = i; renderCues(); }, 'Cue mix');
-  cues.strips = cueBuses(k).map(bus => {
-    const tb = bus === TALKBACK_BUS, who = tb ? 'Talkback' : `Input ${bus + 1}`;
+  cues.strips = cueBuses(k, S.sel).map(bus => {
+    const tb = bus === TALKBACK_BUS, vn = isVirtBus(bus) ? bus - VIRT_BUS0 + 1 : 0, who = tb ? 'Talkback' : vn ? `VIRTUAL ${vn}` : `Input ${bus + 1}`;
     const level = new Knob({
       size: 56, min: SEND_OFF, max: SEND_MAX, step: 1, wheelStep: 2, pageStep: 12, value: SEND_OFF,
       aria: `${who} send`, toPos: sendToPos, fromPos: sendFromPos, format: fmtSend,
@@ -3137,8 +3282,8 @@ function buildCues() {
       onChange: v => setSend(cues.sel, bus, 'pan', v),
     });
     const name = el('div', { class: 'strip-name' });
-    const node = el('div', { class: 'cue-strip', dataset: { bus: String(bus) } },
-      el('div', { class: 'strip-top' }, el('div', { class: 'strip-num', text: tb ? 'TB' : String(bus + 1) })),
+    const node = el('div', { class: `cue-strip${vn ? ' vcue' : ''}`, dataset: { bus: String(bus) } },
+      el('div', { class: 'strip-top' }, el('div', { class: 'strip-num', text: tb ? 'TB' : vn ? `V${vn}` : String(bus + 1) })),
       name, level.node, pan.node);
     return { bus, level, pan, name, node };
   });
@@ -3174,7 +3319,7 @@ function cueHeardOn(idx, c) {
 
 function renderCues() {
   if (!cues.root) return;
-  if (unitType(S.sel) !== cues.built) buildCues();
+  if (unitType(S.sel) !== cues.built || virtMaskOf(S.sel) !== cues.vbuilt) buildCues();
   const idx = S.sel, k = caps(), c = cues.sel;
   setHidden(cues.empty, k.cues.length > 0);
   setHidden(cues.root.querySelector('.cue-head'), !k.cues.length);
@@ -3189,7 +3334,7 @@ function renderCues() {
     s.level.node.classList.toggle('refused', isRefused(`cue:send:${c + 1}:${s.bus}`));
     s.pan.node.classList.toggle('refused', isRefused(`cue:pan:${c + 1}:${s.bus}`));
     put(s.name, cueSrcLabel(idx, s.bus));
-    setHidden(s.node, s.bus !== TALKBACK_BUS && !!chanCfg(idx, s.bus).hidden);
+    setHidden(s.node, s.bus !== TALKBACK_BUS && !isVirtBus(s.bus) && !!chanCfg(idx, s.bus).hidden);
   }
   cues.row.classList.toggle('muted', !!q.mute);
   put(cues.title, `${k.cues[c]}${idx ? ` · ${unitShort(idx)}` : ''}`);
@@ -3200,7 +3345,9 @@ function renderCues() {
   setPressed(cues.mute, !!q.mute);
   cues.mute.classList.toggle('refused', isRefused(`cue:cue${c + 1}mute`));
   put(cues.heard, cueHeardOn(idx, c));
-  const notes = ['The talkback mic has no input strip on this driver yet, so its sends carry nothing until one exists.'];
+  const notes = [unitType(idx) === 0x99
+    ? 'Talkback: the mic is heard in the cues it is sent to while TALK is on (never in the speakers unless the monitor mix takes it).'
+    : 'The talkback mic carries no audio on this unit yet, so its sends carry nothing.'];
   if (unitType(idx) === 0x22 && c >= 2) notes.unshift('Headphones take CUE 1 or CUE 2 here: CUE 3 and CUE 4 are heard as the monitor source.');
   notes.push('The unit does not report cue sends: Apollo Control keeps them and sends them again when the unit connects.');
   const key = notes.join('|');
@@ -3278,6 +3425,13 @@ function onLive(m) {
   u.counts = counts;
   u.live = m;
   renderUnits();
+  /* [Virtual] the VIRTUAL strips follow what the driver built (kept while the strips report nothing); [AuxStrips] the aux
+     section says whether each aux carries audio (auxbus.js) */
+  if (m.strips && typeof m.strips === 'object') {
+    const c = ctl(idx), v = Number(m.strips.virtualMask) >>> 0, prev = virtMaskOf(idx);
+    if (c.virtMask !== v) { c.virtMask = v; virtChanged(idx, prev); }
+  }
+  Aux.render(idx);
   Sess.onLive(idx);                    /* [Sess] the last state waits for the unit's strips to be Live */
 }
 
@@ -3478,7 +3632,11 @@ function renderUnit(v, u, idx) {
     setHidden(v.stripDot, false);
     put(v.stripDot, '', `dot ${dot}`);
     const stage = s.version >= 2 && s.stepsLimit ? ` · stage ${s.stepsDone} of ${s.stepsLimit}` : '';
-    put(v.stripText, txt + stage, s.state === 5 ? 'bad-text' : '', '');
+    /* [Virtual] [AuxStrips] the VIRTUAL inputs and aux returns with a running strip */
+    const vn = [1, 2, 3, 4, 5, 6, 7, 8].filter(n => (Number(s.virtualMask) >>> (n - 1)) & 1);
+    const an = [1, 2].filter(a => (Number(s.auxLive) >>> (a - 1)) & 1);
+    const more = (vn.length ? ` · VIRTUAL ${vn.join(', ')}` : '') + (an.length ? ` · AUX ${an.join(', ')} return${an.length > 1 ? 's' : ''}` : '');
+    put(v.stripText, txt + stage + more, s.state === 5 ? 'bad-text' : '', '');
     put(v.why, s.why ? `Why: ${s.why}` : '');
     setHidden(v.why, !s.why);
   }
@@ -3659,7 +3817,7 @@ const paramsByUnit = new Map();         /* unit id -> the last "params" message 
 const PARAM_SRC = { D: 'built-in default', U: 'this unit (Units key)', M: 'model key', G: 'legacy global', X: 'forced by Mode' };
 
 function requestParams() {
-  const id = mixKey(S.sel);
+  const id = unitIdOf(S.sel) || mixKey(S.sel);             /* the unit's id ([Virtual] the x8p's too, not its mix key) */
   if (S.demo || !id) { renderParams(); return; }
   send(JSON.stringify({ cmd: 'params-get', unit: id }));
 }
@@ -3692,7 +3850,7 @@ function onParams(m) {
 function renderParams() {
   const box = document.getElementById('devParams');
   if (!box) return;
-  const m = paramsByUnit.get(mixKey(S.sel));
+  const m = paramsByUnit.get(unitIdOf(S.sel) || mixKey(S.sel));
   if (!m) { box.replaceChildren(el('p', { class: 'muted', text: S.demo ? 'Not in the demo.' : 'Press Refresh to read them.' })); return; }
   if (!m.present || m.error) {
     box.replaceChildren(el('p', { class: 'muted', text: m.error === 1 ? 'The installed driver predates this (no GET_PARAMS).' : `Not read: ${m.detail || `error ${m.error}`}` }));
@@ -3706,7 +3864,7 @@ function renderParams() {
     el('td', { class: 'num', text: fmt(e, e.stored) + (e.pending ? ' (next start)' : '') })));
   const pend = (m.entries || []).filter(e => e.pending).length;
   box.replaceChildren(
-    el('p', { class: 'muted', text: `Units\\${m.key || '-'}${m.resolved ? '' : ' (not identified)'}. Read-only here: an elevated apollo-diag param <name> <value> stores one for the unit's next start.` }),
+    el('p', { class: 'muted', text: `Units\\${m.key || '-'}${m.resolved ? '' : ' (not identified)'}. Read-only here: an elevated apollo-diag param <name> <value> stores one for the unit's next start (StripVirtualMask: Settings, Virtual inputs).` }),
     el('table', { class: 'params-table' }, el('thead', {}, head), el('tbody', {}, ...rows)),
     pend ? el('p', { class: 'muted', text: `${pend} stored value(s) apply at the unit's next start.` }) : null);
 }
@@ -4141,7 +4299,8 @@ function renderSettings() {
     el('div', { class: 'set-row' },
       el('button', { class: 'btn', type: 'button', onclick: () => driverSwitch('ua') }, 'Switch units to UA\'s driver'),
       el('button', { class: 'btn', type: 'button', onclick: () => driverSwitch('apollo') }, 'Connect units to the Apollo driver')));
-  root.replaceChildren(inputsPanel, safety, Plug.settingsPanel(), Endpoints.panel(), driverPanel, meters, appearance, windowPanel, presets, keys, about);
+  /* [Virtual] Virtual inputs (virtual.js): which VIRTUAL inputs get a strip, per unit; Apply restarts the unit */
+  root.replaceChildren(inputsPanel, safety, Plug.settingsPanel(), Endpoints.panel(), Virt.panel(), driverPanel, meters, appearance, windowPanel, presets, keys, about);
   Endpoints.ask();                     /* [Endpoints] Windows audio: the host's rows (at most every 3 s) */
   document.getElementById('view-settings').scrollTop = keepScroll;
 }
@@ -4499,7 +4658,7 @@ function frame(t) {
       const panels = document.getElementById('view-control').dataset.comp === 'panels';
       for (const sg of segs.values()) {
         if (sg.gone) continue;
-        for (const s of sg.strips) {
+        for (const s of sg.virt && sg.virt.length ? [...sg.strips, ...sg.virt.filter(v => v.meter)] : sg.strips) {   /* [Virtual] */
           const txt = held(s.meter);
           if (txt !== s.lastPeak) { s.peak.textContent = txt; s.lastPeak = txt; }
           s.peak.classList.toggle('clip', s.meter.clip);

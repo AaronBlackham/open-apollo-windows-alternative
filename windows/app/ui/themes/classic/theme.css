@@ -275,6 +275,9 @@
 [data-look="classic"] #view-control .strip-name.empty { color: var(--text-faint); font-style: normal; }
 [data-look="classic"] #view-control .strip-name-edit { height: 24px; text-align: center; }
 [data-look="classic"] #view-control .strip-num { font-size: 13px; font-weight: 600; font-family: var(--font-label); font-stretch: semi-condensed; }
+/* [Virtual] a VIRTUAL input's label is fixed (not a rename field) and set a little narrower so VIRTUAL n fits */
+[data-look="classic"] #view-control .vs-name { font-size: 10.5px; padding: 0 1px; font-family: var(--font-label); font-stretch: semi-condensed; cursor: default; }
+[data-look="classic"] #view-control .vs-name:hover { background: var(--panel-2); }
 /* the talkback strip is 52 px: its solo and mute stack so each stays a full-width target */
 [data-look="classic"] #view-control .tb-strip .mix-ms { grid-template-columns: 1fr; }
 

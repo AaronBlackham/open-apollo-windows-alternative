@@ -46,6 +46,16 @@
 #define APOLLO_DEF_STRIP_AUX_MASK_X8P   0x5u
 #define APOLLO_DEF_STRIP_AUX_MASK_TWINX 0x5u    /* the same on the Twin X Gen 1: proven there Nov 16 2026 (AUX 1/2 -43.0, return on
                                                    both MON sides, mute, no leaks) */
+/*
+ * [TalkStrip] The built-in StripTalkback (docs/STRIPS.md 15), one constant per model: 0 on both until the hardware run of
+ * this build (a throwaway build's plain Input Strip on 0x0A carried the Twin X's room into TALKBACK 1/2 with TALK on,
+ * Nov 16 2026). 1 builds the talkback mic's Input Strip. ident-test checks the defaults against these constants; every
+ * other model 0.
+ */
+#define APOLLO_DEF_STRIP_TALKBACK_X8P   0u    /* Nov 16 2026: the strip builds, but the x8p's talkback mic never reaches DSP
+                                                   input 0x0A (silent into MON and AUX 1 with TALK on): an unknown enable */
+#define APOLLO_DEF_STRIP_TALKBACK_TWINX 1u    /* proven Nov 16 2026: TALK on = the room on its talkback record slots (-45.5 dBFS),
+                                                   into AUX 1 through its send, kept out of the monitor mix; TALK off = silence */
 
 /* Parameter ids */
 #define APOLLO_PARAM_MODE                   0
@@ -70,7 +80,8 @@
 #define APOLLO_PARAM_STRIP_VIRTUAL_MASK     19  /* strips.c: Input Strips on VIRTUAL 1-8 (docs/STRIPS.md 13) */
 #define APOLLO_PARAM_BUS_ENABLE             20  /* cues.c: DSP output buses switched on at every connect */
 #define APOLLO_PARAM_STRIP_AUX_MASK         21  /* strips.c: Input Strips on the aux returns 0x10-0x13 (docs/STRIPS.md 14) */
-#define APOLLO_PARAM_COUNT                  22
+#define APOLLO_PARAM_STRIP_TALKBACK         22  /* strips.c: the Input Strip on the talkback mic, DSP input 0x0A (STRIPS.md 15) */
+#define APOLLO_PARAM_COUNT                  23
 
 /* Where a value came from (APOLLO_UNIT.Source, the driver log letter) */
 #define APOLLO_SRC_DEFAULT          0   /* D: built-in default of the model */
@@ -159,6 +170,12 @@ static __inline const APOLLO_PARAM_DEF *ApolloParamDef(int Id)
            both monitor sides, the sends' left entry. The x8p and the Twin X have AUX 1-2; every other model: none. The
            defaults: APOLLO_DEF_STRIP_AUX_MASK_X8P / _TWINX (0x5 on both). */
         { "StripAuxMask",            L"StripAuxMask",            APOLLO_DEF_STRIP_AUX_MASK_X8P, 0, 1, APOLLO_DEF_STRIP_AUX_MASK_TWINX },
+        /* docs/STRIPS.md 15. Bit 0: the plain Input Strip (0x83E) on the talkback mic, DSP input 0x0A (talkback_synch_in 10 on
+           the x8p and the Twin X), built with the other strips in the same pass (StripsEnable 1). Without it the mic carries
+           silence; with it bus 10 is mixed on the strip DSP and the unit gates it with TALK. Only models whose monitor plan
+           has a talkback bus (the x8p, the Twin X); every other model: none. The defaults: APOLLO_DEF_STRIP_TALKBACK_X8P /
+           _TWINX. */
+        { "StripTalkback",           L"StripTalkback",           APOLLO_DEF_STRIP_TALKBACK_X8P, 0, 1, APOLLO_DEF_STRIP_TALKBACK_TWINX },
     };
 
     return (Id >= 0 && Id < APOLLO_PARAM_COUNT) ? &t[Id] : &t[APOLLO_PARAM_MODE];

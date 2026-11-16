@@ -139,6 +139,8 @@
   transform: rotate(-0.6deg); box-shadow: 0 1px 0 #00000055;
 }
 [data-look="studio"] #view-control[data-comp="console"] .strip-name.empty { color: #8b8578; font-style: normal; }
+/* [Virtual] VIRTUAL n is written a little smaller so it fits the tape */
+[data-look="studio"] #view-control[data-comp="console"] .vs-name { font-size: 10.5px; padding: 0 2px; letter-spacing: -0.02em; text-overflow: clip; }
 [data-look="studio"] #view-control[data-comp="console"] .useg-head { background: #17181b; border-bottom: 2px solid #2a2c31; }
 [data-look="studio"] #view-control[data-comp="console"] .master { background: #1b1c20; border-left: 2px solid #2a2c31; }
 

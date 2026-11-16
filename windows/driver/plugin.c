@@ -27,7 +27,8 @@
  *   - per unit (FEAT_UNITS): the x8p and the Twin X Gen 1 Duo (plugin_plan.h PlugModelFor).
  *     Everything above is per device already: each unit's strip DSP (DSP 1), its ledger with only
  *     its own strips' room (x8p 8, Twin X 2), its own board query on its DSP 0, its inputs and pair
- *     (Twin X 1-2, the pair 1/2; Hi-Z is input 1's strip; the talkback has none: refused);
+ *     (Twin X 1-2, the pair 1/2; Hi-Z is input 1's strip; the talkback has no Mic strip: refused, also where
+ *     [TalkStrip] StripTalkback runs the plain Input Strip there);
  *   - quarantine: a transaction whose outcome cannot be proven (no reply in time, a refused
  *     upload, a resync that dropped it) ends all placement on that DSP until a power cycle; on
  *     the strip DSP it also quarantines the strips (strips.c sends nothing more either).
@@ -1572,7 +1573,7 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
     APOLLO_STRIPS *s = &Ctx->Strips;
     PLUG_DSP *d = PlugSyncDsp(Ctx, H, D);
     ULONG w = ApolloDspWindow(D), size[4], base[4], scr[4], regs[11], p, err;
-    CHAR booked[112];
+    CHAR booked[128];
 
     *Out = NULL;
     booked[0] = '\0';
@@ -1613,10 +1614,11 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
             /* pools 1-3 raised to max(register, the Mic strip's 0x1C0 / 0x80 / 0) and kept there as the
                ledger's floor (PlugLedgerStripScratch), then the strips' room;
                [Virtual] the room includes this start's Virtual Input Strips, right below the Mic strips';
-               [AuxStrips] and its aux-return Input Strips, below every Virtual place (StripPlanRoomAux) */
+               [AuxStrips] and its aux-return Input Strips, below every Virtual place (StripPlanRoomAux);
+               [TalkStrip] and its talkback Input Strip, below every aux place (StripPlanRoomTalkback) */
             ULONG room[4];
 
-            StripPlanRoomAux(model != NULL ? model->LayoutStrips : STRIP_PLAN_INPUTS, s->VMask, s->AMask, room);
+            StripPlanRoomTalkback(model != NULL ? model->LayoutStrips : STRIP_PLAN_INPUTS, s->VMask, s->AMask, s->TMask, room);
             err = PlugLedgerBookStripRoom(d->Ledger, STRIP_CODE_WORDS, room, d->StripBook);
         }
         if (err == PLUG_OK && (d->StripBook[0].Base != APOLLO_STRIP_CODE_BASE ||
@@ -1629,8 +1631,8 @@ static NTSTATUS PlugLedgerFor(_In_ PDEVICE_CONTEXT Ctx, _In_ APOLLO_PLUGIN_HOST 
     if (err == PLUG_OK && D == s->Dsp) {
         /* the unit's own strips: x8p 8, Twin X 2 */
         (VOID)RtlStringCbPrintfA(booked, sizeof(booked), " (strip room booked: code 0xe0000+994, the %lu strips + Virtual 0x%02lx "
-                                 "+ Aux 0x%lx at the pool tops)",
-                                 model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS, s->VMask, s->AMask);
+                                 "+ Aux 0x%lx + Talkback %lu at the pool tops)",
+                                 model != NULL ? model->LayoutStrips : (ULONG)STRIP_PLAN_INPUTS, s->VMask, s->AMask, s->TMask);
     }
     ApolloLogU(Ctx, "plugins: DSP %lu pools size %08x %08x %08x %08x base %08x %08x %08x %08x scratch %08x %08x %08x: %s%s",
                D, size[0], size[1], size[2], size[3], base[0], base[1], base[2], base[3], scr[1], scr[2], scr[3],

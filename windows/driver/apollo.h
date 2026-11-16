@@ -94,12 +94,13 @@ typedef struct _APOLLO_RING {
  * their DMA payload (page 0) and reply descriptors (page 1) in one preallocated common buffer.
  * Slots are touched only under DevLock; waits happen with DevLock released.
  */
-/* [Virtual] strips.c: 0-7 Mic, 8-15 VIRTUAL 1-8; [AuxStrips] 16-19 the aux returns 0x10-0x13 */
-#define APOLLO_STRIP_SLOTS  (APOLLO_STRIP_INPUTS + APOLLO_STRIP_VIRTUALS + APOLLO_STRIP_AUXES)
-#define XACT_SLOTS          24      /* [AuxStrips] a pass holds 20 PREPAREs (8 Mic + 8 Virtual + 4 aux) and its START */
+/* [Virtual] strips.c: 0-7 Mic, 8-15 VIRTUAL 1-8; [AuxStrips] 16-19 the aux returns 0x10-0x13; [TalkStrip] 20 the talkback 0x0A */
+#define APOLLO_STRIP_SLOTS  (APOLLO_STRIP_INPUTS + APOLLO_STRIP_VIRTUALS + APOLLO_STRIP_AUXES + APOLLO_STRIP_TALKBACKS)
+#define XACT_SLOTS          25      /* [TalkStrip] a pass holds 21 PREPAREs (8 Mic + 8 Virtual + 4 aux + talkback) and its
+                                       START, with 3 spare as before */
 #define XACT_PAGE           0x1000u
 #define XACT_BYTES          (2 * XACT_PAGE)
-#define XACT_ENTS_MAX       80      /* [AuxStrips] the START of 8 Mic + 12 Input Strips: 4 entries each */
+#define XACT_ENTS_MAX       84      /* [TalkStrip] the START of 8 Mic + 13 Input Strips: 4 entries each */
 #define XACT_RX_MAX         2
 
 typedef enum _XACT_STATE {
@@ -154,6 +155,9 @@ typedef struct _APOLLO_STRIPS {
     ULONG           AMask;          /* [AuxStrips] StripAuxMask as the model and the pools take it (bit k = DSP input 0x10+k) */
     ULONG           AMaskAsked;     /* [AuxStrips] the registry value */
     ULONG           ALayoutWhy;     /* [AuxStrips] 0, or the pool check's code that refused AMaskAsked (AMask is 0 then) */
+    ULONG           TMask;          /* [TalkStrip] StripTalkback as the model and the pools take it (1: the strip on DSP input 0x0A) */
+    ULONG           TMaskAsked;     /* [TalkStrip] the registry value */
+    ULONG           TLayoutWhy;     /* [TalkStrip] 0, or the pool check's code that refused TMaskAsked (TMask is 0 then) */
 
     /* State (DevLock) */
     ULONG           State;          /* APOLLO_STRIPS_STATE_* */
@@ -188,8 +192,9 @@ typedef struct _APOLLO_STRIPS {
     ULONG           RoutesSent;
     /*
      * Per strip slot (strip_plan.h): 0-7 the Mic strips (preamp i, bus i), [Virtual] 8-15 the Input Strips on
-     * VIRTUAL 1-8 (bus 0x18-0x1F), [AuxStrips] 16-19 the Input Strips on the aux returns (bus 0x10-0x13). GET_STRIPS
-     * reports 0-7 as before, 8-15 in its version 4 part, 16-19 in its version 5 part.
+     * VIRTUAL 1-8 (bus 0x18-0x1F), [AuxStrips] 16-19 the Input Strips on the aux returns (bus 0x10-0x13), [TalkStrip] 20
+     * the Input Strip on the talkback mic (bus 0x0A). GET_STRIPS reports 0-7 as before, 8-15 in its version 4 part, 16-19
+     * in its version 5 part, 20 in its version 6 part.
      */
     UCHAR           StripState[APOLLO_STRIP_SLOTS];     /* APOLLO_STRIP_NONE/QUEUED/TAKEN */
     BOOLEAN         StripStarted[APOLLO_STRIP_SLOTS];   /* its SYNCH went out: stop it at D0 exit */
@@ -221,7 +226,7 @@ typedef struct _APOLLO_STRIPS {
     ULONG           PostBoot[APOLLO_MAX_DSPS];      /* boot words after this start's bring-up */
     STRIP_RECORD    Rec;            /* found at this start */
     STRIP_RECORD    Cur;            /* kept by this start */
-    ULONG           PlanScratch[672];                 /* strip_plan.h STRIP_PLAN (80 entries: 669 words), under StripLock */
+    ULONG           PlanScratch[700];                 /* strip_plan.h STRIP_PLAN (84 entries: 697 words), under StripLock */
     UCHAR           Blob[6336];     /* verified module records (APOLLO_STRIP_MODULES_BYTES) */
     APOLLO_XACT     Xact[XACT_SLOTS];
 } APOLLO_STRIPS;
@@ -669,8 +674,9 @@ VOID     ApolloStripsUploadProven(_In_ PDEVICE_CONTEXT Ctx);
 VOID     ApolloStripsMixerInitBatch(_In_ PDEVICE_CONTEXT Ctx);    /* DevLock, ApolloMixerInit */
 BOOLEAN  ApolloStripsRateRearm(_In_ PDEVICE_CONTEXT Ctx);         /* [Rate] DevLock, after a rate change */
 ULONG    ApolloStripsVirtualBuses(_In_ PDEVICE_CONTEXT Ctx);      /* [Virtual] mixer buses of the Virtual strips (bit 0x18+n-1) */
-ULONG    ApolloStripsBusSlot(_In_ ULONG Bus);                     /* [Virtual] cues.c: the strip slot that mixes Bus, or 20 */
+ULONG    ApolloStripsBusSlot(_In_ ULONG Bus);                     /* [Virtual] cues.c: the strip slot that mixes Bus, or 21 */
 ULONG    ApolloStripsAuxReturns(_In_ PDEVICE_CONTEXT Ctx);        /* [AuxStrips] plugin.c: bit a = AUX a+1's return has strips built */
+BOOLEAN  ApolloStripsTalkbackLive(_In_ PDEVICE_CONTEXT Ctx);      /* [TalkStrip] panel.c (DevLock): the talkback strip runs */
 EVT_WDF_WORKITEM                         ApolloEvtStripWork;
 
 /* ---- plugin.c: UAD plug-in hosting, phase P0 (docs/PLUGINS.md 2.1; include\apollo_plugin.h) ---- */
