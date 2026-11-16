@@ -1,13 +1,13 @@
 /*
- * Devices and driver packages: find the Apollo units, force apollo.inf onto the x8p (UA's WHQL
- * package ranks higher, so plain PnP never picks ours while UA's is installed), hand other units
- * back to UA's driver and remove our packages again, and close UA's apps before PnP swaps the
- * x8p's driver under them.
+ * Devices and driver packages: find the Apollo units, force apollo.inf onto the units being
+ * switched (UA's WHQL package ranks higher, so plain PnP never picks ours while UA's is installed),
+ * hand units back to UA's driver and remove our packages again, and close UA's apps before PnP
+ * swaps a unit's driver under them.
  *
- * Several units: apollo.inf also lists the Twin X Gen 1 (test only). This helper never binds a
- * Twin X, but one may be on either driver (tools\phase1\install.ps1 -Unit twinx puts it on ours).
- * The rules follow install.ps1 (bind, quit-ua), revert.ps1 -AllUnits and revert-unit.ps1
- * (unbind); the decisions themselves are in units.cpp.
+ * apollo.inf lists two units, the x8p and the Twin X Gen 1; Setup switches the ones the user
+ * ticks (--units). Every other Universal Audio device stays on UA's driver and is checked
+ * unchanged. The rules follow tools\phase1\install.ps1 and step-ep.ps1 (bind, quit-ua),
+ * revert.ps1 -AllUnits and revert-unit.ps1 (unbind); the decisions themselves are in units.cpp.
  */
 #include "common.h"
 #include <initguid.h>
@@ -16,6 +16,8 @@
 #include <setupapi.h>
 #include <newdev.h>
 #include <tlhelp32.h>
+#include <stddef.h>
+#include <string.h>
 #include "apollo_ioctl_min.h"
 
 /* ------------------------------------------------------------------ */
@@ -132,17 +134,6 @@ std::vector<Device> FindUaDevices(bool includePhantoms)
         out.push_back(d);
     }
     return out;
-}
-
-bool FindX8p(Device &dev)
-{
-    for (auto &d : FindUaDevices(false)) {
-        if (d.IsX8p()) {
-            dev = d;
-            return true;
-        }
-    }
-    return false;
 }
 
 std::wstring DeviceLabel(const Device &d)
@@ -436,34 +427,66 @@ static bool MoveToUa(const Device &d, const Package &ua, bool &reboot)
     return true;
 }
 
-/*
- * apollo.inf may list units besides the x8p (the Twin X, test only). Such a unit with no UA driver
- * installed for it has nothing ranked above ours, so Windows gives it the Apollo driver by itself
- * when it next connects. This helper never binds it, but says so.
- */
-static void NoteUnitsOurInfCouldTake(const std::wstring &inf, const std::vector<Device> &all,
-                                     const std::vector<Package> &ua)
+/* ------------------------------------------------------------------ */
+/* the loaded driver image                                             */
+/* ------------------------------------------------------------------ */
+
+typedef LONG (WINAPI *NtQuerySystemInformationFn)(ULONG, PVOID, ULONG, PULONG);
+
+/* SYSTEM_MODULE_INFORMATION (class 11) entries; only the names are read (the kernel may zero the
+   addresses for callers without SeDebugPrivilege). */
+struct HelperModuleInfo {
+    HANDLE Section;
+    PVOID  MappedBase;
+    PVOID  ImageBase;
+    ULONG  ImageSize;
+    ULONG  Flags;
+    USHORT LoadOrderIndex;
+    USHORT InitOrderIndex;
+    USHORT LoadCount;
+    USHORT OffsetToFileName;
+    UCHAR  FullPathName[256];
+};
+struct HelperModules {
+    ULONG            NumberOfModules;
+    HelperModuleInfo Modules[1];
+};
+
+/* "\SystemRoot\System32\DriverStore\FileRepository\apollo.inf_amd64_...\apollo.sys", or "". */
+std::wstring LoadedApolloImage()
 {
-    std::wstring text;
-    if (!ReadInfText(inf, text))
-        return;
-    std::vector<std::wstring> said;
-    for (auto &d : all) {
-        if (d.IsX8p() || d.OnApollo() || d.Owner() == OWNER_UA || d.Hwid.empty() || !TextListsHwid(text, d.Hwid))
-            continue;
-        bool dup = false;
-        for (auto &h : said)
-            dup = dup || EqualsI(h, d.Hwid);
-        Package p;
-        if (dup || FindUaPackageFor(ua, d.Hwid, p))
-            continue;
-        said.push_back(d.Hwid);
-        /* One line: Setup copies "Note:" lines into its Results page. */
-        Out(L"Note: the %s has no UA driver on this PC, and this Apollo package lists it too (test only): Windows may "
-            L"give it the Apollo driver by itself when it next connects, and the driver then only observes it (Mode 0) "
-            L"unless Parameters\\Units or Parameters\\Models\\99 say otherwise. Setup never binds it; install UA Connect "
-            L"to keep it on UA's driver.", DeviceLabel(d).c_str());
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    NtQuerySystemInformationFn q = ntdll ? (NtQuerySystemInformationFn)(void *)GetProcAddress(ntdll,
+                                           "NtQuerySystemInformation") : nullptr;
+    if (q == nullptr)
+        return std::wstring();
+    std::vector<BYTE> buf(256 * 1024);
+    LONG st = 0;
+    for (int tries = 0; tries < 5; tries++) {
+        ULONG need = 0;
+        st = q(11, buf.data(), (ULONG)buf.size(), &need);
+        if (st != (LONG)0xC0000004)        /* STATUS_INFO_LENGTH_MISMATCH */
+            break;
+        buf.assign((size_t)need + 64 * 1024, 0);
     }
+    if (st < 0 || buf.size() < sizeof(ULONG))
+        return std::wstring();
+    const HelperModules *m = (const HelperModules *)buf.data();
+    size_t max = (buf.size() - offsetof(HelperModules, Modules)) / sizeof(HelperModuleInfo);
+    for (ULONG i = 0; i < m->NumberOfModules && i < max; i++) {
+        const HelperModuleInfo &e = m->Modules[i];
+        char path[257];
+        memcpy(path, e.FullPathName, 256);
+        path[256] = '\0';
+        size_t off = e.OffsetToFileName < 256 ? e.OffsetToFileName : 0;
+        if (_stricmp(path + off, "apollo.sys") != 0)
+            continue;
+        std::wstring w;
+        for (const char *c = path; *c; c++)
+            w += (wchar_t)(unsigned char)*c;
+        return w;
+    }
+    return std::wstring();
 }
 
 /* ------------------------------------------------------------------ */
@@ -474,7 +497,7 @@ static void ExplainInstallError(DWORD e)
 {
     switch (e) {
     case ERROR_NO_SUCH_DEVINST:
-        Err(L"The x8p disappeared during the install: check the Thunderbolt cable and power, then retry.");
+        Err(L"The unit disappeared during the install: check the Thunderbolt cable and power, then retry.");
         break;
     case ERROR_NO_CATALOG_FOR_OEM_INF:
     case ERROR_AUTHENTICODE_PUBLISHER_NOT_TRUSTED:
@@ -485,8 +508,8 @@ static void ExplainInstallError(DWORD e)
     case (DWORD)CERT_E_UNTRUSTEDROOT:
     case (DWORD)TRUST_E_SUBJECT_NOT_TRUSTED:
     case (DWORD)CERT_E_CHAINING:
-        Err(L"Windows does not trust the package's test certificate. Run Apollo setup again (it puts the");
-        Err(L"certificate in the Trusted Root and Trusted Publisher stores), then retry.");
+        Err(L"Windows does not trust the package's signature. Apollo setup signs the driver on this PC and trusts");
+        Err(L"that certificate (Trusted Root, Trusted Publishers): run Apollo setup again, then retry.");
         break;
     case ERROR_IN_WOW64:
         Err(L"This must run as a 64-bit process.");
@@ -499,12 +522,57 @@ static void ExplainInstallError(DWORD e)
 /* How to move one unit back to UA's driver, for messages. */
 static std::wstring HandBackHint(const Device &d)
 {
-    if (d.Kind == UNIT_TWINX)
-        return L"apollo-helper unbind --unit twinx (elevated), or tools\\phase1\\revert-unit.ps1 -Unit twinx";
-    return L"tools\\phase1\\revert-unit.ps1 -InstanceId '" + d.InstanceId + L"'";
+    if (IsSupportedKind(d.Kind))
+        return Fmt(L"apollo-helper unbind --unit %s (elevated)", UnitKindKey(d.Kind));
+    return L"Device Manager: that device, Update driver, UA's driver";
 }
 
-int CmdBind(const std::wstring &infArg, bool stageOnly)
+/*
+ * apollo.inf lists both supported units. One that is not being switched, is not on UA's driver and
+ * has no UA driver installed has nothing ranked above ours, so Windows may give it the Apollo
+ * driver by itself when it next connects. Said, never done.
+ */
+static void NoteUnitsOurInfCouldTake(const std::wstring &inf, const std::vector<Device> &all,
+                                     const std::vector<Package> &ua, const std::vector<UnitKind> &targets)
+{
+    std::wstring text;
+    if (!ReadInfText(inf, text))
+        return;
+    std::vector<std::wstring> said;
+    for (auto &d : all) {
+        if (KindIn(targets, d.Kind) || d.OnApollo() || d.Owner() == OWNER_UA || d.Hwid.empty() ||
+            !TextListsHwid(text, d.Hwid))
+            continue;
+        bool dup = false;
+        for (auto &h : said)
+            dup = dup || EqualsI(h, d.Hwid);
+        Package p;
+        if (dup || FindUaPackageFor(ua, d.Hwid, p))
+            continue;
+        said.push_back(d.Hwid);
+        /* One line: Setup copies "Note:" lines into its Results page. */
+        Out(L"Note: the %s has no UA driver on this PC and was not switched; this Apollo package lists it, so Windows "
+            L"may give it the Apollo driver by itself when it next connects. Install UA Connect to keep it on UA's "
+            L"driver.", UnitKindName(d.Kind));
+    }
+}
+
+struct BindTarget {
+    Device Before;
+    bool   Installed = false;       /* UpdateDriverForPlugAndPlayDevices succeeded */
+    bool   Restart = false;         /* this unit finishes after a restart */
+    bool   Running = false;         /* on our driver, started, after the install */
+    bool   Failed = false;
+    std::wstring Why;
+};
+
+/*
+ * bind <inf> --units ...: stage the package, then force it onto each named unit that is connected,
+ * by its exact four-part hardware ID (UA's WHQL package ranks higher, so plain PnP never picks
+ * ours while UA's is installed). The x8p first, then the Twin X (step-ep.ps1). Every other
+ * Universal Audio device is checked unchanged afterwards.
+ */
+int CmdBind(const std::wstring &infArg, const std::vector<UnitKind> &units, bool stageOnly)
 {
     if (!RequireElevated(L"bind"))
         return EXIT_NOT_ELEVATED;
@@ -516,45 +584,75 @@ int CmdBind(const std::wstring &infArg, bool stageOnly)
     }
 
     std::vector<Device> present = FindUaDevices(false);
-    std::vector<size_t> x8ps = UnitsWithHwid(present, X8P_HWID);
-    if (x8ps.size() > 1) {
-        Err(L"%zu connected devices carry the x8p's hardware ID %s; the install would move all of them.", x8ps.size(),
-            X8P_HWID);
-        for (size_t i : x8ps)
-            Err(L"  %s", present[i].InstanceId.c_str());
-        Err(L"Connect one x8p at a time. Nothing changed.");
-        return EXIT_BLOCKED;
+    if (!stageOnly) {
+        for (UnitKind k : units) {
+            std::vector<size_t> same = UnitsWithHwid(present, UnitHwid(k));
+            if (same.size() > 1) {
+                Err(L"%zu connected devices carry the %s's hardware ID %s; the install would move all of them.",
+                    same.size(), UnitKindName(k), UnitHwid(k));
+                for (size_t i : same)
+                    Err(L"  %s", present[i].InstanceId.c_str());
+                Err(L"Connect one %s at a time. Nothing changed.", UnitKindName(k));
+                return EXIT_BLOCKED;
+            }
+        }
     }
 
-    if (stageOnly || x8ps.empty()) {
-        wchar_t published[MAX_PATH] = L"";
-        if (!SetupCopyOEMInfW(full, nullptr, SPOST_PATH, 0, published, MAX_PATH, nullptr, nullptr)) {
-            DWORD e = GetLastError();
-            Err(L"Staging the driver package failed: %s", ErrText(e).c_str());
-            ExplainInstallError(e);
-            return EXIT_ERROR;
+    /* Stage first: the published name and driver-store folder are needed afterwards. */
+    wchar_t published[MAX_PATH] = L"";
+    if (!SetupCopyOEMInfW(full, nullptr, SPOST_PATH, 0, published, MAX_PATH, nullptr, nullptr)) {
+        DWORD e = GetLastError();
+        Err(L"Staging the driver package failed: %s", ErrText(e).c_str());
+        ExplainInstallError(e);
+        return EXIT_ERROR;
+    }
+    const wchar_t *base = wcsrchr(published, L'\\');
+    std::wstring publishedName = base ? base + 1 : published;
+    wchar_t store[MAX_PATH * 2] = L"";
+    DWORD need = 0;
+    if (!SetupGetInfDriverStoreLocationW(published, nullptr, nullptr, store, MAX_PATH * 2, &need))
+        store[0] = L'\0';
+    Out(L"The driver package is staged as %s.", publishedName.c_str());
+
+    std::vector<BindTarget> targets;
+    for (UnitKind k : units) {
+        std::vector<size_t> same = UnitsWithHwid(present, UnitHwid(k));
+        if (same.empty()) {
+            if (!stageOnly)
+                Out(L"Unit: the %s is not connected; connect it, then run \"Connect Apollo units\" from the Start menu.",
+                    UnitKindName(k));
+            continue;
         }
-        const wchar_t *base = wcsrchr(published, L'\\');
-        if (stageOnly) {
-            Out(L"--stage-only: the driver package is staged as %s; no device was touched.", base ? base + 1 : published);
-        } else {
-            Out(L"No x8p is connected. The driver package is staged as %s.", base ? base + 1 : published);
-            Out(L"When the x8p is connected later, run \"Connect x8p to Apollo driver\" from the Start menu:");
-            Out(L"UA's driver ranks higher, so Windows picks it on its own whenever it is installed.");
-        }
-        if (!stageOnly)
-            PrintOthers(present);
-        NoteUnitsOurInfCouldTake(full, FindUaDevices(true), FindUaPackages());
+        BindTarget t;
+        t.Before = present[same[0]];
+        targets.push_back(t);
+    }
+    if (stageOnly || targets.empty()) {
+        if (stageOnly)
+            Out(L"--stage-only: no device was touched.");
+        else
+            Out(L"No unit to switch is connected: the driver package is staged for when one is.");
+        PrintOthers(present);
+        NoteUnitsOurInfCouldTake(full, FindUaDevices(true), FindUaPackages(), units);
         return EXIT_NO_DEVICE;
     }
 
-    const Device x8p = present[x8ps[0]];
-    std::vector<Device> others = OtherUnits(present, x8p.InstanceId);
+    std::vector<std::wstring> targetIds;
+    for (auto &t : targets)
+        targetIds.push_back(t.Before.InstanceId);
+    std::vector<Device> others;
+    for (auto &d : present) {
+        bool isTarget = false;
+        for (auto &id : targetIds)
+            isTarget = isTarget || EqualsI(id, d.InstanceId);
+        if (!isTarget)
+            others.push_back(d);
+    }
 
-    /* install.ps1: one service, one loaded image. A Twin X (or any unit) on our driver keeps
-       apollo.sys loaded, and the x8p would join that image, not this package's. */
+    /* install.ps1: one service, one loaded image. A unit on our driver that is not being switched
+       keeps apollo.sys loaded, and a unit switched now would join that image, not this package's. */
     std::wstring pkgVer = InfVersion(full);
-    std::vector<size_t> blockers = UnitsOnOtherImage(present, x8p.InstanceId, pkgVer);
+    std::vector<size_t> blockers = UnitsOnOtherImage(present, targetIds, pkgVer);
     if (!blockers.empty()) {
         for (size_t i : blockers) {
             const Device &o = present[i];
@@ -562,92 +660,149 @@ int CmdBind(const std::wstring &infArg, bool stageOnly)
                 o.DriverVersion.empty() ? L"(version unknown)" : o.DriverVersion.c_str(),
                 pkgVer.empty() ? L"(version unreadable)" : pkgVer.c_str());
         }
-        Err(L"Every unit on the Apollo driver shares one loaded driver image, so the x8p would keep running that");
-        Err(L"one instead of this package. Move that unit back to UA's driver first, then run this again:");
+        Err(L"Every unit on the Apollo driver shares one loaded driver image, so the units switched now would keep");
+        Err(L"running that one instead of this package. Switch that unit too, or move it back to UA's driver first:");
         for (size_t i : blockers)
             Err(L"  %s", HandBackHint(present[i]).c_str());
         Err(L"Nothing changed.");
         return EXIT_BLOCKED;
     }
 
-    Out(L"x8p before:");
-    PrintDevice(x8p);
-    PrintOthers(others);
-    Out(L"Installing %s on the x8p only (%s), forced over the higher-ranked UA driver...", full, X8P_HWID);
-    bool restart = false;
-    if (!ForceDriver(X8P_HWID, full, restart)) {
-        DWORD e = GetLastError();
-        Err(L"Installing the driver on the x8p failed: %s", ErrText(e).c_str());
-        ExplainInstallError(e);
-        return EXIT_ERROR;
+    for (auto &t : targets) {
+        Out(L"%s before:", UnitKindName(t.Before.Kind));
+        PrintDevice(t.Before);
     }
-    Sleep(2000);
+    PrintOthers(others);
+
+    for (auto &t : targets) {
+        Out(L"Installing %s on the %s only (%s), forced over a higher-ranked driver...", full,
+            UnitKindName(t.Before.Kind), t.Before.Hwid.c_str());
+        bool rb = false;
+        if (!ForceDriver(t.Before.Hwid, full, rb)) {
+            DWORD e = GetLastError();
+            Err(L"Installing the driver on the %s failed: %s", UnitKindName(t.Before.Kind), ErrText(e).c_str());
+            ExplainInstallError(e);
+            t.Failed = true;
+            t.Why = ErrText(e);
+            continue;
+        }
+        t.Installed = true;
+        t.Restart = rb;
+        Sleep(2000);
+    }
+    Sleep(1000);
 
     std::vector<Device> nowPresent = FindUaDevices(false);
-    const Device *found = FindByInstance(nowPresent, x8p.InstanceId);
-    for (size_t i = 0; found == nullptr && i < nowPresent.size(); i++)
-        if (nowPresent[i].IsX8p())
-            found = &nowPresent[i];
-    Device after;
-    bool seen = found != nullptr;
-    if (seen) {
-        after = *found;
-        Out(L"x8p after:");
+    bool restart = false, anyRunning = false;
+    for (auto &t : targets) {
+        if (!t.Installed)
+            continue;
+        const Device *found = FindByInstance(nowPresent, t.Before.InstanceId);
+        for (size_t i = 0; found == nullptr && i < nowPresent.size(); i++)
+            if (nowPresent[i].Kind == t.Before.Kind)
+                found = &nowPresent[i];
+        if (found == nullptr) {
+            Out(L"The %s is not visible right now (it may be restarting).", UnitKindName(t.Before.Kind));
+            continue;
+        }
+        Device after = *found;
+        Out(L"%s after:", UnitKindName(after.Kind));
         PrintDevice(after);
-        if (after.HasProblem && ProblemNeedsRestart(after.Problem))
+        if (after.HasProblem && ProblemNeedsRestart(after.Problem)) {
+            t.Restart = true;
+        } else if (after.HasProblem) {
+            std::wstring opts;
+            int ci = -1;
+            if (after.Problem == 52 && !TestSigningActive(opts, ci)) {
+                /* Unsigned-driver refusal: test signing is on for the next start only. */
+                Out(L"Test signing is not active yet: the driver loads on the %s after the restart.", UnitKindName(after.Kind));
+                t.Restart = true;
+            } else {
+                Err(L"The %s reports problem %lu: %s", UnitKindName(after.Kind), after.Problem, ProblemText(after.Problem));
+                t.Failed = true;
+                t.Why = Fmt(L"problem %lu, %s", after.Problem, ProblemText(after.Problem));
+            }
+        } else if (!after.OnApollo()) {
+            if (!t.Restart) {
+                Err(L"The %s is not on the Apollo driver after the install (service '%s').", UnitKindName(after.Kind),
+                    after.Service.c_str());
+                t.Failed = true;
+                t.Why = L"Windows kept it on its previous driver";
+            }
+        } else {
+            t.Running = !t.Restart;
+        }
+        if (t.Restart)
             restart = true;
-    } else {
-        Out(L"The x8p is not visible right now (it may be restarting).");
+        if (t.Running)
+            anyRunning = true;
     }
-    /* The x8p's hardware ID only: no other unit may have moved (install.ps1). */
+    /* Only the named units' hardware IDs: no other device may have moved (install.ps1). */
     CheckOthersUnchanged(others, nowPresent);
 
-    /* Older copies of our package nobody uses any more: not the x8p's, and not one another unit
+    /* One loaded image for every unit on the service: a unit switched while another unit (the
+       other one switched just now included) kept the old build loaded runs that old build. */
+    if (anyRunning && !restart) {
+        std::wstring loaded = LoadedApolloImage();
+        int m = LoadedImageMatches(loaded, store);
+        if (m == 1) {
+            Out(L"The loaded apollo.sys is this package's (%s).", DriverStoreFolder(loaded).c_str());
+        } else if (m == 0) {
+            restart = true;
+            for (auto &t : targets)
+                if (t.Running) {
+                    t.Running = false;
+                    t.Restart = true;
+                }
+            Out(L"An earlier build of apollo.sys is still loaded (%s): every unit on the Apollo driver shares one loaded",
+                DriverStoreFolder(loaded).c_str());
+            Out(L"driver, so this build (%s) loads at the next restart of Windows.", DriverStoreFolder(store).c_str());
+        } else {
+            Out(L"Could not tell which build of apollo.sys is loaded ('%s').", loaded.c_str());
+        }
+    }
+
+    /* Older copies of our package nobody uses any more: not this one, and not one another unit
        (connected or remembered) is installed from. Not while a restart is pending: the old driver
        may still be loaded from its driver-store folder. Without SUOI_FORCEDELETE Windows refuses
        to delete a package a device is installed with. */
-    if (!restart && seen && after.OnApollo() && !after.InfPath.empty()) {
+    if (!restart && anyRunning) {
         std::vector<Device> all = FindUaDevices(true);
         for (auto &p : FindApolloPackages()) {
-            if (EqualsI(p.Published, after.InfPath))
+            if (EqualsI(p.Published, publishedName))
                 continue;
             if (PackageInUse(all, p.Published)) {
-                Out(L"Kept %s (%s): another Apollo unit is installed from it.", p.Published.c_str(), p.DriverVer.c_str());
+                Out(L"Kept %s (%s): an Apollo unit is installed from it.", p.Published.c_str(), p.DriverVer.c_str());
                 continue;
             }
             if (SetupUninstallOEMInfW(p.Published.c_str(), 0, nullptr))
                 Out(L"Removed an older, unused Apollo package: %s (%s)", p.Published.c_str(), p.DriverVer.c_str());
         }
     }
-    NoteUnitsOurInfCouldTake(full, FindUaDevices(true), FindUaPackages());
+    NoteUnitsOurInfCouldTake(full, FindUaDevices(true), FindUaPackages(), units);
 
-    if (restart) {
-        Out(L"Windows needs a restart to finish switching the x8p to the Apollo driver.");
-        return EXIT_REBOOT;
-    }
-    if (!seen) {
-        Out(L"Installed. The x8p was not visible straight afterwards; run 'apollo-helper check' in a minute to confirm.");
-        return EXIT_OK;
-    }
-    if (after.HasProblem) {
-        Err(L"The x8p reports problem %lu: %s", after.Problem, ProblemText(after.Problem));
-        if (after.Problem == 52) {
-            /* Unsigned-driver refusal: a restart fixes it only if test signing is still pending. */
-            std::wstring opts;
-            int ci = -1;
-            if (!TestSigningActive(opts, ci)) {
-                Out(L"Test signing is not active yet: the driver loads after the restart.");
-                return EXIT_REBOOT;
-            }
+    /* One line per unit: Setup copies "Unit:" lines into its Results page. */
+    int failed = 0;
+    for (auto &t : targets) {
+        const wchar_t *name = UnitKindName(t.Before.Kind);
+        if (t.Failed) {
+            failed++;
+            Out(L"Unit: the %s was NOT switched (%s). It stays on its previous driver; fix the cause, then run "
+                L"\"Connect Apollo units\" from the Start menu.", name, t.Why.c_str());
+        } else if (t.Restart) {
+            Out(L"Unit: the %s switches to the Apollo driver at the next restart of Windows.", name);
+        } else if (t.Running) {
+            Out(L"Unit: the %s now runs on the Apollo driver.", name);
+        } else {
+            Out(L"Unit: the %s has the Apollo driver installed; it was not visible straight afterwards (run "
+                L"'apollo-helper check' in a minute to confirm).", name);
         }
-        return EXIT_ERROR;
     }
-    if (!after.OnApollo()) {
-        Err(L"The x8p is not on the Apollo driver after the install (service '%s').", after.Service.c_str());
+    if (restart)
+        Out(L"Restart Windows to finish switching to the Apollo driver.");
+    if (failed > 0)
         return EXIT_ERROR;
-    }
-    Out(L"The x8p is on the Apollo driver.");
-    return EXIT_OK;
+    return restart ? EXIT_REBOOT : EXIT_OK;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1031,26 +1186,27 @@ static std::wstring ProcessPath(DWORD pid)
     return r;
 }
 
-/* install.ps1: UA's apps talk to every unit on UA's driver. They are closed only when the x8p is
-   leaving UA's driver and no other connected unit is still on it (units.cpp DecideQuitUa). */
-int CmdQuitUa()
+/* install.ps1: UA's apps talk to every unit on UA's driver. They are closed only when a unit being
+   switched is leaving UA's driver and no connected unit that stays is still on it (units.cpp
+   DecideQuitUa). */
+int CmdQuitUa(const std::vector<UnitKind> &units)
 {
     std::vector<Device> present = FindUaDevices(false);
     size_t other = 0;
-    switch (DecideQuitUa(present, other)) {
-    case QUIT_NO_X8P:
-        Out(L"No x8p connected: UA's apps can stay open.");
+    switch (DecideQuitUa(present, units, other)) {
+    case QUIT_NO_UNIT:
+        Out(L"No unit to switch is connected: UA's apps can stay open.");
         return EXIT_OK;
-    case QUIT_X8P_ON_APOLLO:
-        Out(L"The x8p is already on the Apollo driver: UA's apps can stay open.");
+    case QUIT_NOTHING_TO_RELEASE:
+        Out(L"No unit to switch is on UA's driver: UA's apps can stay open.");
         return EXIT_OK;
-    case QUIT_X8P_DRIVER_UNKNOWN:
-        Out(L"Could not read which driver the x8p is on: UA's apps are left running.");
+    case QUIT_DRIVER_UNKNOWN:
+        Out(L"Could not read which driver a unit is on: UA's apps are left running.");
         return EXIT_OK;
     case QUIT_OTHER_ON_UA:
         /* One line: Setup copies "Note:" lines into its Results page. */
-        Out(L"Note: UA's apps were left running because the %s is still on UA's driver and uses them. If Windows "
-            L"needs a restart to switch the x8p, power-cycle the x8p instead.", DeviceLabel(present[other]).c_str());
+        Out(L"Note: UA's apps were left running because the %s stays on UA's driver and uses them. If Windows needs a "
+            L"restart to switch a unit, power-cycle that unit instead.", UnitKindName(present[other].Kind));
         return EXIT_OK;
     case QUIT_CLOSE_APPS:
         break;
@@ -1082,7 +1238,7 @@ int CmdQuitUa()
         Out(L"No UA apps are running.");
         return EXIT_OK;
     }
-    Out(L"The x8p is on UA's driver and no other connected unit needs UA's apps: closing them.");
+    Out(L"The units being switched are on UA's driver and no unit that stays needs UA's apps: closing them.");
 
     std::vector<HANDLE> handles;
     for (auto &t : targets) {

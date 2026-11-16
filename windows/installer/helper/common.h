@@ -5,9 +5,9 @@
  * Exit codes (the installer script reads them):
  *   0     done
  *   1     error (the text says what)
- *   2     bind: no x8p connected; the package is staged for later
+ *   2     bind: none of the named units is connected; the package is staged for later
  *         unbind --unit: that unit is not connected
- *   3     idle-wait: something still uses the x8p after the wait
+ *   3     idle-wait: something still uses one of the units after the wait
  *   4     needs an elevated (Run as administrator) prompt
  *   5     stopped before changing anything (the text says why): another Apollo unit would be
  *         left without a driver, or would end up on a different driver image
@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#define HELPER_VERSION      L"1.1.0"
+#define HELPER_VERSION      L"2.0.0"
 
 #define EXIT_OK             0
 #define EXIT_ERROR          1
@@ -29,17 +29,22 @@
 #define EXIT_BLOCKED        5
 #define EXIT_REBOOT         3010
 
-/* apollo.inf lists two exact hardware IDs (units.h): the x8p (SUBSYS 0x0014) and, for testing, the
-   Twin X Gen 1 (SUBSYS 0x0019). This helper binds the x8p only; a Twin X is never bound here. */
+/* apollo.inf lists two exact hardware IDs (units.h): the x8p (SUBSYS 0x0014) and the Twin X Gen 1
+   (SUBSYS 0x0019). The helper switches either or both (--units); nothing else. */
 #define APOLLO_PROVIDER     L"Avium"
 #define APOLLO_INF_NAME     L"apollo.inf"
 #define UA_INF_NAME         L"uad2pcie.inf"
 #define APOLLO_PARAMS_KEY   L"SYSTEM\\CurrentControlSet\\Services\\apollo\\Parameters"
 #define APOLLO_SERVICE_KEY  L"SYSTEM\\CurrentControlSet\\Services\\apollo"
-/* Windows names the x8p's endpoints "MON L/R (Apollo x8p (open driver, test build))": no closing
-   parenthesis here (audio-helpers.ps1 [G2]; "(Apollo x8p)" never matched). A Twin X has no
-   endpoints on our driver, and its UA endpoints are "(Universal Audio Thunderbolt WDM)". */
-#define ENDPOINT_TAG        L"(Apollo x8p"
+/* Windows audio endpoint names (driver\apollo.inf [Strings]): "LINE 1-2 (Apollo x8p)",
+   "MON L/R (Apollo Twin X)", the combined set's "Monitor (Apollo)" (the x8p hosts it, and both
+   units stream in it). Older x8p builds: "... (Apollo x8p (open driver, test build))", so no
+   closing parenthesis on the x8p's tag. On UA's driver a unit's endpoints are UA's
+   "(Universal Audio Thunderbolt WDM)" ones, which do not say which unit they belong to. */
+#define ENDPOINT_TAG_X8P    L"(Apollo x8p"
+#define ENDPOINT_TAG_TWINX  L"(Apollo Twin X"
+#define ENDPOINT_TAG_AGG    L"(Apollo)"
+#define ENDPOINT_TAG_UA     L"(Universal Audio Thunderbolt"
 
 /* ---- output (main.cpp) ---- */
 void Out(const wchar_t *fmt, ...);          /* stdout, UTF-8 when redirected */
@@ -74,7 +79,6 @@ struct ApolloInterface {
 };
 
 std::vector<Device> FindUaDevices(bool includePhantoms);
-bool FindX8p(Device &dev);                  /* present x8p */
 std::wstring DeviceLabel(const Device &d);  /* "Apollo Twin X (PCI\...\...)" */
 std::vector<Package> FindApolloPackages();
 std::vector<Package> FindUaPackages();      /* uad2pcie.inf from Universal Audio, any signer */
@@ -82,9 +86,10 @@ std::vector<Package> FindUaPackages();      /* uad2pcie.inf from Universal Audio
 bool FindUaPackageFor(const std::vector<Package> &uaPackages, const std::wstring &hwid, Package &out);
 std::vector<ApolloInterface> FindApolloInterfaces();
 bool ProblemNeedsRestart(ULONG problem);
-int CmdBind(const std::wstring &inf, bool stageOnly);
+std::wstring LoadedApolloImage();           /* the loaded apollo.sys's path, "" if not loaded */
+int CmdBind(const std::wstring &inf, const std::vector<UnitKind> &units, bool stageOnly);
 int CmdUnbind(const std::wstring &unit);    /* "" = every unit (uninstall), else x8p or twinx */
-int CmdQuitUa();
+int CmdQuitUa(const std::vector<UnitKind> &units);
 
 /* ---- audio and driver queries (audio.cpp) ---- */
 struct DriverUnitInfo {
@@ -100,8 +105,9 @@ struct DriverUnitInfo {
 DriverUnitInfo QueryDriverUnit(const std::wstring &instanceId);    /* read-only GET_INFO */
 int CmdDefaultsSave(const std::wstring &file);
 int CmdDefaultsRestore(const std::wstring &file, int passes);
-int CmdIdleWait(int seconds, bool interactive);
-std::vector<std::wstring> ApolloBusyReasons();
+/* Waits until nothing uses any of these units (see audio.cpp for what counts). */
+int CmdIdleWait(int seconds, bool interactive, const std::vector<UnitKind> &units);
+std::vector<std::wstring> ApolloBusyReasons(const std::vector<UnitKind> &units);
 
 /* ---- system state, certificates, registry (sys.cpp) ---- */
 std::wstring SecureBootState();             /* on, off, unsupported, unknown */
@@ -109,4 +115,5 @@ bool TestSigningActive(std::wstring &startOptions, int &ciTestSign);
 int TestSigningNextBoot();                  /* 1, 0, -1 = could not read (needs elevation) */
 int BitLockerProtection(std::wstring &drive, std::wstring &detail); /* 1 on, 0 off, -1 unknown */
 int CmdCert(bool add, const std::wstring &cer, const std::wstring &expect, const std::wstring &record);
+int CmdCertRemoveLocal(const std::wstring &file);   /* the per-PC certificates in local-cert.txt */
 int CmdRegDefaults(const std::wstring &json);

@@ -2,15 +2,14 @@
 #  1. the staged files still hash to payload-manifest.sha256, and nothing else is staged;
 #  2. Inno's own compile manifest (OutputManifestFile: every file compiled in, with its SHA-256)
 #     lists exactly the staged files with the same hashes; the compile log agrees;
-#  3. the Setup exe exists; its signer is the test certificate when signing was on.
+#  3. the Setup exe exists and carries no signature (nothing in a release is signed with anyone's key;
+#     Setup signs the driver on the user's PC).
 # Then prints the exe's size and SHA-256 and writes <exe>.sha256.
 param(
     [Parameter(Mandatory = $true)][string]$Stage,
     [Parameter(Mandatory = $true)][string]$Files,
     [Parameter(Mandatory = $true)][string]$CompileLog,
-    [Parameter(Mandatory = $true)][string]$Exe,
-    [Parameter(Mandatory = $true)][string]$Thumbprint,
-    [string]$Signed = '0'
+    [Parameter(Mandatory = $true)][string]$Exe
 )
 $ErrorActionPreference = 'Stop'
 $Stage = (Resolve-Path -LiteralPath $Stage).Path.TrimEnd('\')
@@ -70,15 +69,11 @@ if ($fail.Count -gt 0) {
     exit 1
 }
 $sig = Get-AuthenticodeSignature -LiteralPath $Exe
-if ($Signed -eq '1') {
-    if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $Thumbprint) {
-        Write-Host "FAIL: Setup is not signed with $Thumbprint (status $($sig.Status))"
-        exit 1
-    }
-    $signText = "signed with the test certificate $Thumbprint (status here: $($sig.Status); 'Valid' only where its root is trusted)"
-} else {
-    $signText = 'UNSIGNED (the test certificate''s private key was not available)'
+if ($sig.SignerCertificate) {
+    Write-Host "FAIL: Setup carries a signature ($($sig.SignerCertificate.Subject), $($sig.Status)); a release is unsigned"
+    exit 1
 }
+$signText = "unsigned ($($sig.Status)); the driver is signed on the user's PC by sign-local.ps1"
 $item = Get-Item -LiteralPath $Exe
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Exe).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$Exe.sha256", "$hash  $($item.Name)`r`n", (New-Object Text.UTF8Encoding $false))

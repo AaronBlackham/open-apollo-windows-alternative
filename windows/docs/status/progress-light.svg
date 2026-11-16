@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1172" height="506" viewBox="0 0 1172 506" role="img" aria-label="Parity maps: open-apollo 739 of 1015 behaviours, the Windows port 684 of 1015">
+<svg xmlns="http://www.w3.org/2000/svg" width="1172" height="506" viewBox="0 0 1172 506" role="img" aria-label="Parity maps: open-apollo 739 of 1015 behaviours, the Windows port 685 of 1015">
 <style>text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}.h{font-size:13px;font-weight:600;fill:#1f2328}.s{font-size:12px;fill:#656d76}.l{font-size:10px;fill:#1f2328}.c{font-size:10px;fill:#656d76}.g{font-size:11px;fill:#656d76}</style>
 <defs><pattern id="hatch-light" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" fill="#d4a017"/><rect width="1.3" height="4" fill="#ffffff" fill-opacity="0.55"/></pattern></defs>
 <rect width="100%" height="100%" fill="#ffffff"/>
@@ -6,7 +6,7 @@
 <text x="0" y="12" class="h">open-apollo (Linux), Oct 11 2026</text>
 <text x="560" y="12" class="s" text-anchor="end">739 of 1015 &#183; 72.8%</text>
 <text x="596" y="12" class="h">Windows port, Nov 16 2026</text>
-<text x="1156" y="12" class="s" text-anchor="end">684 of 1015 &#183; 67.4%</text>
+<text x="1156" y="12" class="s" text-anchor="end">685 of 1015 &#183; 67.5%</text>
 <text x="3.0" y="34.0" class="l">Kext classes</text>
 <text x="153.7" y="34.0" class="c" text-anchor="end">75/142</text>
 <rect x="2.0" y="38.0" width="11.5" height="11.5" rx="1" fill="#a1cdae"><title>Kext classes com_uaudio_driv…: 1 lifecycle | open-apollo: done in code</title></rect>
@@ -2039,20 +2039,20 @@
 <rect x="1027.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services B11: Suspend/resume/shutdown handling | ours: done in code</title></rect>
 <rect x="1039.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services D6: UA Mixer Engine.ini (buffer size, sample rate, clock source, CR monitor… | ours: done in code</title></rect>
 <rect x="1051.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services F2: Collect a diagnostics bundle | ours: done in code</title></rect>
-<rect x="1063.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services F4: Per-app log files in ~/Library/Logs/Universal Audio | ours: done in code</title></rect>
-<rect x="1075.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G2: LaunchAgent, RunAtLoad, no KeepAlive, -silent (Mixer Engine) | ours: done in code</title></rect>
-<rect x="1027.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G3: Start order: kext first, then engine | ours: done in code</title></rect>
-<rect x="1039.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G5: Status UI | ours: done in code</title></rect>
-<rect x="1051.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services B5: Both Apollo PCI ids (pci1a00,1 and pci1a00,2) are matched by the kext | ours: partial or being built</title></rect>
-<rect x="1063.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services F1: Kext ring log with facility levels, read and set by ualogger (selectors… | ours: partial or being built</title></rect>
-<rect x="1075.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services B9: USB Apollo arrival | ours: not done</title></rect>
-<rect x="1027.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services D2: Persistent network id (nework_uid.json, UA Network ID.ini) so clients r… | ours: not done</title></rect>
-<rect x="1039.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services D4: User-visible device name (rename) | ours: not done</title></rect>
-<rect x="1051.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E1: Mixer Engine advertises _uamixer._tcp. on 4710, empty TXT | ours: not done</title></rect>
-<rect x="1063.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E2: _uamixerhelper._tcp. (port 4720) | ours: not done</title></rect>
-<rect x="1075.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E5: Host firewall / mDNS responder | ours: not done</title></rect>
-<rect x="1027.1" y="400.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E6: UA Connect WebSocket (4721) | ours: not done</title></rect>
-<rect x="1039.1" y="400.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services F3: Live crash log capture | ours: not done</title></rect>
+<rect x="1063.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services F3: Live crash log capture | ours: done in code</title></rect>
+<rect x="1075.1" y="364.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services F4: Per-app log files in ~/Library/Logs/Universal Audio | ours: done in code</title></rect>
+<rect x="1027.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G2: LaunchAgent, RunAtLoad, no KeepAlive, -silent (Mixer Engine) | ours: done in code</title></rect>
+<rect x="1039.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G3: Start order: kext first, then engine | ours: done in code</title></rect>
+<rect x="1051.1" y="376.6" width="10.5" height="10.5" rx="1" fill="#a1cdae"><title>Services G5: Status UI | ours: done in code</title></rect>
+<rect x="1063.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services B5: Both Apollo PCI ids (pci1a00,1 and pci1a00,2) are matched by the kext | ours: partial or being built</title></rect>
+<rect x="1075.1" y="376.6" width="10.5" height="10.5" rx="1" fill="url(#hatch-light)"><title>Services F1: Kext ring log with facility levels, read and set by ualogger (selectors… | ours: partial or being built</title></rect>
+<rect x="1027.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services B9: USB Apollo arrival | ours: not done</title></rect>
+<rect x="1039.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services D2: Persistent network id (nework_uid.json, UA Network ID.ini) so clients r… | ours: not done</title></rect>
+<rect x="1051.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services D4: User-visible device name (rename) | ours: not done</title></rect>
+<rect x="1063.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E1: Mixer Engine advertises _uamixer._tcp. on 4710, empty TXT | ours: not done</title></rect>
+<rect x="1075.1" y="388.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E2: _uamixerhelper._tcp. (port 4720) | ours: not done</title></rect>
+<rect x="1027.1" y="400.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E5: Host firewall / mDNS responder | ours: not done</title></rect>
+<rect x="1039.1" y="400.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services E6: UA Connect WebSocket (4721) | ours: not done</title></rect>
 <rect x="1051.1" y="400.6" width="10.5" height="10.5" rx="1" fill="#ced0d3"><title>Services H1: UA Services Device_MH* connect as a client to the Mixer Helper (4720);… | ours: not done</title></rect>
 <text x="1097.2" y="312.6" class="l">Windows …</text>
 <rect x="1096.2" y="316.6" width="9.5" height="9.5" rx="1" fill="#1f883d"><title>Windows PCIe B02: EvtDeviceAdd: device-init type and I/O-type settings (irrelevant, there… | ours: verified on hardware</title></rect>

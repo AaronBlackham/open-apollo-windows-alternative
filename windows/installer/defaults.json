@@ -1,26 +1,38 @@
 {
   "_comment": [
-    "Driver settings Setup writes to HKLM\\SYSTEM\\CurrentControlSet\\Services\\apollo\\Parameters.",
+    "Driver settings Setup writes under HKLM\\SYSTEM\\CurrentControlSet\\Services\\apollo\\Parameters, before it",
+    "switches any unit (apollo-helper regdefaults; the format is in installer\\helper\\defaults_plan.h).",
     "Change them per release here (or put a defaults.json in the frozen build's root folder, which wins).",
     "A number becomes REG_DWORD. For hex or a string value use { \"type\": \"dword\" or \"sz\", \"data\": ... }.",
-    "overwrite false: a value already on the machine is kept (an upgrade keeps your tuning).",
-    "Add \"overwrite\": true to one value's object form to force it in a release.",
-    "The values below are the 2026-11-14 driver's own defaults (docs/STRIPS.md 10.5, PHASE2.md V9, engine.c).",
-    "They are the service-wide (legacy) values: a driver from gate G2 on applies them to the x8p only. A Twin X",
-    "reads Parameters\\Units\\<its key> and Parameters\\Models\\99 instead (built-in Mode 0 = observe); Setup",
-    "never writes those, and never binds a Twin X (docs/spec-twinx.md 6.9.1)."
+    "overwrite false keeps a value already on the machine (an upgrade keeps your tuning); \"overwrite\": true on a",
+    "value or on a subkey forces it.",
+    "Only values that DIFFER from the driver's built-in defaults are listed (driver\\apollo_unit.h ApolloParamDef);",
+    "everything else is left to the driver. Lookup per unit (driver\\unit.c): Units\\<unit key> -> Models\\<TT>",
+    "-> the service-wide values below (x8p only) -> built-in default.",
+    "values: the service-wide (legacy) values, which the driver applies to the Apollo x8p only. Built-in x8p",
+    "defaults: StripsEnable 0, StripSteps 1, StripMask 0x01, StripDsp 1, MixerInitBatch 1, Endpoints 0x1FFFF.",
+    "The x8p runs its full input strips on all eight inputs: StripsEnable 1, StripSteps 9, StripMask 0xFF.",
+    "subkeys Models\\99: the Apollo Twin X Gen 1 (device type 0x99). Built-in Twin X defaults: Mode 0 (observe),",
+    "StripsEnable 0, StripSteps 0, StripMask 0x03, StripDsp 1, MixerInitBatch 1, Endpoints 0x3F. It runs in Mode 2",
+    "(full: Windows endpoints, monitor, preamps, strips) with its strips on: Mode 2, StripsEnable 1. StripMask 0x3,",
+    "StripDsp 1 and MixerInitBatch 1 are its built-in defaults already, and StripSteps stays 0.",
+    "The old EnabledEndpoints value is gone: the driver ignores it since Nov 15 2026 (the value is now Endpoints,",
+    "with the defaults above), and Setup leaves Endpoints alone."
   ],
   "overwrite": false,
   "values": {
-    "EnabledEndpoints": { "type": "dword", "data": 1023, "overwrite": true },
     "StripsEnable": { "type": "dword", "data": 1, "overwrite": true },
     "StripSteps": { "type": "dword", "data": 9, "overwrite": true },
-    "StripMask": { "type": "dword", "data": 255, "overwrite": true },
-    "StripDsp": 1,
-    "MixerInitBatch": { "type": "dword", "data": 1, "overwrite": true },
-    "StripProbe": { "type": "dword", "data": 0, "overwrite": true },
-    "RenderLeadFrames": 144,
-    "CaptureGuardFrames": 16,
-    "StartTransportAtConnect": 1
+    "StripMask": { "type": "dword", "data": "0xFF", "overwrite": true }
+  },
+  "subkeys": {
+    "Models\\99": {
+      "_comment": "Apollo Twin X Gen 1",
+      "overwrite": true,
+      "values": {
+        "Mode": 2,
+        "StripsEnable": 1
+      }
+    }
   }
 }

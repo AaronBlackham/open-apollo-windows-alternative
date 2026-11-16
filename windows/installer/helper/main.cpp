@@ -1,21 +1,27 @@
 /*
- * apollo-helper: install-time helper for the Apollo x8p test driver. See installer\README.md.
- * It binds the x8p only. apollo.inf also lists the Twin X Gen 1 (test only); a Twin X may be on
- * UA's driver or ours, and every command below copes with it, but none ever binds it.
+ * apollo-helper: install-time helper for the Apollo open driver. See installer\README.md.
+ * It switches the Apollo x8p and the Apollo Twin X Gen 1 (the two units apollo.inf lists), either
+ * or both (--units, default both); every other Universal Audio device is left alone.
  *
  *   apollo-helper check                         system state as JSON (no changes)
- *   apollo-helper bind <inf> [--stage-only]     force apollo.inf onto the x8p (stage it if absent)
- *   apollo-helper unbind                        other units on our driver back to UA's first, then
- *                                               remove every Avium apollo.inf package, rescan
+ *   apollo-helper bind <inf> [--units U] [--stage-only]
+ *                                               stage apollo.inf, force it onto the named units
+ *   apollo-helper unbind                        units other than the x8p on our driver back to UA's
+ *                                               first, then remove every Avium apollo.inf package
  *   apollo-helper unbind --unit x8p|twinx       that unit back to UA's driver; the package stays
  *   apollo-helper defaults save <file>          the 6 default audio endpoints
  *   apollo-helper defaults restore <file> [--passes N]
- *   apollo-helper idle-wait <seconds> [--ask]   wait until nothing uses the x8p
- *   apollo-helper quit-ua                       close UA's apps, only while the x8p is on UA's driver
- *                                               and no other unit is
+ *   apollo-helper idle-wait <seconds> [--ask] [--units U]
+ *                                               wait until nothing uses the named units
+ *   apollo-helper quit-ua [--units U]           close UA's apps, only while a named unit is on UA's
+ *                                               driver and no unit that stays is
  *   apollo-helper regdefaults <defaults.json>   driver registry values (Services\apollo\Parameters)
- *   apollo-helper cert add|remove <cer> [--expect <sha1>] [--record <file>]
- *   apollo-helper connect                       Start-menu "Connect x8p": elevates, then the above
+ *   apollo-helper cert remove-local <local-cert.txt>
+ *                                               the per-PC certificates sign-local.ps1 made
+ *   apollo-helper cert add|remove <cer> [--expect <sha1>] [--record <file>]   (older installs)
+ *   apollo-helper connect                       Start-menu "Connect Apollo units": elevates, asks
+ *                                               per unit, then the above
+ * U: x8p, twinx, x8p,twinx, all, none.
  */
 #include "common.h"
 #include "apollo_ioctl_min.h"
@@ -347,6 +353,7 @@ static std::wstring DeviceJson(const Device &d, const wchar_t *indent, const std
     bool haveUa = FindUaPackageFor(ua, d.Hwid, p);
     std::wstring s = L"{\r\n";
     s += Fmt(L"%s  \"kind\": \"%s\",\r\n", indent, UnitKindKey(d.Kind));
+    s += Fmt(L"%s  \"supported\": %s,\r\n", indent, IsSupportedKind(d.Kind) ? L"true" : L"false");
     s += Fmt(L"%s  \"hardware_id\": %s,\r\n", indent, JsonStr(d.Hwid).c_str());
     s += Fmt(L"%s  \"instance_id\": %s,\r\n", indent, JsonStr(d.InstanceId).c_str());
     s += Fmt(L"%s  \"description\": %s,\r\n", indent, JsonStr(d.Description).c_str());
@@ -365,8 +372,9 @@ static std::wstring DeviceJson(const Device &d, const wchar_t *indent, const std
 }
 
 /* Parameters\<sub>\<key>\Mode for each subkey: Models\<type hex> (99 = Twin X Gen 1) and
-   Units\<HW_UID or SN serial>. The driver reads these for a unit other than the x8p (built-in
-   default Mode 0, observe; docs/spec-twinx.md 6.9.1). Setup never writes them. Read-only. */
+   Units\<HW_UID or SN serial>. The driver reads these for every unit (the x8p also reads the
+   legacy service-wide values; a Twin X without them is in Mode 0, observe; docs/spec-twinx.md
+   6.9.1). Setup writes Models\99 from defaults.json, never Units. Read-only here. */
 static std::wstring ModeKeysJson(const wchar_t *sub)
 {
     std::wstring path = std::wstring(APOLLO_PARAMS_KEY) + L"\\" + sub;
@@ -478,6 +486,8 @@ static int CmdCheck()
     s += first ? L"],\r\n" : L"\r\n  ],\r\n";
     s += Fmt(L"  \"unit_settings\": { \"models\": %s, \"units\": %s },\r\n", ModeKeysJson(L"Models").c_str(),
              ModeKeysJson(L"Units").c_str());
+    std::wstring loaded = LoadedApolloImage();
+    s += Fmt(L"  \"apollo_loaded_image\": %s,\r\n", loaded.empty() ? L"null" : JsonStr(loaded).c_str());
     s += L"  \"apollo_packages\": [";
     first = true;
     for (auto &p : pkgs) {
@@ -539,12 +549,28 @@ static int Relaunch(const wchar_t *args)
     if (!ShellExecuteExW(&sei)) {
         DWORD e = GetLastError();
         if (e == ERROR_CANCELLED)
-            Err(L"Cancelled: connecting the x8p needs administrator rights.");
+            Err(L"Cancelled: switching a unit to the Apollo driver needs administrator rights.");
         else
             Err(L"Could not start elevated: %s", ErrText(e).c_str());
         return EXIT_NOT_ELEVATED;
     }
     return EXIT_OK;
+}
+
+/* [Y/n] on the console; Enter = yes. */
+static bool AskYes()
+{
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    wchar_t buf[32] = {};
+    DWORD n = 0;
+    if (in == nullptr || in == INVALID_HANDLE_VALUE || !ReadConsoleW(in, buf, 31, &n, nullptr))
+        return false;
+    for (DWORD i = 0; i < n; i++) {
+        if (buf[i] == L' ')
+            continue;
+        return !(buf[i] == L'n' || buf[i] == L'N' || buf[i] == L'q' || buf[i] == L'Q');
+    }
+    return true;
 }
 
 static int ConnectElevated()
@@ -554,8 +580,8 @@ static int ConnectElevated()
     std::wstring state = dir + L"\\state";
     std::wstring saved = state + L"\\connect-audio-defaults.txt";
 
-    Out(L"Connect the Apollo x8p to the Apollo open driver (test build)");
-    Out(L"=============================================================");
+    Out(L"Connect Apollo units to the Apollo open driver (test build)");
+    Out(L"==========================================================");
     Out(L"");
 
     std::wstring opts;
@@ -565,22 +591,48 @@ static int ConnectElevated()
         Out(L"If you just installed it, restart Windows first. Otherwise run Apollo setup again.");
         return EXIT_ERROR;
     }
-    Device x8p;
-    if (!FindX8p(x8p)) {
-        Out(L"No Apollo x8p found. Connect it over Thunderbolt, switch it on, wait about 15 seconds,");
-        Out(L"then run \"Connect x8p to Apollo driver\" again.");
+    std::vector<Device> present = FindUaDevices(false);
+    std::vector<UnitKind> chosen;
+    bool anySupported = false;
+    for (UnitKind k : { UNIT_X8P, UNIT_TWINX }) {
+        std::vector<size_t> same = UnitsWithHwid(present, UnitHwid(k));
+        if (same.empty())
+            continue;
+        anySupported = true;
+        const Device &d = present[same[0]];
+        Out(L"%s: on %s%s", UnitKindName(k), d.OnApollo() ? L"the Apollo driver" :
+            (d.Owner() == OWNER_UA ? L"Universal Audio's driver" : (d.Service.empty() ? L"no driver" : d.Service.c_str())),
+            d.HasProblem ? Fmt(L" (problem %lu)", d.Problem).c_str() : L"");
+        if (same.size() > 1) {
+            Out(L"  %zu units of this model are connected: Windows would switch all of them. Connect one at a time.",
+                same.size());
+            continue;
+        }
+        if (!NeedsSwitch(d)) {
+            Out(L"  already running on the Apollo driver.");
+            continue;
+        }
+        Out(L"  Switch the %s to the Apollo driver? [Y/n]", UnitKindName(k));
+        if (AskYes())
+            chosen.push_back(k);
+        else
+            Out(L"  left as it is.");
+    }
+    for (auto &d : present)
+        if (!IsSupportedKind(d.Kind))
+            Out(L"Universal Audio device %s: not supported by this driver, left on its own driver.", d.Hwid.c_str());
+    if (!anySupported) {
+        Out(L"No Apollo x8p or Apollo Twin X Gen 1 found. Connect it over Thunderbolt, switch it on, wait about");
+        Out(L"15 seconds, then run \"Connect Apollo units\" again.");
         return EXIT_NO_DEVICE;
     }
-    Out(L"x8p: %s", x8p.InstanceId.c_str());
-    Out(L"Current driver: %s (%s, %s)", x8p.Service.empty() ? L"none" : x8p.Service.c_str(),
-        x8p.Provider.c_str(), x8p.DriverVersion.c_str());
-    if (x8p.OnApollo() && !x8p.HasProblem) {
-        Out(L"The x8p is already running on the Apollo driver. Nothing to do.");
+    if (chosen.empty()) {
+        Out(L"Nothing to switch. Nothing changed.");
         return EXIT_OK;
     }
     Out(L"");
 
-    int rc = CmdIdleWait(60, true);
+    int rc = CmdIdleWait(60, true, chosen);
     if (rc != EXIT_OK) {
         Out(L"Stopped before changing anything.");
         return rc;
@@ -588,9 +640,9 @@ static int ConnectElevated()
     CreateDirectoryW(state.c_str(), nullptr);
     bool haveDefaults = CmdDefaultsSave(saved) == EXIT_OK;
     Out(L"");
-    CmdQuitUa();
+    CmdQuitUa(chosen);
     Out(L"");
-    rc = CmdBind(inf, false);
+    rc = CmdBind(inf, chosen, false);
     if (haveDefaults) {
         Out(L"");
         CmdDefaultsRestore(saved, 3);
@@ -598,9 +650,9 @@ static int ConnectElevated()
     }
     Out(L"");
     if (rc == EXIT_OK)
-        Out(L"Done. Apollo Control (Start menu) shows the unit once it has connected (up to a minute).");
+        Out(L"Done. Apollo Control (Start menu) shows the units once they have connected (up to a minute).");
     else if (rc == EXIT_REBOOT)
-        Out(L"Restart Windows to finish: the old driver could not be stopped while something used the unit.");
+        Out(L"Restart Windows to finish (see above why).");
     return rc;
 }
 
@@ -624,28 +676,31 @@ static int CmdConnect(bool elevatedChild)
 
 static void Usage()
 {
-    Out(L"apollo-helper %s: installer helper for the Apollo x8p open driver (test build)", HELPER_VERSION);
+    Out(L"apollo-helper %s: installer helper for the Apollo open driver (test build)", HELPER_VERSION);
     Out(L"");
     Out(L"  check                                   system state as JSON (changes nothing): every Apollo unit,");
     Out(L"                                          its driver and, on the Apollo driver, its Mode");
-    Out(L"  bind <inf> [--stage-only]               admin: force the driver onto the x8p only (stage it if absent)");
-    Out(L"  unbind                                  admin: move other units on the Apollo driver (a Twin X) back to");
+    Out(L"  bind <inf> [--units U] [--stage-only]   admin: stage the package and force it onto the named units");
+    Out(L"  unbind                                  admin: move units other than the x8p on the Apollo driver back to");
     Out(L"                                          UA's driver, then remove every Avium apollo.inf package, rescan");
     Out(L"  unbind --unit x8p|twinx                 admin: that unit only back to UA's driver; the package stays");
-    Out(L"                                          (run idle-wait first for the x8p)");
+    Out(L"                                          (run idle-wait --units <it> first)");
     Out(L"  defaults save <file>                    save the 6 default playback/recording devices");
     Out(L"  defaults restore <file> [--passes N]    put them back where Windows moved them");
-    Out(L"  idle-wait <seconds> [--ask]             wait until no stream, ASIO host or app uses the x8p");
-    Out(L"  quit-ua                                 admin: close UA's apps while the x8p is on UA's driver and no");
-    Out(L"                                          other unit (a Twin X) still is");
-    Out(L"  regdefaults <defaults.json>             admin: write Services\\apollo\\Parameters values");
+    Out(L"  idle-wait <seconds> [--ask] [--units U] wait until no stream, ASIO host or app uses the named units");
+    Out(L"  quit-ua [--units U]                     admin: close UA's apps while a named unit is on UA's driver and");
+    Out(L"                                          no unit that stays still is");
+    Out(L"  regdefaults <defaults.json>             admin: write Services\\apollo\\Parameters values (and subkeys)");
+    Out(L"  cert remove-local <local-cert.txt>      admin: remove the per-PC certificates sign-local.ps1 made");
     Out(L"  cert add <cer> [--expect <sha1>] [--record <file>]");
-    Out(L"  cert remove <cer> [--record <file>]     admin: LocalMachine Root and TrustedPublisher");
-    Out(L"  connect                                 Start-menu shortcut: elevate, then free, bind, restore");
+    Out(L"  cert remove <cer> [--record <file>]     admin: LocalMachine Root and TrustedPublisher (older installs)");
+    Out(L"  connect                                 Start-menu shortcut: elevate, ask per unit, free, bind, restore");
     Out(L"");
-    Out(L"The x8p is the only unit this helper ever binds. apollo.inf also lists the Twin X Gen 1 (test only).");
-    Out(L"Exit codes: 0 done, 1 error, 2 no x8p (staged only) / unit not connected, 3 still in use, 4 not elevated,");
-    Out(L"5 stopped before changing anything (another unit would lose its driver or share another image), 3010 restart");
+    Out(L"U: x8p, twinx, x8p,twinx, all (the default) or none. Only the Apollo x8p and the Apollo Twin X Gen 1 are");
+    Out(L"ever switched; every other Universal Audio device stays on its own driver.");
+    Out(L"Exit codes: 0 done, 1 error, 2 no named unit connected (staged only) / unit not connected, 3 still in use,");
+    Out(L"4 not elevated, 5 stopped before changing anything (a unit would lose its driver or share another image),");
+    Out(L"3010 restart");
 }
 
 static const wchar_t *Opt(int argc, wchar_t **argv, const wchar_t *name)
@@ -662,6 +717,20 @@ static bool Flag(int argc, wchar_t **argv, const wchar_t *name)
         if (EqualsI(argv[i], name))
             return true;
     return false;
+}
+
+/* --units U (default: all). False, with a message, on a bad list: nothing must run then. */
+static bool UnitsOpt(int argc, wchar_t **argv, std::vector<UnitKind> &units)
+{
+    const wchar_t *u = Opt(argc, argv, L"--units");
+    bool given = Flag(argc, argv, L"--units");
+    if (!given)
+        return ParseUnitList(L"all", units);
+    if (u == nullptr || !ParseUnitList(u, units)) {
+        Err(L"--units takes x8p, twinx, x8p,twinx, all or none. Nothing changed.");
+        return false;
+    }
+    return true;
 }
 
 int wmain(int argc, wchar_t **argv)
@@ -688,7 +757,8 @@ int wmain(int argc, wchar_t **argv)
     if (EqualsI(cmd, L"check")) {
         rc = CmdCheck();
     } else if (EqualsI(cmd, L"bind") && argc >= 3) {
-        rc = CmdBind(argv[2], Flag(argc, argv, L"--stage-only"));
+        std::vector<UnitKind> units;
+        rc = UnitsOpt(argc, argv, units) ? CmdBind(argv[2], units, Flag(argc, argv, L"--stage-only")) : EXIT_ERROR;
     } else if (EqualsI(cmd, L"unbind")) {
         /* Strict: a mistyped "--unit" must never fall through to unbinding every unit. */
         const wchar_t *unit = Opt(argc, argv, L"--unit");
@@ -708,11 +778,16 @@ int wmain(int argc, wchar_t **argv)
         rc = CmdDefaultsRestore(argv[3], passes < 1 ? 1 : (passes > 10 ? 10 : passes));
     } else if (EqualsI(cmd, L"idle-wait") && argc >= 3) {
         int secs = _wtoi(argv[2]);
-        rc = CmdIdleWait(secs < 0 ? 0 : (secs > 3600 ? 3600 : secs), Flag(argc, argv, L"--ask"));
+        std::vector<UnitKind> units;
+        rc = UnitsOpt(argc, argv, units) ?
+             CmdIdleWait(secs < 0 ? 0 : (secs > 3600 ? 3600 : secs), Flag(argc, argv, L"--ask"), units) : EXIT_ERROR;
     } else if (EqualsI(cmd, L"quit-ua")) {
-        rc = CmdQuitUa();
+        std::vector<UnitKind> units;
+        rc = UnitsOpt(argc, argv, units) ? CmdQuitUa(units) : EXIT_ERROR;
     } else if (EqualsI(cmd, L"regdefaults") && argc >= 3) {
         rc = CmdRegDefaults(argv[2]);
+    } else if (EqualsI(cmd, L"cert") && argc == 4 && EqualsI(argv[2], L"remove-local")) {
+        rc = CmdCertRemoveLocal(argv[3]);
     } else if (EqualsI(cmd, L"cert") && argc >= 4 && (EqualsI(argv[2], L"add") || EqualsI(argv[2], L"remove"))) {
         const wchar_t *expect = Opt(argc, argv, L"--expect");
         const wchar_t *record = Opt(argc, argv, L"--record");

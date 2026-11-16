@@ -4904,8 +4904,8 @@
   "id": "F3",
   "behaviour": "Live crash log capture",
   "upstream": "done",
-  "ours": "notdone",
-  "evidence": "no own crash capture (Windows crash dumps only)",
+  "ours": "done",
+  "evidence": "Apollo Control crash capture: unhandled exception -> minidump in %LOCALAPPDATA%\\Avium\\ApolloControl\\crashes (last 10) + a log line; newest in Save diagnostics (main.cpp CrashFilter)",
   "n": 32,
   "key": "Services #32"
  },

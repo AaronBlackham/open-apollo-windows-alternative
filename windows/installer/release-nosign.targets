@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  release.cmd copies this file to <release folder>\src\Directory.Build.targets (never into the source tree).
+  MSBuild imports a Directory.Build.targets after the project's own properties, so the driver project's
+  SignMode TestSign is overridden in the release tree: the WDK signs nothing there and never uses a developer's
+  test certificate. stage.ps1 still strips any signature it finds and checks that the payload is unsigned.
+-->
+<Project>
+  <PropertyGroup>
+    <SignMode>Off</SignMode>
+  </PropertyGroup>
+</Project>

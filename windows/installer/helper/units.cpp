@@ -71,7 +71,7 @@ std::wstring FourPartHwid(const std::vector<std::wstring> &hardwareIds, const st
     for (auto &h : hardwareIds)
         if (IsFourPartUaHwid(h))
             return Upper(h);
-    /* PCI\VEN_1A00&DEV_0002&SUBSYS_00191A00&REV_00\8&5E6F7A8&1&000800200038 */
+    /* PCI\VEN_1A00&DEV_0002&SUBSYS_00191A00&REV_00\8&5E6F7A8&0&000000100010 */
     size_t first = instanceId.find(L'\\');
     if (first == std::wstring::npos)
         return std::wstring();
@@ -108,6 +108,93 @@ const wchar_t *UnitKindName(UnitKind k)
     case UNIT_TWINX: return L"Apollo Twin X";
     default:         return L"Universal Audio device";
     }
+}
+
+bool IsSupportedKind(UnitKind k)
+{
+    return k == UNIT_X8P || k == UNIT_TWINX;
+}
+
+const wchar_t *UnitHwid(UnitKind k)
+{
+    switch (k) {
+    case UNIT_X8P:   return X8P_HWID;
+    case UNIT_TWINX: return TWINX_HWID;
+    default:         return L"";
+    }
+}
+
+static std::wstring Trim(const std::wstring &s)
+{
+    size_t a = 0, b = s.size();
+    while (a < b && (s[a] == L' ' || s[a] == L'\t'))
+        a++;
+    while (b > a && (s[b - 1] == L' ' || s[b - 1] == L'\t'))
+        b--;
+    return s.substr(a, b - a);
+}
+
+bool KindIn(const std::vector<UnitKind> &kinds, UnitKind k)
+{
+    for (UnitKind x : kinds)
+        if (x == k)
+            return true;
+    return false;
+}
+
+bool ParseUnitList(const std::wstring &s, std::vector<UnitKind> &out)
+{
+    out.clear();
+    std::wstring t = Trim(s);
+    if (UnitIEq(t, L"all")) {
+        out = { UNIT_X8P, UNIT_TWINX };
+        return true;
+    }
+    if (UnitIEq(t, L"none"))
+        return true;
+    if (t.empty())
+        return false;
+    bool x8p = false, twinx = false;
+    size_t pos = 0;
+    for (;;) {
+        size_t comma = t.find(L',', pos);
+        std::wstring part = Trim(t.substr(pos, comma == std::wstring::npos ? std::wstring::npos : comma - pos));
+        if (UnitIEq(part, L"x8p")) {
+            if (x8p)
+                return false;
+            x8p = true;
+        } else if (UnitIEq(part, L"twinx")) {
+            if (twinx)
+                return false;
+            twinx = true;
+        } else {
+            return false;
+        }
+        if (comma == std::wstring::npos)
+            break;
+        pos = comma + 1;
+    }
+    if (x8p)
+        out.push_back(UNIT_X8P);
+    if (twinx)
+        out.push_back(UNIT_TWINX);
+    return true;
+}
+
+std::wstring UnitListText(const std::vector<UnitKind> &kinds)
+{
+    std::wstring s;
+    for (UnitKind k : kinds) {
+        if (!s.empty())
+            s += L",";
+        s += UnitKindKey(k);
+    }
+    return s.empty() ? std::wstring(L"none") : s;
+}
+
+bool NeedsSwitch(const Device &d)
+{
+    return IsSupportedKind(d.Kind) && d.Present && !(d.OnApollo() && !d.HasProblem);
 }
 
 DriverOwner OwnerOf(const std::wstring &service, const std::wstring &provider)
@@ -184,22 +271,29 @@ std::vector<size_t> UnitsWithHwid(const std::vector<Device> &devs, const std::ws
     return r;
 }
 
-QuitUaDecision DecideQuitUa(const std::vector<Device> &present, size_t &other)
+QuitUaDecision DecideQuitUa(const std::vector<Device> &present, const std::vector<UnitKind> &targets, size_t &other)
 {
-    const Device *x8p = nullptr;
-    for (auto &d : present)
-        if (d.IsX8p() && x8p == nullptr)
-            x8p = &d;
-    if (x8p == nullptr)
-        return QUIT_NO_X8P;
-    if (x8p->OnApollo())
-        return QUIT_X8P_ON_APOLLO;
-    if (x8p->Service.empty())
-        return QUIT_X8P_DRIVER_UNKNOWN;
-    for (size_t i = 0; i < present.size(); i++) {
-        if (&present[i] == x8p || UnitIEq(present[i].InstanceId, x8p->InstanceId))
+    bool anyTarget = false, leaving = false, unknown = false;
+    for (auto &d : present) {
+        if (!IsSupportedKind(d.Kind) || !KindIn(targets, d.Kind))
             continue;
-        if (present[i].Owner() == OWNER_UA) {
+        anyTarget = true;
+        if (d.Service.empty())
+            unknown = true;
+        else if (d.Owner() == OWNER_UA)
+            leaving = true;
+    }
+    if (!anyTarget)
+        return QUIT_NO_UNIT;
+    if (!leaving)
+        return unknown ? QUIT_DRIVER_UNKNOWN : QUIT_NOTHING_TO_RELEASE;
+    /* A unit that stays where it is (not a target: unselected, a Gen 2, another model) on UA's
+       driver still needs UA's apps. */
+    for (size_t i = 0; i < present.size(); i++) {
+        const Device &d = present[i];
+        if (IsSupportedKind(d.Kind) && KindIn(targets, d.Kind))
+            continue;
+        if (d.Owner() == OWNER_UA) {
             other = i;
             return QUIT_OTHER_ON_UA;
         }
@@ -216,13 +310,16 @@ std::vector<size_t> UnitsToHandBack(const std::vector<Device> &all)
     return r;
 }
 
-std::vector<size_t> UnitsOnOtherImage(const std::vector<Device> &present, const std::wstring &targetInstance,
+std::vector<size_t> UnitsOnOtherImage(const std::vector<Device> &present, const std::vector<std::wstring> &targetInstances,
                                       const std::wstring &packageVersion)
 {
     std::vector<size_t> r;
     for (size_t i = 0; i < present.size(); i++) {
         const Device &d = present[i];
-        if (UnitIEq(d.InstanceId, targetInstance) || !d.OnApollo())
+        bool target = false;
+        for (auto &t : targetInstances)
+            target = target || UnitIEq(d.InstanceId, t);
+        if (target || !d.OnApollo())
             continue;
         if (packageVersion.empty() || d.DriverVersion.empty() ||
             CompareDriverVersions(d.DriverVersion, packageVersion) != 0)
@@ -237,4 +334,26 @@ bool PackageInUse(const std::vector<Device> &all, const std::wstring &published)
         if (!published.empty() && UnitIEq(d.InfPath, published))
             return true;
     return false;
+}
+
+std::wstring DriverStoreFolder(const std::wstring &path)
+{
+    const std::wstring key = L"\\FILEREPOSITORY\\";
+    std::wstring up = Upper(path);
+    size_t at = up.find(key);
+    if (at == std::wstring::npos)
+        return std::wstring();
+    size_t start = at + key.size();
+    size_t end = up.find(L'\\', start);
+    if (end == std::wstring::npos || end == start)
+        return std::wstring();
+    return up.substr(start, end - start);
+}
+
+int LoadedImageMatches(const std::wstring &loadedImagePath, const std::wstring &packageStorePath)
+{
+    std::wstring a = DriverStoreFolder(loadedImagePath), b = DriverStoreFolder(packageStorePath);
+    if (a.empty() || b.empty())
+        return -1;
+    return a == b ? 1 : 0;
 }

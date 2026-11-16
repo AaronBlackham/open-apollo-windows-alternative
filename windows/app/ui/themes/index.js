@@ -2,6 +2,19 @@
 /* Theme packs (docs/THEMES.md 2). Made by tools/themes/make_index.py from themes/<id>/manifest.json: do not edit by hand. */
 window.ApolloThemes = { manifests: [
   {
+    "id": "classic",
+    "name": "Classic",
+    "order": 0,
+    "mode": "dark",
+    "metaphor": "No metaphor: a conventional digital mixer app, laid out the way console software usually is.",
+    "desc": "A standard mixer layout: channel strips, flat knobs and faders, lit buttons, plain meters.",
+    "layout": {
+      "browser": "list",
+      "params": "grid",
+      "composition": "strips"
+    }
+  },
+  {
     "id": "studio",
     "name": "Studio",
     "order": 1,

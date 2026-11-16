@@ -1,0 +1,13 @@
+{
+  "id": "classic",
+  "name": "Classic",
+  "order": 0,
+  "mode": "dark",
+  "metaphor": "No metaphor: a conventional digital mixer app, laid out the way console software usually is.",
+  "desc": "A standard mixer layout: channel strips, flat knobs and faders, lit buttons, plain meters.",
+  "layout": {
+    "browser": "list",
+    "params": "grid",
+    "composition": "strips"
+  }
+}

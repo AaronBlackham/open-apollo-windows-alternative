@@ -15,6 +15,16 @@ ships no Universal Audio files: it reads what the Apollo needs from your own UAD
 > **Experimental.** The driver is test-signed and has run on two units so far: an Apollo x8p and an Apollo Twin X,
 > both Gen 1. Expect rough edges.
 
+## Download
+
+Get `ApolloSetup-<version>.exe` from [Releases](https://github.com/AaronBlackham/open-apollo-windows-alternative/releases)
+and read its release notes first. It is a test build for the Apollo x8p and the Apollo Twin X Gen 1 on Windows 11 x64:
+Secure Boot has to be off and Windows test mode on (Setup asks, then one restart). Setup signs the driver on your own PC
+with a certificate made for that PC alone and deletes its private key right after, so you never trust anyone else's
+certificate. UAD plug-in hosting is not in the installer yet (it needs a developer setup, see
+[windows/docs/PLUGINS.md](windows/docs/PLUGINS.md)). Apollo Control opens in the Classic look, a standard mixer
+layout; Settings has the other themes.
+
 ## Status
 
 [![UA driver parity](windows/docs/status/badge-parity.svg)](windows/docs/status/)

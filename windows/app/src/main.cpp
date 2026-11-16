@@ -265,6 +265,51 @@ static void AppLog(_Printf_format_string_ const wchar_t *fmt, ...)
     ReleaseSRWLockExclusive(&g_logLock);
 }
 
+/*
+ * [Crash] Apollo Control's own crash capture (open-apollo parity "live crash log capture"): an unhandled exception writes
+ * a minidump (the thread stacks and the modules, no full memory) to %LOCALAPPDATA%\Avium\ApolloControl\crashes\ and a
+ * line to apollo-control.log; Save diagnostics takes the newest. The process then ends as Windows would end it. The
+ * folder keeps the last 10 dumps.
+ */
+#include <dbghelp.h>
+static LONG WINAPI CrashFilter(EXCEPTION_POINTERS *ep)
+{
+    static volatile LONG once = 0;
+    if (InterlockedExchange(&once, 1) != 0) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    std::wstring dir = KnownFolder(FOLDERID_LocalAppData) + L"\\Avium\\ApolloControl\\crashes";
+    SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    wchar_t name[64];
+    swprintf_s(name, L"\\apollo-control-%04u%02u%02u-%02u%02u%02u.dmp", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    std::wstring path = dir + name;
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    BOOL ok = FALSE;
+    if (f != INVALID_HANDLE_VALUE) {
+        MINIDUMP_EXCEPTION_INFORMATION mei{ GetCurrentThreadId(), ep, FALSE };
+        ok = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), f,
+                               (MINIDUMP_TYPE)(MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules), &mei, nullptr, nullptr);
+        CloseHandle(f);
+    }
+    AppLog(L"CRASH: exception 0x%08lX at %p; minidump %s%s", ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0,
+           ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionAddress : nullptr, path.c_str(), ok ? L"" : L" (NOT written)");
+    /* keep the newest 10 */
+    std::vector<std::wstring> dumps;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\apollo-control-*.dmp").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do { dumps.push_back(fd.cFileName); } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    std::sort(dumps.begin(), dumps.end());
+    for (size_t k = 0; dumps.size() > 10 && k < dumps.size() - 10; k++) {
+        DeleteFileW((dir + L"\\" + dumps[k]).c_str());
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 static std::wstring ErrorText(DWORD err)
 {
     wchar_t *buf = nullptr;
@@ -2300,6 +2345,8 @@ static HRESULT OnController(HRESULT hr, ICoreWebView2Controller *ctl)
         [](ICoreWebView2 *, ICoreWebView2ProcessFailedEventArgs *a) -> HRESULT {
             COREWEBVIEW2_PROCESS_FAILED_KIND kind;
             a->get_ProcessFailedKind(&kind);
+            AppLog(L"WebView2 process failed: kind %d%s", (int)kind,
+                   kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED ? L" (browser exited)" : L" (the page reloads)");   /* [Log] */
             if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED) {
                 Fatal(L"The WebView2 browser process stopped.", E_FAIL);
             } else if (g_webview) {
@@ -2468,6 +2515,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 int APIENTRY wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int)
 {
     g_inst = inst;
+    SetUnhandledExceptionFilter(CrashFilter);  /* [Crash] */
 
     int argc = 0;
     LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);

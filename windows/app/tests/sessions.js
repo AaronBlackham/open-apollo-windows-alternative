@@ -115,7 +115,7 @@ const stub = () => {
   check(await page.evaluate(() => Sess.save('Tracking')), 'Sess.save resolves true');
   const file = await page.evaluate(() => window.__files['Tracking.json']);
   const xp = file && file.units.find(u => u.id === X8P.id), tp = file && file.units.find(u => u.id === TWX.id);
-  check(file && file.format === 'apollo-control-session' && file.version === 1 && file.name === 'Tracking' && file.view.look === 'studio' && !!xp && !!tp,
+  check(file && file.format === 'apollo-control-session' && file.version === 1 && file.name === 'Tracking' && file.view.look === 'classic' && !!xp && !!tp,
     'the file: format, version 1, name, view, a part per unit');
   check(xp.inputs[0].gain === 40 && xp.inputs[1].p48 === true && xp.mix.main[0].level === -20 && xp.mix.cues[0].sends[1].level === -12 && xp.mix.aux[0].ret === -6 &&
     xp.monitor.source === 1 && xp.rate === 48000 && tp.inputs[0].gain === 30 && tp.inputs.length === 2,
@@ -220,8 +220,8 @@ const stub = () => {
   // 7. The session button: Ctrl+O opens the list, Esc closes it and gives focus back.
   await page.locator('body').click({ position: { x: 5, y: 600 } });
   await page.keyboard.press('Control+O');
-  check(await page.locator('#sessPanel').isVisible() && await page.locator('#sessPanel').getAttribute('data-layout') === 'console' &&
-    await page.evaluate(() => document.activeElement && document.activeElement.closest('#sessPanel') !== null), 'Ctrl+O: the list opens (Studio: the console menu), focus in it');
+  check(await page.locator('#sessPanel').isVisible() && await page.locator('#sessPanel').getAttribute('data-layout') === 'plain' &&
+    await page.evaluate(() => document.activeElement && document.activeElement.closest('#sessPanel') !== null), 'Ctrl+O: the list opens (Classic, the default: plain words), focus in it');
   await page.keyboard.press('Escape');
   check(await page.locator('#sessPanel').isHidden() && await page.evaluate(() => document.activeElement.id) === 'sessBtn', 'Esc closes it, focus back on the Session button');
 
@@ -282,7 +282,7 @@ const stub = () => {
   await demo.goto(ui + '?view=control');
   await demo.waitForTimeout(700);
   await demo.evaluate(async () => { Plug.demoFill(); await new Promise(r => setTimeout(r, 100)); await Sess.save('Tracking drums'); });
-  const want = { studio: 'console', cyber: 'hud', lab: 'table', mono: 'terminal', day: 'plain', arcade: 'slots' };
+  const want = { classic: 'plain', studio: 'console', cyber: 'hud', lab: 'table', mono: 'terminal', day: 'plain', arcade: 'slots' };
   const seen = [];
   for (const [look, lay] of Object.entries(want)) {
     await demo.evaluate(l => { setLook(l); Sess.open(); }, look);

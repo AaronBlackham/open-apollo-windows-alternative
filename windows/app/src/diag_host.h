@@ -181,6 +181,16 @@ static inline void Save(Post post, const std::wstring &AppVersion)
     CopyIf(local + L"\\plughelper.log", dir + L"\\app\\plughelper.log", files);
     CopyIf(local + L"\\apollo-control.log", dir + L"\\app\\apollo-control.log", files);     /* [Log] */
     CopyIf(local + L"\\apollo-control.log.1", dir + L"\\app\\apollo-control.log.1", files);
+    {   /* [Crash] the newest minidump of Apollo Control, if any */
+        WIN32_FIND_DATAW fd;
+        std::wstring newest;
+        HANDLE f = FindFirstFileW((local + L"\\crashes\\apollo-control-*.dmp").c_str(), &fd);
+        if (f != INVALID_HANDLE_VALUE) {
+            do { if (newest.empty() || _wcsicmp(fd.cFileName, newest.c_str()) > 0) newest = fd.cFileName; } while (FindNextFileW(f, &fd));
+            FindClose(f);
+        }
+        if (!newest.empty()) CopyIf(local + L"\\crashes\\" + newest, dir + L"\\app\\" + newest, files);
+    }
     /* a source-tree build: the scripts' logs (app\bin\apollo-control.exe -> tools\phase1) */
     wchar_t exe[MAX_PATH];
     if (GetModuleFileNameW(nullptr, exe, MAX_PATH)) {

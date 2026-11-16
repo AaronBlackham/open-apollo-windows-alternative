@@ -1,9 +1,9 @@
 /*
- * Windows audio: the default endpoints (saved before PnP touches the x8p and put back afterwards,
- * because Windows may make a new Apollo endpoint the default), and everything that holds the x8p
- * (ACX streams and the ASIO client on the x8p's own interface, audio sessions on "(Apollo x8p"
- * endpoints, our own tools). A Twin X never makes the x8p busy: it has no endpoints on our driver
- * and its own device interface is skipped. Ported from tools\phase1\audio-helpers.ps1.
+ * Windows audio: the default endpoints (saved before PnP touches a unit and put back afterwards,
+ * because Windows may make a new Apollo endpoint the default), and everything that holds a unit
+ * being switched (ACX streams and the ASIO client on that unit's own interface, audio sessions on
+ * its endpoints, the combined set's and, while it is on UA's driver, UA's; our own tools).
+ * A unit that is not being switched is never opened. Ported from tools\phase1\audio-helpers.ps1.
  * Also the read-only GET_INFO query 'check' uses for each unit on our driver.
  */
 #include "common.h"
@@ -306,12 +306,22 @@ static std::wstring ProcessName(DWORD pid)
     return r;
 }
 
-/* Our tools open the device directly (control and ASIO IOCTLs, raw ring access). Which unit a
-   process holds is not visible from outside, so these count whatever unit they opened. */
+/* "the Apollo x8p and the Apollo Twin X" */
+static std::wstring KindNames(const std::vector<UnitKind> &units)
+{
+    std::wstring s;
+    for (size_t i = 0; i < units.size(); i++)
+        s += (i == 0 ? L"the " : (i + 1 == units.size() ? L" and the " : L", the ")) + std::wstring(UnitKindName(units[i]));
+    return s.empty() ? std::wstring(L"the Apollo units") : s;
+}
+
+/* Our tools open the devices directly (control and ASIO IOCTLs, raw ring access); Apollo Control
+   holds every unit. Which unit a process holds is not visible from outside, so these count for
+   whatever units are being switched. */
 static void ToolReasons(std::vector<std::wstring> &why)
 {
     static const wchar_t *tools[] = { L"apollo-control.exe", L"asio-test.exe", L"loopback-test.exe",
-                                      L"wasapi-loop.exe", L"apollo-diag.exe" };
+                                      L"wasapi-loop.exe", L"apollo-diag.exe", L"apollo-plug.exe" };
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE)
         return;
@@ -320,7 +330,7 @@ static void ToolReasons(std::vector<std::wstring> &why)
     for (BOOL ok = Process32FirstW(snap, &pe); ok; ok = Process32NextW(snap, &pe)) {
         for (const wchar_t *t : tools)
             if (EqualsI(pe.szExeFile, t))
-                why.push_back(Fmt(L"%s (PID %lu) may have the x8p open", pe.szExeFile, pe.th32ProcessID));
+                why.push_back(Fmt(L"%s (PID %lu) has the Apollo units open (quit it)", pe.szExeFile, pe.th32ProcessID));
     }
     CloseHandle(snap);
 }
@@ -409,10 +419,10 @@ DriverUnitInfo QueryDriverUnit(const std::wstring &instanceId)
     return r;
 }
 
-/* ACX streams and the ASIO client, from the driver itself (USER IOCTLs). The x8p's interface
-   only: a Twin X on apollo.sys has its own interface, no endpoints and no ASIO, and nothing on it
-   stops the x8p's driver from being swapped (audio-helpers.ps1 [G2]: --unit x8p). */
-static void DriverReasons(std::vector<std::wstring> &why)
+/* ACX streams and the ASIO client, from the driver itself (USER IOCTLs), on the interface of every
+   unit being switched that is on our driver now. A unit that is not being switched is not opened
+   at all (audio-helpers.ps1 [G2]: --unit). */
+static void DriverReasons(const std::vector<UnitKind> &units, std::vector<std::wstring> &why)
 {
     std::vector<ApolloInterface> ifs = FindApolloInterfaces();
     if (ifs.empty())
@@ -421,16 +431,20 @@ static void DriverReasons(std::vector<std::wstring> &why)
     for (auto &a : ifs) {
         UnitKind kind = UNIT_OTHER;
         bool known = InterfaceUnitByDevice(a, present, kind);
-        if (known && kind != UNIT_X8P)
-            continue;                   /* a Twin X (or other unit): not opened at all */
+        if (known && !KindIn(units, kind))
+            continue;
         const wchar_t *path = a.Path.c_str();
         HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
         if (h == INVALID_HANDLE_VALUE)
             continue;
-        if (!known && InterfaceUnitByDriver(h) != UNIT_X8P) {
-            CloseHandle(h);
-            continue;
+        if (!known) {
+            kind = InterfaceUnitByDriver(h);
+            if (!KindIn(units, kind)) {
+                CloseHandle(h);
+                continue;
+            }
         }
+        const wchar_t *name = UnitKindName(kind);
         HELPER_ENDPOINTS *e = (HELPER_ENDPOINTS *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(HELPER_ENDPOINTS));
         DWORD ret = 0;
         if (e != nullptr &&
@@ -444,10 +458,10 @@ static void DriverReasons(std::vector<std::wstring> &why)
                     running++;
             }
             if (running > 0)
-                why.push_back(Fmt(L"%lu Windows audio stream(s) RUNNING on the x8p (Windows refuses to remove the "
-                                  L"driver under them)", running));
+                why.push_back(Fmt(L"%lu Windows audio stream(s) RUNNING on the %s (Windows refuses to remove the "
+                                  L"driver under them)", running, name));
             else if (e->Prepared > 0)
-                why.push_back(Fmt(L"%lu Windows audio stream(s) open (paused) on the x8p", e->Prepared));
+                why.push_back(Fmt(L"%lu Windows audio stream(s) open (paused) on the %s", e->Prepared, name));
         }
         if (e != nullptr)
             HeapFree(GetProcessHeap(), 0, e);
@@ -457,17 +471,42 @@ static void DriverReasons(std::vector<std::wstring> &why)
         if (DeviceIoControl(h, HELPER_IOCTL_GET_ENGINE_STATS, nullptr, 0, &s, sizeof(s), &ret, nullptr) &&
             ret >= offsetof(HELPER_ENGINE_STATS, AsioState) + sizeof(ULONG)) {
             if (s.AsioState == HELPER_ASIO_STATE_RUNNING)
-                why.push_back(L"an ASIO host is streaming through the Apollo x8p (Avium) ASIO driver");
+                why.push_back(Fmt(L"an ASIO host is streaming through the Avium ASIO driver on the %s", name));
             else if (s.AsioState == HELPER_ASIO_STATE_OPEN)
-                why.push_back(L"an ASIO host has the Apollo x8p (Avium) ASIO driver open");
+                why.push_back(Fmt(L"an ASIO host has the Avium ASIO driver open on the %s", name));
         }
         CloseHandle(h);
     }
 }
 
-/* Active audio sessions on the x8p's endpoints ("... (Apollo x8p (open driver, test build))"). */
-static void SessionReasons(std::vector<std::wstring> &why)
+/* Which endpoint names belong to the units being switched: "(Apollo x8p", "(Apollo Twin X", the
+   combined set's "(Apollo)" (both units stream in it), and UA's "(Universal Audio Thunderbolt"
+   while one of them is still on UA's driver (UA's endpoints do not say which unit they are). */
+static std::vector<std::wstring> EndpointTags(const std::vector<UnitKind> &units)
 {
+    std::vector<std::wstring> tags;
+    if (units.empty())
+        return tags;
+    if (KindIn(units, UNIT_X8P))
+        tags.push_back(ENDPOINT_TAG_X8P);
+    if (KindIn(units, UNIT_TWINX))
+        tags.push_back(ENDPOINT_TAG_TWINX);
+    tags.push_back(ENDPOINT_TAG_AGG);
+    for (auto &d : FindUaDevices(false)) {
+        if (KindIn(units, d.Kind) && d.Owner() == OWNER_UA) {
+            tags.push_back(ENDPOINT_TAG_UA);
+            break;
+        }
+    }
+    return tags;
+}
+
+/* Active audio sessions on those endpoints. */
+static void SessionReasons(const std::vector<UnitKind> &units, std::vector<std::wstring> &why)
+{
+    std::vector<std::wstring> tags = EndpointTags(units);
+    if (tags.empty())
+        return;
     IMMDeviceEnumerator *en = Enumerator();
     if (en == nullptr)
         return;
@@ -482,9 +521,12 @@ static void SessionReasons(std::vector<std::wstring> &why)
                 if (FAILED(col->Item(i, &d)) || d == nullptr)
                     continue;
                 std::wstring name = DeviceName(d);
+                bool ours = false;
+                for (auto &t : tags)
+                    ours = ours || ContainsI(name, t);
                 IAudioSessionManager2 *mgr = nullptr;
                 IAudioSessionEnumerator *se = nullptr;
-                if (ContainsI(name, ENDPOINT_TAG) &&
+                if (ours &&
                     SUCCEEDED(d->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void **)&mgr)) &&
                     mgr != nullptr && SUCCEEDED(mgr->GetSessionEnumerator(&se)) && se != nullptr) {
                     int count = 0;
@@ -517,12 +559,14 @@ static void SessionReasons(std::vector<std::wstring> &why)
     en->Release();
 }
 
-std::vector<std::wstring> ApolloBusyReasons()
+std::vector<std::wstring> ApolloBusyReasons(const std::vector<UnitKind> &units)
 {
     std::vector<std::wstring> why;
+    if (units.empty())
+        return why;
     ToolReasons(why);
-    DriverReasons(why);
-    SessionReasons(why);
+    DriverReasons(units, why);
+    SessionReasons(units, why);
     return why;
 }
 
@@ -567,25 +611,26 @@ static wchar_t AskKey()
     return L'\n';
 }
 
-/* Exit 0 when nothing uses the x8p (or the user chose to go ahead), 3 when it is still in use. */
-int CmdIdleWait(int seconds, bool interactive)
+/* Exit 0 when nothing uses the units (or the user chose to go ahead), 3 when one is still in use. */
+int CmdIdleWait(int seconds, bool interactive, const std::vector<UnitKind> &units)
 {
-    std::vector<std::wstring> why = ApolloBusyReasons();
+    std::wstring names = KindNames(units);
+    std::vector<std::wstring> why = ApolloBusyReasons(units);
     if (why.empty()) {
-        Out(L"The x8p is free.");
+        Out(L"Nothing is using %s.", names.c_str());
         return EXIT_OK;
     }
-    Out(L"The x8p is in use:");
+    Out(L"In use (%s):", names.c_str());
     PrintReasons(why);
     if (seconds > 0) {
         Out(L"Close those programs, or stop their playback/recording (Ableton: Preferences, Audio, Driver Type");
-        Out(L"away from ASIO). Waiting up to %d s for the x8p to be free...", seconds);
+        Out(L"away from ASIO). Waiting up to %d s...", seconds);
         ULONGLONG deadline = GetTickCount64() + (ULONGLONG)seconds * 1000;
         while (GetTickCount64() < deadline) {
             Sleep(2000);
-            why = ApolloBusyReasons();
+            why = ApolloBusyReasons(units);
             if (why.empty()) {
-                Out(L"The x8p is free.");
+                Out(L"Nothing is using %s now.", names.c_str());
                 return EXIT_OK;
             }
         }
@@ -607,9 +652,9 @@ int CmdIdleWait(int seconds, bool interactive)
             if (!RestartAudioService())
                 Out(L"Could not restart it: %s", ErrText(GetLastError()).c_str());
             Sleep(3000);
-            why = ApolloBusyReasons();
+            why = ApolloBusyReasons(units);
             if (why.empty()) {
-                Out(L"The x8p is free.");
+                Out(L"Nothing is using %s now.", names.c_str());
                 return EXIT_OK;
             }
             PrintReasons(why);

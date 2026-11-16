@@ -144,9 +144,10 @@ function defaultConfig() {
     channels: Array.from({ length: PREAMPS }, () => ({ name: '', color: '', hidden: false })),
     safety: { confirm48v: true, monitorLimitDb: 0, lockGain: false },
     meters: { holdMs: 2000, floorDb: -60, releaseDbPerSec: 20 },
-    /* look: LOOKS id; followSystem: Day while Windows is light; accent: 'look' (the look's own) or an ACCENTS key;
-       scanlines: Arcade's overlay. theme: kept for configs from before the looks (migrateLooks). */
-    appearance: { theme: 'dark', look: 'studio', followSystem: false, accent: 'look', scale: 100, scanlines: false },
+    /* look: LOOKS id (a new config starts on Classic, the standard mixer layout; a saved look is kept); followSystem: Day
+       while Windows is light; accent: 'look' (the look's own) or an ACCENTS key; scanlines: Arcade's overlay. theme: kept
+       for configs from before the looks (migrateLooks). */
+    appearance: { theme: 'dark', look: 'classic', followSystem: false, accent: 'look', scale: 100, scanlines: false },
     plb: { closed: false },
     bridge: { std: 'vu' },
     auxStrips: { open: false },        /* [Ins] the console layouts show the AUX 1 / AUX 2 strips (the master's AUX button) */             /* [Themes] Studio's meter bridge: vu, ppm or k14 */            /* [Plug-ins] the Control view's plug-in browser collapsed */

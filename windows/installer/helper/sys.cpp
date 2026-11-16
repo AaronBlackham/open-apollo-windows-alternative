@@ -1,13 +1,14 @@
 /*
- * System state (Secure Boot, test signing, BitLocker), the test certificate, and the driver's
- * registry defaults from defaults.json.
+ * System state (Secure Boot, test signing, BitLocker), certificates (the per-PC ones
+ * sign-local.ps1 makes, and the developer test certificate an install before Nov 16 2026 added),
+ * and the driver's registry defaults from defaults.json.
  */
 #include "common.h"
+#include "defaults_plan.h"
 #include <wbemidl.h>
 #include <wincrypt.h>
+#include <ncrypt.h>
 #include <oleauto.h>
-#include <stdlib.h>
-#include <math.h>
 
 /* ------------------------------------------------------------------ */
 /* Secure Boot                                                         */
@@ -297,8 +298,12 @@ int BitLockerProtection(std::wstring &drive, std::wstring &detail)
 }
 
 /* ------------------------------------------------------------------ */
-/* certificate                                                         */
+/* a certificate file (cert add / cert remove)                         */
 /* ------------------------------------------------------------------ */
+
+/* Releases before Nov 16 2026 shipped driver\apollo.cer (a developer test certificate) and added it
+   with "cert add ... --record state\cert-record.txt"; their uninstall entry still runs
+   "cert remove ... --record" through this code. Setup no longer adds any certificate file. */
 
 static const wchar_t *kCertStores[] = { L"Root", L"TrustedPublisher" };
 
@@ -415,11 +420,14 @@ int CmdCert(bool add, const std::wstring &cer, const std::wstring &expectArg, co
                 rc = EXIT_ERROR;
             }
         } else {
-            bool listed = !recExists;
+            /* With --record, only the stores the record names (a missing record = none of them:
+               never guess that Setup added a certificate). Without --record: both stores. */
+            bool listed = record.empty();
             for (auto &r : recorded)
                 listed = listed || EqualsI(r, name);
             if (!listed) {
-                Out(L"  LocalMachine\\%s: left in place (it was there before Apollo setup ran)", name);
+                Out(L"  LocalMachine\\%s: left in place (%s)", name,
+                    recExists ? L"it was there before Apollo setup ran" : L"no record that Apollo setup added it");
             } else {
                 int removed = 0;
                 for (;;) {
@@ -448,327 +456,210 @@ int CmdCert(bool add, const std::wstring &cer, const std::wstring &expectArg, co
 }
 
 /* ------------------------------------------------------------------ */
-/* registry defaults: a small JSON reader                               */
+/* certificates Setup made on this PC (sign-local.ps1)                 */
 /* ------------------------------------------------------------------ */
 
-struct JVal {
-    enum Type { Null, Bool, Num, Str, Arr, Obj } T = Null;
-    bool B = false;
-    double N = 0;
-    bool Integral = false;
-    std::wstring S;
-    std::vector<JVal> A;
-    std::vector<std::pair<std::wstring, JVal>> O;
-    const JVal *Get(const wchar_t *k) const
-    {
-        for (auto &p : O)
-            if (p.first == k)
-                return &p.second;
-        return nullptr;
-    }
-};
-
-class JParser {
-public:
-    JParser(const char *p, const char *e) : P(p), E(e) {}
-    bool Parse(JVal &v)
-    {
-        if (!Value(v, 0))
-            return false;
-        Ws();
-        return P == E;
-    }
-    size_t Offset(const char *start) const { return (size_t)(P - start); }
-
-private:
-    const char *P, *E;
-    void Ws()
-    {
-        while (P < E && (*P == ' ' || *P == '\t' || *P == '\r' || *P == '\n'))
-            P++;
-    }
-    bool Lit(const char *s)
-    {
-        size_t n = strlen(s);
-        if ((size_t)(E - P) < n || memcmp(P, s, n) != 0)
-            return false;
-        P += n;
-        return true;
-    }
-    bool String(std::wstring &out)
-    {
-        if (P >= E || *P != '"')
-            return false;
-        P++;
-        std::string u;
-        while (P < E && *P != '"') {
-            char c = *P++;
-            if ((unsigned char)c < 0x20)
-                return false;
-            if (c != '\\') {
-                u += c;
-                continue;
-            }
-            if (P >= E)
-                return false;
-            c = *P++;
-            switch (c) {
-            case '"': u += '"'; break;
-            case '\\': u += '\\'; break;
-            case '/': u += '/'; break;
-            case 'b': u += '\b'; break;
-            case 'f': u += '\f'; break;
-            case 'n': u += '\n'; break;
-            case 'r': u += '\r'; break;
-            case 't': u += '\t'; break;
-            case 'u': {
-                if (E - P < 4)
-                    return false;
-                unsigned cp = 0;
-                for (int i = 0; i < 4; i++) {
-                    char h = *P++;
-                    cp <<= 4;
-                    if (h >= '0' && h <= '9') cp |= (unsigned)(h - '0');
-                    else if (h >= 'a' && h <= 'f') cp |= (unsigned)(h - 'a' + 10);
-                    else if (h >= 'A' && h <= 'F') cp |= (unsigned)(h - 'A' + 10);
-                    else return false;
-                }
-                std::wstring w(1, (wchar_t)cp);
-                u += ToUtf8(w);
-                break;
-            }
-            default:
-                return false;
-            }
-        }
-        if (P >= E)
-            return false;
-        P++;
-        out = FromUtf8(u);
-        return true;
-    }
-    bool Number(JVal &v)
-    {
-        const char *s = P;
-        if (P < E && *P == '-')
-            P++;
-        bool frac = false;
-        while (P < E && ((*P >= '0' && *P <= '9') || *P == '.' || *P == 'e' || *P == 'E' || *P == '+' || *P == '-')) {
-            if (*P == '.' || *P == 'e' || *P == 'E')
-                frac = true;
-            P++;
-        }
-        if (P == s)
-            return false;
-        std::string t(s, P);
-        char *end = nullptr;
-        v.T = JVal::Num;
-        v.N = strtod(t.c_str(), &end);
-        v.Integral = !frac;
-        return end != nullptr && *end == '\0';
-    }
-    bool Value(JVal &v, int depth)
-    {
-        if (depth > 32)
-            return false;
-        Ws();
-        if (P >= E)
-            return false;
-        if (*P == '{') {
-            P++;
-            v.T = JVal::Obj;
-            Ws();
-            if (P < E && *P == '}') {
-                P++;
-                return true;
-            }
-            for (;;) {
-                Ws();
-                std::wstring k;
-                if (!String(k))
-                    return false;
-                Ws();
-                if (P >= E || *P++ != ':')
-                    return false;
-                JVal child;
-                if (!Value(child, depth + 1))
-                    return false;
-                v.O.push_back({ k, child });
-                Ws();
-                if (P < E && *P == ',') {
-                    P++;
-                    continue;
-                }
-                if (P < E && *P == '}') {
-                    P++;
-                    return true;
-                }
-                return false;
-            }
-        }
-        if (*P == '[') {
-            P++;
-            v.T = JVal::Arr;
-            Ws();
-            if (P < E && *P == ']') {
-                P++;
-                return true;
-            }
-            for (;;) {
-                JVal child;
-                if (!Value(child, depth + 1))
-                    return false;
-                v.A.push_back(child);
-                Ws();
-                if (P < E && *P == ',') {
-                    P++;
-                    continue;
-                }
-                if (P < E && *P == ']') {
-                    P++;
-                    return true;
-                }
-                return false;
-            }
-        }
-        if (*P == '"') {
-            v.T = JVal::Str;
-            return String(v.S);
-        }
-        if (Lit("true")) {
-            v.T = JVal::Bool;
-            v.B = true;
-            return true;
-        }
-        if (Lit("false")) {
-            v.T = JVal::Bool;
-            v.B = false;
-            return true;
-        }
-        if (Lit("null")) {
-            v.T = JVal::Null;
-            return true;
-        }
-        return Number(v);
-    }
-};
-
-static bool ValidValueName(const std::wstring &n)
+/* A 40-hex-digit SHA-1 thumbprint, upper case; "" if the line is not one. */
+static std::wstring ThumbLine(std::wstring line)
 {
-    if (n.empty() || n.size() > 64)
+    std::wstring t;
+    for (wchar_t c : line) {
+        if (c == L' ' || c == L'\t' || c == L'\r' || c == L':')
+            continue;
+        if (c >= L'a' && c <= L'f')
+            c = (wchar_t)(c - L'a' + L'A');
+        if (!((c >= L'0' && c <= L'9') || (c >= L'A' && c <= L'F')))
+            return std::wstring();
+        t += c;
+    }
+    return t.size() == 40 ? t : std::wstring();
+}
+
+static bool HexToBytes(const std::wstring &hex, BYTE *out, size_t n)
+{
+    if (hex.size() != n * 2)
         return false;
-    for (wchar_t c : n)
-        if (!((c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z') || (c >= L'0' && c <= L'9') || c == L'_'))
-            return false;
+    for (size_t i = 0; i < n; i++) {
+        unsigned v = 0;
+        for (int k = 0; k < 2; k++) {
+            wchar_t c = hex[i * 2 + k];
+            v <<= 4;
+            if (c >= L'0' && c <= L'9') v |= (unsigned)(c - L'0');
+            else if (c >= L'A' && c <= L'F') v |= (unsigned)(c - L'A' + 10);
+            else return false;
+        }
+        out[i] = (BYTE)v;
+    }
     return true;
 }
 
-static bool ToDword(const JVal &v, DWORD &out)
+/* Removes every certificate with this SHA-1 from one LocalMachine store. -1 = could not open or
+   delete, else how many were removed. */
+static int RemoveFromStore(const wchar_t *name, CRYPT_HASH_BLOB &blob)
 {
-    if (v.T == JVal::Num && v.Integral && v.N >= 0 && v.N <= 4294967295.0 && floor(v.N) == v.N) {
-        out = (DWORD)v.N;
-        return true;
+    HCERTSTORE st = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
+                                  CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG, name);
+    if (st == nullptr) {
+        DWORD e = GetLastError();
+        if (e == ERROR_FILE_NOT_FOUND)
+            return 0;
+        Err(L"  LocalMachine\\%s: cannot open: %s", name, ErrText(e).c_str());
+        return -1;
     }
-    if (v.T == JVal::Str && !v.S.empty()) {
-        wchar_t *end = nullptr;
-        unsigned long long x = wcstoull(v.S.c_str(), &end, 0);
-        if (end != nullptr && *end == L'\0' && x <= 0xFFFFFFFFull) {
-            out = (DWORD)x;
-            return true;
+    int removed = 0;
+    for (;;) {
+        PCCERT_CONTEXT found = CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
+                                                          CERT_FIND_SHA1_HASH, &blob, nullptr);
+        if (found == nullptr)
+            break;
+        if (!CertDeleteCertificateFromStore(found)) {   /* frees found either way */
+            Err(L"  LocalMachine\\%s: could not remove: %s", name, ErrText(GetLastError()).c_str());
+            removed = -1;
+            break;
         }
+        removed++;
     }
-    return false;
+    CertCloseStore(st, 0);
+    return removed;
+}
+
+/* A certificate in LocalMachine\My (where sign-local.ps1 makes it) whose private key survived:
+   delete the key, then the certificate. sign-local deletes both itself; this is the clean-up when
+   it could not (it says so, and Setup then runs this). */
+static int RemoveFromMyWithKey(CRYPT_HASH_BLOB &blob)
+{
+    HCERTSTORE st = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0,
+                                  CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG, L"My");
+    if (st == nullptr)
+        return 0;
+    int removed = 0;
+    for (;;) {
+        PCCERT_CONTEXT found = CertFindCertificateInStore(st, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
+                                                          CERT_FIND_SHA1_HASH, &blob, nullptr);
+        if (found == nullptr)
+            break;
+        HCRYPTPROV_OR_NCRYPT_KEY_HANDLE key = 0;
+        DWORD spec = 0;
+        BOOL mustFree = FALSE;
+        if (CryptAcquireCertificatePrivateKey(found, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG | CRYPT_ACQUIRE_SILENT_FLAG,
+                                              nullptr, &key, &spec, &mustFree) && spec == CERT_NCRYPT_KEY_SPEC) {
+            if (NCryptDeleteKey((NCRYPT_KEY_HANDLE)key, 0) == ERROR_SUCCESS) {
+                Out(L"  LocalMachine\\My: deleted a private key left behind");
+                mustFree = FALSE;   /* NCryptDeleteKey frees the handle */
+            }
+            if (mustFree)
+                NCryptFreeObject((NCRYPT_KEY_HANDLE)key);
+        }
+        if (!CertDeleteCertificateFromStore(found)) {
+            Err(L"  LocalMachine\\My: could not remove: %s", ErrText(GetLastError()).c_str());
+            removed = -1;
+            break;
+        }
+        removed++;
+    }
+    CertCloseStore(st, 0);
+    return removed;
 }
 
 /*
- * defaults.json:
- *   { "overwrite": false,
- *     "values": { "StripsEnable": 0,                     number      -> REG_DWORD
- *                 "Name": { "type": "dword", "data": "0xFF", "overwrite": true },
- *                 "Text": { "type": "sz", "data": "..." } } }
- * Keys starting with "_" are comments. "overwrite": false keeps a value that is already set (an
- * upgrade keeps the user's tuning); per-value "overwrite" wins over the top-level one.
+ * cert remove-local <local-cert.txt>: the certificates sign-local.ps1 made on this PC, one SHA-1
+ * thumbprint per line (lines that are not one are ignored). Each is removed from LocalMachine
+ * Trusted Root and Trusted Publishers, and from LocalMachine\My (key included) should one be left
+ * there. Only these exact thumbprints: nothing else in those stores is touched. The file is
+ * rewritten with the thumbprints that could not be removed (deleted when none are left).
  */
-int CmdRegDefaults(const std::wstring &file)
+int CmdCertRemoveLocal(const std::wstring &file)
 {
-    if (!RequireElevated(L"regdefaults"))
+    if (!RequireElevated(L"cert remove-local"))
         return EXIT_NOT_ELEVATED;
     std::vector<BYTE> data;
     if (!ReadFileBytes(file, data)) {
-        Err(L"Cannot read %s: %s", file.c_str(), ErrText(GetLastError()).c_str());
+        DWORD e = GetLastError();
+        if (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND) {
+            Out(L"No %s: no certificate was made on this PC by Apollo setup.", file.c_str());
+            return EXIT_OK;
+        }
+        Err(L"Cannot read %s: %s", file.c_str(), ErrText(e).c_str());
         return EXIT_ERROR;
     }
-    const char *b = (const char *)data.data(), *e = b + data.size();
-    if (data.size() >= 3 && (BYTE)b[0] == 0xEF && (BYTE)b[1] == 0xBB && (BYTE)b[2] == 0xBF)
-        b += 3;
-    JVal root;
-    JParser jp(b, e);
-    if (!jp.Parse(root) || root.T != JVal::Obj) {
-        Err(L"%s is not valid JSON (stopped near byte %zu): nothing written.", file.c_str(), jp.Offset(b));
-        return EXIT_ERROR;
+    std::wstring t = FromUtf8(std::string(data.begin(), data.end()));
+    std::vector<std::wstring> thumbs;
+    size_t pos = 0;
+    while (pos < t.size()) {
+        size_t eol = t.find(L'\n', pos);
+        std::wstring line = t.substr(pos, eol == std::wstring::npos ? std::wstring::npos : eol - pos);
+        pos = eol == std::wstring::npos ? t.size() : eol + 1;
+        std::wstring th = ThumbLine(line);
+        bool dup = false;
+        for (auto &x : thumbs)
+            dup = dup || x == th;
+        if (!th.empty() && !dup)
+            thumbs.push_back(th);
     }
-    const JVal *ov = root.Get(L"overwrite");
-    bool overwriteAll = ov != nullptr && ov->T == JVal::Bool && ov->B;
-    const JVal *values = root.Get(L"values");
-    if (values == nullptr || values->T != JVal::Obj) {
-        Err(L"%s has no \"values\" object: nothing written.", file.c_str());
-        return EXIT_ERROR;
-    }
-
-    /* Validate everything before writing anything. */
-    struct Item { std::wstring Name; DWORD Type; DWORD Dw; std::wstring Sz; bool Overwrite; };
-    std::vector<Item> items;
-    for (auto &kv : values->O) {
-        if (!kv.first.empty() && kv.first[0] == L'_')
+    if (thumbs.empty())
+        Out(L"%s lists no certificate.", file.c_str());
+    int rc = EXIT_OK;
+    std::vector<std::wstring> left;
+    for (auto &th : thumbs) {
+        BYTE hash[20];
+        if (!HexToBytes(th, hash, sizeof(hash)))
             continue;
-        if (!ValidValueName(kv.first)) {
-            Err(L"Bad value name '%s' (letters, digits, _ only): nothing written.", kv.first.c_str());
-            return EXIT_ERROR;
+        CRYPT_HASH_BLOB blob = { sizeof(hash), hash };
+        Out(L"Certificate %s (made on this PC by Apollo setup):", th.c_str());
+        bool ok = true;
+        for (const wchar_t *name : kCertStores) {
+            int n = RemoveFromStore(name, blob);
+            if (n < 0)
+                ok = false;
+            else
+                Out(L"  LocalMachine\\%s: %s", name, n ? L"removed" : L"was not there");
         }
-        Item it = { kv.first, REG_DWORD, 0, std::wstring(), overwriteAll };
-        const JVal *dataV = &kv.second;
-        std::wstring type = L"dword";
-        if (kv.second.T == JVal::Obj) {
-            const JVal *t = kv.second.Get(L"type");
-            const JVal *o = kv.second.Get(L"overwrite");
-            dataV = kv.second.Get(L"data");
-            if (t != nullptr && t->T == JVal::Str)
-                type = Lower(t->S);
-            if (o != nullptr && o->T == JVal::Bool)
-                it.Overwrite = o->B;
-            if (dataV == nullptr) {
-                Err(L"'%s' has no \"data\": nothing written.", kv.first.c_str());
-                return EXIT_ERROR;
-            }
-        } else if (kv.second.T == JVal::Str) {
-            type = L"sz";
+        if (RemoveFromMyWithKey(blob) < 0)
+            ok = false;
+        if (!ok) {
+            rc = EXIT_ERROR;
+            left.push_back(th);
         }
-        if (type == L"dword") {
-            if (!ToDword(*dataV, it.Dw)) {
-                Err(L"'%s' needs a whole number 0..4294967295: nothing written.", kv.first.c_str());
-                return EXIT_ERROR;
-            }
-        } else if (type == L"sz" && dataV->T == JVal::Str) {
-            it.Type = REG_SZ;
-            it.Sz = dataV->S;
-        } else {
-            Err(L"'%s': type must be \"dword\" or \"sz\": nothing written.", kv.first.c_str());
-            return EXIT_ERROR;
-        }
-        items.push_back(it);
     }
+    if (left.empty()) {
+        DeleteFileW(file.c_str());
+    } else {
+        std::wstring keep;
+        for (auto &th : left)
+            keep += th + L"\r\n";
+        std::string u = ToUtf8(keep);
+        HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            DWORD done = 0;
+            WriteFile(h, u.data(), (DWORD)u.size(), &done, nullptr);
+            CloseHandle(h);
+        }
+    }
+    return rc;
+}
 
+/* ------------------------------------------------------------------ */
+/* registry defaults (defaults.json, defaults_plan.cpp)                */
+/* ------------------------------------------------------------------ */
+
+static int WriteValues(const std::wstring &sub, const std::vector<DefaultItem> &items)
+{
+    std::wstring path = APOLLO_PARAMS_KEY;
+    if (!sub.empty())
+        path += L"\\" + sub;
     HKEY k = nullptr;
     DWORD disp = 0;
-    LSTATUS st = RegCreateKeyExW(HKEY_LOCAL_MACHINE, APOLLO_PARAMS_KEY, 0, nullptr, 0,
+    LSTATUS st = RegCreateKeyExW(HKEY_LOCAL_MACHINE, path.c_str(), 0, nullptr, 0,
                                  KEY_QUERY_VALUE | KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &k, &disp);
     if (st != ERROR_SUCCESS) {
-        Err(L"Cannot open HKLM\\%s: %s", APOLLO_PARAMS_KEY, ErrText((DWORD)st).c_str());
+        Err(L"Cannot open HKLM\\%s: %s", path.c_str(), ErrText((DWORD)st).c_str());
         return EXIT_ERROR;
     }
-    Out(L"HKLM\\%s:", APOLLO_PARAMS_KEY);
+    Out(L"HKLM\\%s:", path.c_str());
     int rc = EXIT_OK;
     for (auto &it : items) {
+        if (it.SubKey != sub)
+            continue;
         DWORD type = 0, cur = 0, size = sizeof(cur);
         LSTATUS q = RegQueryValueExW(k, it.Name.c_str(), nullptr, &type, (BYTE *)&cur, &size);
         bool exists = q == ERROR_SUCCESS || q == ERROR_MORE_DATA;
@@ -782,7 +673,8 @@ int CmdRegDefaults(const std::wstring &file)
         if (it.Type == REG_DWORD) {
             st = RegSetValueExW(k, it.Name.c_str(), 0, REG_DWORD, (const BYTE *)&it.Dw, sizeof(DWORD));
             if (st == ERROR_SUCCESS)
-                Out(L"  %-24s = %lu (0x%lX)", it.Name.c_str(), it.Dw, it.Dw);
+                Out(L"  %-24s = %lu (0x%lX)%s", it.Name.c_str(), it.Dw, it.Dw,
+                    exists && q == ERROR_SUCCESS && type == REG_DWORD && cur != it.Dw ? Fmt(L", was %lu", cur).c_str() : L"");
         } else {
             st = RegSetValueExW(k, it.Name.c_str(), 0, REG_SZ, (const BYTE *)it.Sz.c_str(),
                                 (DWORD)((it.Sz.size() + 1) * sizeof(wchar_t)));
@@ -795,5 +687,37 @@ int CmdRegDefaults(const std::wstring &file)
         }
     }
     RegCloseKey(k);
+    return rc;
+}
+
+/* Validates the whole file before writing anything (defaults_plan.cpp), then writes Parameters'
+   own values and each subkey's. */
+int CmdRegDefaults(const std::wstring &file)
+{
+    if (!RequireElevated(L"regdefaults"))
+        return EXIT_NOT_ELEVATED;
+    std::vector<BYTE> data;
+    if (!ReadFileBytes(file, data)) {
+        Err(L"Cannot read %s: %s", file.c_str(), ErrText(GetLastError()).c_str());
+        return EXIT_ERROR;
+    }
+    std::vector<DefaultItem> items;
+    std::wstring why;
+    if (!ParseDefaults(data, items, why)) {
+        Err(L"%s: %s: nothing written.", file.c_str(), why.c_str());
+        return EXIT_ERROR;
+    }
+    std::vector<std::wstring> subs;
+    for (auto &it : items) {
+        bool seen = false;
+        for (auto &s : subs)
+            seen = seen || s == it.SubKey;
+        if (!seen)
+            subs.push_back(it.SubKey);
+    }
+    int rc = EXIT_OK;
+    for (auto &s : subs)
+        if (WriteValues(s, items) != EXIT_OK)
+            rc = EXIT_ERROR;
     return rc;
 }

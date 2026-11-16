@@ -17,7 +17,7 @@ const check = (c, l) => { if (!c) failed++; console.log(`${c ? 'PASS' : 'FAIL'} 
   await page.waitForTimeout(600);
 
   const SIG = { studio: '#meterBridge', arcade: '#hiScore', lab: '#labBench', cyber: '.flow-canvas', mono: '#cmdLine' };
-  for (const look of ['studio', 'cyber', 'lab', 'mono', 'day', 'arcade']) {
+  for (const look of ['classic', 'studio', 'cyber', 'lab', 'mono', 'day', 'arcade']) {     /* Classic: none, on purpose */
     await page.evaluate(l => setLook(l), look);
     await page.waitForTimeout(200);
     const shown = [];

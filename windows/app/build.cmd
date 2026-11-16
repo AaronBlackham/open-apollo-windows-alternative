@@ -35,7 +35,7 @@ cl /nologo /std:c++20 /EHsc /W4 /WX /O2 /MT /DUNICODE /D_UNICODE ^
    /link /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:res\app.manifest ^
    third_party\webview2\x64\WebView2LoaderStatic.lib ^
    user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib cfgmgr32.lib ^
-   dwmapi.lib shlwapi.lib version.lib bcrypt.lib || goto linkfail
+   dwmapi.lib shlwapi.lib version.lib bcrypt.lib dbghelp.lib || goto linkfail
 if exist bin\apollo-control.old.exe del /q bin\apollo-control.old.exe >nul 2>&1
 if exist bin\apollo-control.old.exe echo Apollo Control is running from the previous build: the new one starts next time it is opened.
 

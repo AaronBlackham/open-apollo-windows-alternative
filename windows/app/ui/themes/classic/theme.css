@@ -1,0 +1,219 @@
+/* classic pack: tokens (layer 7) */
+/* ---------- Classic (the default for a new config): neutral dark grey, one blue accent, red for 48V and clip ---------- */
+[data-look="classic"] {
+  --bg: #1c1d20;
+  --view-bg: #1c1d20;
+  --panel: #26272b;
+  --panel-2: #2e3034;
+  --raised: #3a3c41;
+  --line: #393b40;
+  --line-strong: #54575e;
+  --text: #ebecee;
+  --text-dim: #c0c3c8;
+  --text-faint: #9ea2a9;
+  --head: #ebecee;
+  --accent: #5ea5ff;
+  --accent-ink: #08111d;
+  --ok: #4cc46a;
+  --warn: #e8c23a;
+  --red: #ff6b61;
+  --red-ink: #1d0605;
+  --idle: #8e9198;
+  --meter-lo: #3fbf5f;
+  --meter-mid: #e3c23a;
+  --meter-hi: #f0473f;
+  --meter-track: #121315;
+  --meter-seg: 0;
+  --focus: #a8d0ff;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --radius: 3px;
+  --radius-sm: 2px;
+  --border-w: 1px;
+  --cut: 0px;
+  --glow: none;
+  --lamp-glow: 0 0 0 transparent;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-num: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --label-size: 10px;
+  --label-weight: 600;
+  --label-track: 0.05em;
+  --label-stretch: normal;
+  --grid-line: transparent;
+  --sel-bg: #243650;
+  color-scheme: dark;
+}
+
+/* ===== Classic: a standard mixer app (layers 3-9). Flat, legible, nothing moves but short state changes. ===== */
+
+/* knobs: a flat cap with a pointer inside a value arc (from the origin: zero for gain and sends, centre for pan) */
+[data-look="classic"] .cl-knob .cl-k-track { fill: none; stroke: #44464c; }
+[data-look="classic"] .cl-knob .cl-k-val { fill: none; stroke: var(--accent); }
+[data-look="classic"] .cl-knob .cl-k-body { fill: #4a4d54; stroke: #66696f; stroke-width: 2; transition: fill 80ms ease-out; }
+[data-look="classic"] .cl-knob .cl-k-ptr { stroke: #f4f5f7; stroke-linecap: round; }
+[data-look="classic"] .knob:hover .cl-k-body, [data-look="classic"] .knob:focus-visible .cl-k-body { fill: #565960; }
+[data-look="classic"] .knob .k-readout { font-size: 11.5px; font-weight: 600; }
+[data-look="classic"] .knob .k-label { font-family: var(--font-ui); font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-dim); }
+/* waiting: the ring turns to dashes until the unit reads the value back; refused: a red rim and "!" before the value */
+[data-look="classic"] .knob.unconfirmed .cl-k-track { stroke-dasharray: 5 5; }
+[data-look="classic"] .knob.unconfirmed .cl-k-val { stroke: var(--warn); stroke-dasharray: 5 5; }
+[data-look="classic"] .knob.refused .cl-k-body { stroke: var(--red); stroke-width: 7; }
+[data-look="classic"] .knob.refused .cl-k-ptr { stroke: var(--red); }
+[data-look="classic"] .knob.refused .k-readout::before { content: "! "; font-weight: 700; }
+[data-look="classic"] .knob.locked .cl-knob { opacity: 0.45; }
+[data-look="classic"] .knob.locked .k-readout::after { content: " (locked)"; color: var(--text-faint); font-size: 9.5px; font-weight: 400; }
+[data-look="classic"] .knob.off .k-readout { color: var(--text-faint); }
+
+/* faders: a thin slot, a flat cap with a centre line, the dB scale on the left (press it to jump there) */
+[data-look="classic"] .fader { gap: 1px; }
+[data-look="classic"] .cl-scale { width: 22px; margin: 10px 0; font-family: var(--font-num); font-size: 8.5px; color: var(--text-faint); cursor: pointer; }
+[data-look="classic"] .cl-scale span { right: 4px; }
+[data-look="classic"] .cl-scale span.unity { color: var(--text); font-weight: 700; }
+/* +12 +6 0 -6 -12 -20 -40 and off: -30 and -60 left out so the legend never overlaps; a short fader (a full insert
+   chain, a short window) drops +6 and -6 too. The strip's fader area is the size container. */
+[data-look="classic"] .cl-scale span:nth-child(7), [data-look="classic"] .cl-scale span:nth-child(9) { display: none; }
+[data-look="classic"] #view-control .strip-meter { container-type: size; }
+@container (max-height: 150px) {
+  [data-look="classic"] .cl-scale span:nth-child(2), [data-look="classic"] .cl-scale span:nth-child(4) { display: none; }
+}
+@container (max-height: 105px) {
+  [data-look="classic"] .cl-scale span:nth-child(6) { display: none; }
+}
+[data-look="classic"] .cl-track { width: 16px; margin: 10px 0; background: transparent; box-shadow: none; border-radius: 0; }
+[data-look="classic"] .cl-track::before {
+  content: ""; position: absolute; left: 6px; width: 4px; top: -2px; bottom: -2px; border-radius: 2px;
+  background: #0e0f11; box-shadow: 0 0 0 1px #4a4d54;
+}
+[data-look="classic"] .cl-cap {
+  left: -5px; right: -5px; height: 20px; background: #c4c7cc; border: 1px solid #7e8188; border-radius: 2px; box-shadow: none;
+  transition: background-color 80ms ease-out;
+}
+[data-look="classic"] .cl-cap::after { content: ""; position: absolute; left: 3px; right: 3px; top: 50%; height: 2px; margin-top: -1px; background: #1c1d20; }
+[data-look="classic"] .fader:hover .cl-cap, [data-look="classic"] .fader:focus-visible .cl-cap { background: #e2e4e8; }
+[data-look="classic"] .silent .cl-cap { background: #7c7f86; }
+/* waiting: a dashed rim on the cap; refused: a striped red cap with a red line */
+[data-look="classic"] .fader.unconfirmed .cl-cap { outline: 2px dashed var(--warn); outline-offset: 1px; }
+[data-look="classic"] .fader.refused .cl-cap { background: repeating-linear-gradient(135deg, #ff8a82 0 3px, #c4c7cc 3px 6px); border-color: var(--red); }
+[data-look="classic"] .fader.refused .cl-cap::after { background: #9a1c14; }
+[data-look="classic"] .fd-readout { font-size: 11px; font-weight: 600; text-align: center; }
+[data-look="classic"] .strip-peak { font-size: 10px; text-align: center; }
+
+/* switches: rectangular, grey when off, lit (filled) when on; 48V and the mutes light red */
+[data-look="classic"] .sw {
+  background: #36383d; border-color: #50535a; color: var(--text-dim); font-weight: 600; letter-spacing: 0.03em;
+  transition: background-color 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
+}
+[data-look="classic"] .sw:hover { background: #404248; color: var(--text); border-color: #696c73; }
+[data-look="classic"] .sw[aria-pressed="true"], [data-look="classic"] .sw[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+[data-look="classic"] .sw.sw-red[aria-pressed="true"], [data-look="classic"] .sw.sw-red[aria-checked="true"] { background: var(--red); border-color: var(--red); color: var(--red-ink); }
+[data-look="classic"] .sw:active { background-color: #2c2e32; }
+[data-look="classic"] .sw-grid .sw { font-family: var(--font-ui); font-size: 8.5px; font-weight: 600; letter-spacing: 0; word-spacing: -1px; }
+/* waiting: a hollow ring in the corner; refused: a red triangle (never colour alone) */
+[data-look="classic"] .sw.unconfirmed::after { top: 2px; right: 2px; width: 6px; height: 6px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--warn), 0 0 0 1px #000000aa; }
+[data-look="classic"] .sw.refused::after { top: 2px; right: 2px; width: 8px; height: 7px; border-radius: 0; background: var(--red); box-shadow: none; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+[data-look="classic"] .sw:disabled { opacity: 0.45; cursor: default; }
+[data-look="classic"] .btn { transition: border-color 80ms ease-out; }
+
+/* selectors: a row of segments, the chosen one lit */
+[data-look="classic"] .seg { border-color: #50535a; }
+[data-look="classic"] .seg button { background: #36383d; color: var(--text-dim); font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; transition: background-color 80ms ease-out, color 80ms ease-out; }
+[data-look="classic"] .sg-seg .seg:has(> button:nth-of-type(5)) { min-width: 230px; }
+[data-look="classic"] .seg button + button { border-left-color: #50535a; }
+[data-look="classic"] .seg button:hover { background: #404248; color: var(--text); }
+[data-look="classic"] .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+[data-look="classic"] .seg.refused, [data-look="classic"] .select.refused { border-color: var(--red); border-style: dashed; }
+[data-look="classic"] .select { background: #36383d; border-color: #50535a; }
+
+/* meters: solid bars (green, yellow from -18, red from -6), a clip box on top, a white hold line */
+[data-look="classic"] .cl-meter .meter-col { width: 8px; gap: 2px; }
+[data-look="classic"] .cl-meter .meter-bar { border-radius: 0; background: var(--meter-track); box-shadow: inset 0 0 0 1px #3a3c41; }
+[data-look="classic"] .cl-meter .meter-clip { height: 6px; border-radius: 0; box-shadow: inset 0 0 0 1px #3a3c41; }
+[data-look="classic"] .cl-meter .meter-clip.on { box-shadow: none; }
+[data-look="classic"] .cl-meter .meter-hold { background: #f4f5f7; }
+[data-look="classic"] .meter-scale { font-family: var(--font-num); }
+[data-look="classic"] .bcell .cl-meter .meter-col { width: 11px; }
+
+/* the plug-in slot: a dashed box while empty, solid once a plug-in is in it; the lamp's shape carries the state */
+[data-look="classic"] .ins-slot { font-family: var(--font-ui); font-weight: 600; letter-spacing: 0.01em; border-color: #4f5259; }
+[data-look="classic"] .ins-slot[data-state="running"], [data-look="classic"] .ins-slot[data-state="loading"], [data-look="classic"] .ins-slot[data-state="bypassed"],
+[data-look="classic"] .ins-slot[data-state="waiting"], [data-look="classic"] .ins-slot[data-state="failed"] { background: #34363b; border-color: #5a5d64; }
+[data-look="classic"] .ins-slot.cl-dropped { animation: cl-drop 450ms ease-out; }
+@keyframes cl-drop { from { box-shadow: 0 0 0 2px var(--accent); } to { box-shadow: 0 0 0 2px transparent; } }
+[data-look="classic"] .cl-refuse { animation: cl-refuse 450ms ease-out; }
+@keyframes cl-refuse { from { box-shadow: 0 0 0 2px var(--red); } to { box-shadow: 0 0 0 2px transparent; } }
+
+/* the plug-in browser (layout "list", by type) and the parameter view (layout "grid"): the shared ones, flat */
+[data-look="classic"] .plb-group-head { font-family: var(--font-ui); letter-spacing: 0.05em; }
+[data-look="classic"] .plb-name { font-size: 12px; }
+
+/* labels: small caps words, no glyphs */
+[data-look="classic"] .st-lbl { font-family: var(--font-ui); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; color: var(--text-faint); }
+[data-look="classic"] .st-lbl::before { content: none; }
+
+/* ===== Classic, layer 2: composition "strips": the shared full-height channel strips in the order console software
+   uses: number, preamp (gain, mic / line, 48V, PAD, LO CUT, polarity), inserts, sends, pan, the long fader with its
+   scale and the meter, mute / solo, the name; every unit's master section on its right. It is the console layout
+   without Studio's meter bridge (app.js draws that only for "console"), so the console layouts' AUX button rules
+   (app.css) are repeated here: the AUX 1 / AUX 2 strips open from the master's AUX button. ===== */
+[data-look="classic"] #view-control[data-comp="strips"] .mo-aux { display: block; padding: 2px 0; font-size: 10.5px; font-family: var(--font-label); letter-spacing: 0.04em; }
+[data-look="classic"] #view-control[data-comp="strips"] .aux-sec[data-open="0"] { display: none; }
+[data-look="classic"] #view-control[data-comp="strips"] .st-aux > .st-lbl { display: none; }
+[data-look="classic"] #view-control .strip > .strip-top, [data-look="classic"] #view-control .tb-strip > .strip-top { order: 0; }
+[data-look="classic"] #view-control .strip > .st-pre { order: 1; }
+[data-look="classic"] #view-control .strip > .st-ins { order: 2; }
+[data-look="classic"] #view-control .strip > .st-aux { order: 3; }
+[data-look="classic"] #view-control .strip > .st-mix, [data-look="classic"] #view-control .tb-strip > .st-mix { order: 4; }
+[data-look="classic"] #view-control .strip > .strip-name, [data-look="classic"] #view-control .strip > .strip-name-edit,
+[data-look="classic"] #view-control .tb-strip > .strip-name { order: 6; }
+[data-look="classic"] #view-control .strip > .st-out, [data-look="classic"] #view-control .tb-strip > .st-out { display: none; }
+/* inside the mix section: pan above the fader, mute / solo under it */
+[data-look="classic"] #view-control .st-mix > .mix-top { display: contents; }
+[data-look="classic"] #view-control .st-mix > .st-lbl { order: 0; }
+[data-look="classic"] #view-control .mix-top > .knob, [data-look="classic"] #view-control .mix-top > .mix-nopan { order: 1; flex-shrink: 0; }
+[data-look="classic"] #view-control .st-mix > .strip-meter { order: 2; }
+[data-look="classic"] #view-control .mix-top > .mix-ms { order: 3; flex-shrink: 0; min-height: 24px; }
+[data-look="classic"] #view-control .mix-ms .mix-sw { height: 24px; font-size: 11px; }
+/* the channel name at the foot: a flat label box */
+[data-look="classic"] #view-control .strip-name {
+  height: 24px; line-height: 22px; text-align: center; padding: 0 3px; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 11.5px;
+}
+[data-look="classic"] #view-control .strip-name:hover { background: var(--raised); }
+[data-look="classic"] #view-control .strip-name.empty { color: var(--text-faint); font-style: normal; }
+[data-look="classic"] #view-control .strip-name-edit { height: 24px; text-align: center; }
+[data-look="classic"] #view-control .strip-num { font-size: 14px; font-weight: 600; }
+/* targets: at least 24 x 24 px where the shared layout has smaller ones */
+[data-look="classic"] .pair-head { height: 30px; }
+[data-look="classic"] .link-btn { height: 24px; padding: 0 9px; font-size: 10px; }
+[data-look="classic"] .seg button { height: 24px; }
+[data-look="classic"] .mo-ctl .sw, [data-look="classic"] .mo-ctl .mix-sw, [data-look="classic"] .aux-ctl .mix-sw { height: 24px; }
+[data-look="classic"] .mo-ctl .btn { min-height: 24px; }
+[data-look="classic"] .ins-slot, [data-look="classic"] .ins-slots[data-slots] .ins-slot, [data-look="classic"] .ins-uni { height: 24px; }
+[data-look="classic"] .ins-x, [data-look="classic"] .ins-slots[data-slots] .ins-x, [data-look="classic"] .ins-uni-row .ins-x { height: 24px; width: 24px; }
+[data-look="classic"] .ins-recmon button { height: 24px; }
+[data-look="classic"] .ins-slot[data-drop] .ins-why { line-height: 22px; }
+[data-look="classic"] .useg-name, [data-look="classic"] .rate-sel, [data-look="classic"] .plb-toggle, [data-look="classic"] .talk-cues { min-height: 24px; }
+[data-look="classic"] .plb-toggle, [data-look="classic"] .mon-units button { min-width: 26px; }
+[data-look="classic"] .check { min-height: 24px; }
+[data-look="classic"] .check input { width: 16px; height: 16px; margin: 0; }
+/* the talkback strip is 52 px: its M and S stack so each stays a full-width target */
+[data-look="classic"] #view-control .tb-strip .mix-ms { grid-template-columns: 1fr; }
+[data-look="classic"] .plb-group-head { min-height: 24px; }
+/* the master section and the unit head: plain panels */
+[data-look="classic"] #view-control .master { background: var(--panel-2); border-left: 1px solid var(--line-strong); }
+[data-look="classic"] .mo-title { font-family: var(--font-ui); font-weight: 600; }
+[data-look="classic"] .useg-head { background: var(--panel-2); }
+[data-look="classic"] .aux-strip { background: var(--panel-2); }
+
+/* ===== [Sess] the session list in plain words (layout "plain"), at desktop density ===== */
+[data-look="classic"] .ss-plain { gap: 10px; }
+[data-look="classic"] .ss-plain .ss-title { margin: 0; font-size: 15px; font-family: var(--font-head); color: var(--head); }
+[data-look="classic"] .ss-plain .ss-intro { margin: 0; color: var(--text-dim); font-size: 12px; }
+[data-look="classic"] .ss-plain .ss-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 7px 10px; }
+[data-look="classic"] .ss-plain .ss-card[data-current="1"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+[data-look="classic"] .ss-plain .ss-name { font-weight: 600; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+[data-look="classic"] .ss-plain .ss-tag { font-size: 11px; font-weight: 600; letter-spacing: 0; color: var(--text); background: var(--raised); border-radius: var(--radius-sm); padding: 0 6px; }
+[data-look="classic"] .ss-plain .ss-note { border-left-width: 3px; }
+[data-look="classic"] .ss-plain .btn { min-height: 28px; padding: 3px 12px; }

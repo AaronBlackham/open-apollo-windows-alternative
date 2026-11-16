@@ -1,29 +1,43 @@
-# ApolloSetup: test-mode installer for the Apollo x8p open driver
+# ApolloSetup: test-mode installer for the Apollo open driver
 
-`ApolloSetup-<DriverVer>.exe` is one file that installs the test-signed `apollo.sys` driver for the
-Universal Audio Apollo x8p (Thunderbolt), its tools, the ASIO driver and Apollo Control, and switches
-the x8p from UA's driver to ours. It is a **test-mode** installer: the driver is signed with the
-developer test certificate "WDKTestCert aaron" (thumbprint `8ACDF79F5C64144C08650382DB32B1866ABC2EC6`),
-not by Microsoft. A Microsoft-signed (attestation) release is planned and will replace all of this.
+`ApolloSetup-<DriverVer>.exe` is one file that installs the open `apollo.sys` driver for the Universal Audio
+**Apollo x8p** and **Apollo Twin X Gen 1** (Thunderbolt), its tools, the ASIO driver and Apollo Control, and
+switches the units you choose from UA's driver to this one. It is a **test-mode** installer: the driver is not
+signed by Microsoft. Nothing in the download is signed by anyone: Setup signs the driver on your PC, with a
+certificate made there and kept there (see "How the driver is signed").
+
+The text for the GitHub release is [RELEASE-NOTES.md](RELEASE-NOTES.md).
 
 ## Requirements and limits
 
 - **Windows 11 22H2 (build 22621) or later, x64 only.** Setup refuses anything else, including Arm64.
-- **Secure Boot off.** With Secure Boot on, Windows will not enter test mode, so Setup stops at once
-  and changes nothing. Turning Secure Boot off is a firmware (UEFI) setting; Setup never touches it.
-- **Test signing on.** Setup asks for consent and turns it on (`bcdedit /set {current} testsigning on`);
-  it takes effect after one restart. Windows then shows "Test Mode" on the desktop.
+- **Secure Boot off.** With Secure Boot on, Windows will not enter test mode, so Setup stops at once and changes
+  nothing. Turning Secure Boot off is a firmware (UEFI) setting; Setup never touches it.
+- **Test signing on.** Setup asks for consent and turns it on (`bcdedit /set {current} testsigning on`); it takes
+  effect after one restart. Windows then shows "Test Mode" on the desktop.
 - **Administrator rights.** Setup elevates once at start.
-- **x8p only.** Setup binds exactly `PCI\VEN_1A00&DEV_0002&SUBSYS_00141A00`. From gate G2 on,
-  `apollo.inf` also lists the Apollo Twin X Gen 1 (`SUBSYS_00191A00`, test only, Mode 0 = observe by
-  default), but Setup never binds it: a Twin X stays on whatever driver it has. One that a developer put on
-  the Apollo driver (`tools\phase1\install.ps1 -Unit twinx`) is handled: see "Two units" below. Any other
-  UA device stays on UA's driver.
-- **UAD software for the mic strips.** The five input-strip modules are copied out of UA's UAD install
-  (`apollo-diag strips install`). Without UAD, the driver works but the preamp strips stay off.
+- **Windows PowerShell 5.1** (part of Windows) able to run a script from the install folder: Setup runs
+  `sign-local.ps1` with `-ExecutionPolicy Bypass`. A Group Policy that forbids scripts makes signing fail, and Setup
+  then stops before switching any unit.
+- **Units:** Apollo x8p (`PCI\VEN_1A00&DEV_0002&SUBSYS_00141A00`) and Apollo Twin X Gen 1
+  (`PCI\VEN_1A00&DEV_0002&SUBSYS_00191A00`), on Thunderbolt, alone or both. `apollo.inf` lists exactly these two
+  IDs (`stage.ps1` refuses any other UA ID). Gen 2 units and every other Universal Audio device stay on UA's driver.
+- **UAD software for the mic strips.** The five input-strip modules are copied out of UA's UAD install on your PC
+  (`apollo-diag strips install`). Without UAD the driver works, but the preamp strips stay off.
 - **WebView2 runtime** for Apollo Control (part of Windows 11).
-- **No Driver Verifier.** Setup never enables it; that stays a developer-machine step
-  (`tools\phase1\setup.ps1`).
+- **No Driver Verifier.** Setup never enables it; that stays a developer-machine step (`tools\phase1\setup.ps1`).
+
+## What is not in this release
+
+- **UAD plug-ins.** Hosting them on the Apollo DSPs needs a developer setup: a Python environment and plug-in maps
+  built from your own UAD install (`docs\PLUGINS.md` in the source). Setup installs none of that, so Apollo Control
+  shows plug-ins as unavailable.
+- **Anything made by Universal Audio.** No UA file is in the installer. The input-strip modules come from your own
+  UAD install (`apollo-diag strips install`, as above), at install time, on your PC.
+- **Other units.** Gen 2 units and other Apollo models are never switched.
+- **A Microsoft signature.** The driver runs in test mode only.
+
+Setup says the same on its last page.
 
 ## What gets installed
 
@@ -32,115 +46,165 @@ not by Microsoft. A Microsoft-signed (attestation) release is planned and will r
 | Path | What |
 |---|---|
 | `apollo-control.exe`, `ui\` | Apollo Control (WebView2 app; runs as the normal user) |
-| `apollo-helper.exe` | the installer's own helper (below); also behind the "Connect" shortcut |
-| `driver\apollo.inf/.sys/.cat` | the driver package, exactly as frozen |
-| `driver\apollo.cer` | the test certificate |
-| `asio\avium-asio.dll` | ASIO driver "Apollo x8p (Avium)", registered with regsvr32 |
+| `apollo-helper.exe` | the installer's own helper (below); also behind the "Connect Apollo units" shortcut |
+| `sign-local.ps1` | signs the driver on this PC (below) |
+| `driver\apollo.inf`, `apollo.sys`, `apollo.cat` | the driver package: unsigned in the download, signed on this PC |
+| `asio\avium-asio.dll` | ASIO drivers "Apollo x8p (Avium)" and "Apollo (Avium)" (both units as one device), registered with regsvr32 |
 | `tools\apollo-diag.exe`, `loopback-test.exe`, `wasapi-loop.exe`, `asio-test.exe` | diagnostics |
-| `docs\PHASE1.md`, `PHASE2.md`, `STRIPS.md`, `ASIO.md` | the project documents |
+| `docs\RELEASE-NOTES.md`, `INSTALLER.md` (this file), `ASIO.md`, `ASIO-SDK-LICENSE.txt` | documents |
 | `defaults.json` | the driver registry values for this release |
-| `payload-manifest.sha256` | SHA-256 of every file above (check with `Get-FileHash`) |
-| `state\` | runtime files: saved audio defaults, which certificate stores Setup added to |
+| `payload-manifest.sha256` | SHA-256 of every file above as downloaded (`apollo.sys` and `apollo.cat` differ once signed here) |
+| `state\` | runtime files: `local-cert.txt` (thumbprints of the certificates made here), `local-cert.cer`, saved audio defaults |
 
-Elsewhere: the certificate in LocalMachine **Trusted Root** and **Trusted Publishers**; the driver package
-in the Windows driver store; values under `HKLM\SYSTEM\CurrentControlSet\Services\apollo\Parameters`;
-the strip modules in `%SystemRoot%\System32\drivers\ApolloStrips` (admin-only); Start-menu folder
-**Avium Apollo**; optionally the `HKCU\...\Run` value "Avium Apollo Control" (the same value the app's
-own "start with Windows" switch writes).
+Elsewhere: the per-PC certificate (public part only) in LocalMachine **Trusted Root** and **Trusted Publishers**;
+the driver package in the Windows driver store; values under
+`HKLM\SYSTEM\CurrentControlSet\Services\apollo\Parameters` (and `Parameters\Models\99`); the strip modules in
+`%SystemRoot%\System32\drivers\ApolloStrips` (admin-only); the Start-menu folder **Avium Apollo**; optionally the
+`HKCU\...\Run` value "Avium Apollo Control" (the same value the app's own "start with Windows" switch writes).
+
+## How the driver is signed (per PC)
+
+The release carries **no signature and no certificate of anyone**: `apollo.sys` and `apollo.cat` are unsigned
+(the build strips any build-time signature and makes the catalog again, unsigned, with Inf2Cat, then checks), and so
+are Setup and the helper. Windows still needs a signed package, so after copying the files Setup runs, elevated:
+
+```
+powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{app}\sign-local.ps1" -Package "{app}\driver" -State "{app}\state"
+```
+
+`sign-local.ps1`:
+
+1. makes a new code-signing certificate "Apollo driver (signed on <PC name>)", key non-exportable, in
+   LocalMachine\My, and writes its thumbprint to `state\local-cert.txt` at once;
+2. signs `apollo.sys` and `apollo.cat` with it (SHA-256, no time-stamp server is contacted);
+3. adds the public certificate to LocalMachine Trusted Root and Trusted Publishers (Windows installs a test-signed
+   package from a trusted publisher without asking, once test mode is on);
+4. deletes the private key, whatever happened before (nothing can ever be signed with that certificate again);
+5. checks both signatures are Valid.
+
+It loads PowerShell's certificate modules from System32 only (`$PSHOME\Modules`), never from the user's module
+folder. It runs only once test signing is on (this boot, or turned on by Setup for the next one), and before any
+unit is touched. If it fails, Setup removes whatever certificate it recorded (`apollo-helper cert remove-local`),
+says why, and switches no unit. The wizard explains all of this on its "Driver signing" page.
+
+A repair or an update signs again with a new certificate; each one's thumbprint is added to `local-cert.txt`. The
+older ones stay trusted until uninstall (their private keys are gone, and a unit that was not switched again may
+still be installed from the package they signed). **Uninstall removes exactly the certificates listed in
+`local-cert.txt`** from Trusted Root, Trusted Publishers and LocalMachine\My, by thumbprint, and nothing else. An
+install from before Nov 16 2026 (which shipped `driver\apollo.cer`) is still cleaned up: its uninstall removes that
+certificate from the stores `state\cert-record.txt` says Setup added it to, and only with that record.
 
 ## The wizard, page by page
 
-1. **Secure Boot check** (before any page). If Secure Boot is on: a message explains that test-signed
-   drivers cannot load with Secure Boot on and that a signed release is planned; Setup closes.
-2. **Welcome.** What this is, x8p only, UAD needed for the strips, close audio programs first.
-3. **BitLocker** (only when test signing is off and BitLocker protects, or may protect, the Windows
-   drive). Turning on test signing changes a boot setting BitLocker checks, so the next start may ask
-   for the 48-digit recovery key: have it ready (https://aka.ms/myrecoverykey). The checkbox
-   "Suspend BitLocker for the next restart" (on by default) runs
+1. **Secure Boot check** (before any page). If Secure Boot is on, a message says why the driver cannot load and
+   Setup closes without changing anything.
+2. **Welcome.** What this is, which units, how it is signed, close audio programs first.
+3. **BitLocker** (only when test signing is off and BitLocker protects, or may protect, the Windows drive). Turning
+   on test signing changes a boot setting BitLocker checks, so the next start may ask for the 48-digit recovery
+   key: have it ready (https://aka.ms/myrecoverykey). "Suspend BitLocker for the next restart" (on by default) runs
    `manage-bde -protectors -disable C: -RebootCount 1`; protection resumes by itself after that restart.
-4. **Test signing** (only when it is off). Explains test mode and asks for consent; Setup cannot go on
-   without it. Nothing is changed until you click Install.
-5. **Select additional tasks.** "Start Apollo Control when I sign in" (off by default).
-6. **Ready to install.** The exact list of what will happen, in order.
-7. **Installing.** In this order:
-   1. (only if consented) suspend BitLocker, then turn on test signing. If Windows refuses, Setup
-      stops here with nothing installed.
+4. **Test signing** (only when it is off). Explains test mode and asks for consent; Setup cannot go on without it.
+5. **Driver signing.** The per-PC signing above, in four steps, with this PC's name.
+6. **Apollo units.** One checkbox per supported unit found (Win32_PnPEntity, read before anything is installed),
+   ticked by default, with its current driver. A unit already on the Apollo driver is always updated (box greyed):
+   every unit on the driver shares one loaded image. Two units of the same model: greyed, not switched (Windows would
+   move both). Other Universal Audio devices are listed as "stays on its own driver". With no supported unit
+   connected, the page says so: the driver is prepared and "Connect Apollo units" switches a unit later.
+7. **Select additional tasks.** "Start Apollo Control when I sign in" (off by default).
+8. **Ready to install.** The exact list of what will happen, in order, naming the units.
+9. **Installing.** In this order:
+   1. (only if consented) suspend BitLocker, then turn on test signing. If Windows refuses, Setup stops here with
+      nothing installed.
    2. Copy the files to Program Files.
    3. Log `apollo-helper check` (the full system state) into the Setup log.
-   4. Add the certificate to Trusted Root and Trusted Publishers. The helper refuses any certificate
-      whose thumbprint is not the one pinned at build time, and records which stores it actually added
-      to (a store that already had it is left alone at uninstall).
+   4. **Sign the driver on this PC** (`sign-local.ps1`). On failure: remove the certificate again, a clear message,
+      and no unit is switched.
    5. Register the ASIO DLL (`regsvr32`).
-   6. Write the driver registry values from `defaults.json`. This happens before the driver binds, so its
-      first start reads them. Values already on the machine are kept unless the release forces them.
-   7. Check that nothing uses the x8p (ACX streams and ASIO on the x8p's own device interface, audio
-      sessions on its "... (Apollo x8p (open driver, test build))" endpoints, the Apollo tools; a Twin X
-      never counts). If something does, a dialog lists it: **Retry**, **Ignore** (go ahead; Windows may
-      then want a restart), or **Abort** (skip the driver switch; use "Connect" later).
+   6. Write the driver registry values from `defaults.json` (before any unit switches, so the driver's first start
+      reads them).
+   7. Check that nothing uses the units being switched (`idle-wait --units ...`: ACX streams and ASIO on their own
+      device interfaces, audio sessions on their endpoints, on the combined "(Apollo)" endpoints and, while a unit is
+      still on UA's driver, on UA's "(Universal Audio Thunderbolt ...)" endpoints, and the Apollo tools). If something
+      does, a dialog lists it: **Retry**, **Ignore** (go ahead; Windows may then want a restart), or **Abort** (skip
+      the switch; use "Connect Apollo units" later).
    8. Save your 6 default playback/recording devices (console, multimedia, communications).
-   9. Close UA's apps, but only if the x8p is still on UA's driver and no other connected unit (a Twin X)
-      is: UA's apps serve every unit on UA's driver, so they keep running for it.
-   10. Bind the driver to the x8p's exact hardware ID: `UpdateDriverForPlugAndPlayDevices` with
-       `INSTALLFLAG_FORCE`, because UA's WHQL driver outranks ours. With no x8p connected, the package is
-       only staged. Older copies of our package that no unit (connected or remembered) is installed from
-       are removed.
+   9. Close UA's apps, but only if a unit being switched is on UA's driver and no connected unit that stays (an
+      unticked unit, a Gen 2, another model) is still on UA's driver: UA's apps serve every unit on UA's driver.
+   10. Switch the chosen units, the x8p first: `UpdateDriverForPlugAndPlayDevices` with `INSTALLFLAG_FORCE` on each
+       unit's exact hardware ID (UA's WHQL driver outranks ours). Every other UA device is checked unchanged
+       afterwards. With no unit chosen or connected, the package is only staged. Older copies of our package that no
+       unit (connected or remembered) is installed from are removed.
    11. Put your default devices back where Windows moved them (three passes over about 8 seconds).
-   12. If UAD is installed: `apollo-diag strips install`. Otherwise a note that the mics need UA's
-       modules.
-   13. Start-menu shortcuts: **Apollo Control**, **Connect x8p to Apollo driver**, **Uninstall Apollo
-       driver**; the sign-in entry if chosen.
-8. **Results.** What each step did, in plain words (the full log is `%TEMP%\Setup Log *.txt`).
-9. **Finished.** Asks to restart if test signing was just turned on or the driver switch needs one.
-   Until that restart the x8p cannot run on the Apollo driver.
+   12. If UAD is installed: `apollo-diag strips install`. Otherwise a note that the mics need UA's modules.
+   13. Start-menu shortcuts: **Apollo Control**, **Connect Apollo units**, **Uninstall Apollo driver**; the sign-in
+       entry if chosen.
+10. **Results.** What each step did, one line per unit, in plain words (the full log is `%TEMP%\Setup Log *.txt`).
+11. **Finished.** Asks to restart if test signing was just turned on or a switch needs one, and says plainly what is
+    not in this release (plug-ins, UA files, other units).
 
-### "Connect x8p to Apollo driver" (Start menu)
+### "Connect Apollo units" (Start menu)
 
-UA's driver ranks higher than ours, so whenever UA's software is installed Windows gives a newly
-connected x8p to UA. This shortcut runs `apollo-helper connect`: it asks for administrator rights,
-checks test signing is active, waits until nothing uses the x8p, saves the default devices, closes UA's
-apps, binds the driver and restores the defaults, then waits for Enter so you can read the result.
-(Without UA's software installed, Windows picks the staged Apollo driver by itself.)
+UA's driver ranks higher than ours, so whenever UA's software is installed Windows gives a newly connected unit to
+UA. This shortcut runs `apollo-helper connect`: it asks for administrator rights, checks test signing is active,
+lists the connected units and asks per unit "Switch ... to the Apollo driver? [Y/n]", waits until nothing uses
+them, saves the default devices, closes UA's apps when no unit that stays needs them, switches them and restores the
+defaults, then waits for Enter so you can read the result. (Without UA's software installed, Windows picks the
+staged Apollo driver by itself.)
+
+## Two units
+
+The rules are those of `tools\phase1\install.ps1`, `step-ep.ps1`, `revert.ps1` and `revert-unit.ps1`; the
+decisions are in `helper\units.cpp` and tested offline at every build (`test_units`).
+
+| Situation | What happens |
+|---|---|
+| Both units on UA's driver, both ticked | UA's apps are closed, the x8p is switched, then the Twin X. Both start on this package's driver. |
+| One unit ticked, the other stays on UA's driver | UA's apps stay open (the other unit needs them). If Windows wants a restart for the switched unit, power-cycle that unit. |
+| Both units on an older build of the Apollo driver (update or repair) | Both are switched to the new package. They share one loaded `apollo.sys`; if the old image is still loaded afterwards (the helper compares the loaded module with the package's driver-store folder), Setup asks for a restart and keeps the old package until then. |
+| A unit on the Apollo driver that is not being switched, with another build | `bind` stops with nothing changed (exit 5): the switched unit would join that unit's loaded image. Setup always includes units already on the Apollo driver, so this happens only with `apollo-helper bind --units ...` by hand. |
+| A supported unit with no UA driver installed, not switched | A note: `apollo.inf` lists it, so Windows may give it the Apollo driver by itself when it next connects. |
+| Two devices with the same hardware ID | `bind` and `unbind --unit` stop: Windows would move both. |
+| Uninstall | The Twin X (any unit other than the x8p) on the Apollo driver goes back to UA's driver first, explicitly; then the package goes and the x8p takes its next-best driver (UA's). Without UA's driver for the Twin X the uninstall stops with nothing removed: install UA Connect, then uninstall again. |
+
+## Driver settings (defaults.json)
+
+Written to `HKLM\SYSTEM\CurrentControlSet\Services\apollo\Parameters` before any unit switches. Only values that
+differ from the driver's built-in defaults (`driver\apollo_unit.h`) are written; the driver looks each value up in
+`Units\<unit key>`, then `Models\<TT>`, then the service-wide values (x8p only), then its built-in default.
+
+| Where | Values | Why |
+|---|---|---|
+| `Parameters` (service-wide, the x8p only) | `StripsEnable` 1, `StripSteps` 9, `StripMask` 0xFF (forced) | input strips on all eight inputs (built-in: off, 1, 0x01) |
+| `Parameters\Models\99` (Twin X Gen 1) | `Mode` 2, `StripsEnable` 1 (forced) | full mode (endpoints, monitor, preamps) with its strips; built-in: Mode 0 = observe only |
+
+Everything else stays at the driver's built-in value: the x8p's `MixerInitBatch` 1, `Endpoints` 0x1FFFF; the Twin
+X's `StripMask` 0x3, `StripDsp` 1, `MixerInitBatch` 1, `StripSteps` 0, `Endpoints` 0x3F. The old `EnabledEndpoints`
+value is no longer written (the driver ignores it since the endpoint tables were renumbered; the value is now
+`Endpoints`). Setup never writes `Units\<key>` (Apollo Control stores per-unit choices such as the sample rate there).
+
+Format (`helper\defaults_plan.h`): `values` for `Parameters` itself, `subkeys` for keys below it (1 to 3 parts of
+letters, digits, `_`), a number is a REG_DWORD, `{ "type": "dword", "data": "0xFF" }` or `"sz"` for other forms,
+`"overwrite"` per value, per subkey or for the whole file (a value already on the machine is kept unless forced).
+Unknown keys are errors. `test_units` parses the release's own `defaults.json` at every build.
 
 ## Uninstall (Settings, Apps, or the Start-menu entry)
 
 1. Log `apollo-helper check` (every unit and its driver).
-2. Check nothing uses the x8p (Retry/Ignore/Abort; Abort stops with nothing changed).
+2. Check nothing uses any Apollo unit (Retry/Ignore/Abort; Abort stops with nothing changed).
 3. Save the default audio devices.
-4. `apollo-helper unbind`:
-   1. Every unit other than the x8p that is on the Apollo driver (a Twin X), connected or only
-      remembered by Windows, must have UA's driver installed (`uad2pcie.inf` from Universal Audio,
-      signed by Microsoft, listing its exact hardware ID). If one has not, the uninstall **stops with
-      nothing removed** and says so: removing our package would leave that unit with no driver at all.
-      Install UA Connect, then uninstall again.
-   2. Each such connected unit is moved back to UA's driver first, by its exact hardware ID (the way
-      `tools\phase1\revert-unit.ps1` does it). A remembered one gets UA's driver when it next connects.
-   3. Remove every driver-store package with provider "Avium" and original name `apollo.inf` (the x8p
-      gets its next-best driver, i.e. UA's), rescan, and delete the leftover `apollo` service entry once
-      nothing uses it.
+4. `apollo-helper unbind`: units other than the x8p on the Apollo driver go back to UA's driver first (stops with
+   nothing removed if UA's driver for one is missing); then every driver-store package with provider "Avium" and
+   original name `apollo.inf` is removed (the x8p gets its next-best driver, UA's), a rescan, and the leftover
+   `apollo` service entry is deleted once nothing uses it.
 5. Put the default audio devices back; a message says which units to power-cycle.
 6. `regsvr32 /u` the ASIO DLL.
-7. Remove the certificate from the stores Setup added it to.
+7. Remove the per-PC certificates listed in `state\local-cert.txt` (`apollo-helper cert remove-local`); for an
+   install from before Nov 16 2026, `driver\apollo.cer` from the stores `state\cert-record.txt` lists.
 8. Remove the files, `state\` and `%SystemRoot%\System32\drivers\ApolloStrips`.
-9. Offer to turn test signing off (default **No**: leave it on). Yes offers to suspend BitLocker for
-   the restart first.
+9. Offer to turn test signing off (default **No**: leave it on). Yes offers to suspend BitLocker for the restart first.
 
-Afterwards power-cycle the x8p (and a Twin X that was on the Apollo driver) so UA's software starts each
-fresh. Your Apollo Control settings (`%APPDATA%\Avium\ApolloControl`) are kept.
-
-## Two units (x8p and Twin X)
-
-Setup and the helper bind the x8p only, but behave correctly with a Twin X on either driver. The rules
-are those of `tools\phase1\install.ps1`, `revert.ps1` and `revert-unit.ps1`; the decisions are in
-`helper\units.cpp` and tested offline at every build (`test_units`).
-
-| Situation | What happens |
-|---|---|
-| Twin X on UA's driver | Untouched. UA's apps are not closed when the x8p switches (the Twin X still needs them); if Windows then wants a restart for the x8p, power-cycle the x8p. |
-| Twin X on the Apollo driver, same build as Setup's | The x8p binds normally; the Twin X is checked unchanged afterwards and its package is never deleted while it uses it. |
-| Twin X on the Apollo driver, another build | `bind` stops with nothing changed (exit 5): both units share one loaded `apollo.sys`, so the x8p would not run the new package. Move the Twin X back first: `apollo-helper unbind --unit twinx` (elevated) or `revert-unit.ps1 -Unit twinx`, then "Connect x8p to Apollo driver". |
-| Twin X with no UA driver installed | A note: `apollo.inf` lists it, so Windows may give it the Apollo driver by itself when it next connects (observe mode unless its unit key says otherwise). Install UA Connect to prevent that. |
-| Uninstall with a Twin X on the Apollo driver | It goes back to UA's driver first; without UA's driver the uninstall stops (above). |
-| Two devices with the same hardware ID | `bind` / `unbind --unit` stop: Windows would move both. |
+Afterwards power-cycle each unit so UA's software starts it fresh. Your Apollo Control settings
+(`%APPDATA%\Avium\ApolloControl`) are kept.
 
 ## Command line
 
@@ -150,124 +214,150 @@ Standard Inno Setup switches work (`/SILENT`, `/VERYSILENT`, `/LOG="file"`, `/NO
 |---|---|
 | `/TESTSIGNING=on` | required for a silent install while test signing is off (silent installs cannot ask) |
 | `/SUSPENDBITLOCKER=no` | silent install: do not suspend BitLocker (default: suspend if BitLocker is on) |
-| `/SANDBOXTEST=1` | testing only, see below: continue past the Secure Boot stop, leave test signing alone, stage the driver without binding it |
+| `/UNITS=all` | silent install: which connected units to switch, `all` (default), `x8p`, `twinx`, `x8p,twinx` or `none`; a unit already on the Apollo driver is always updated |
+| `/SANDBOXTEST=1` | testing only, see below: continue past the Secure Boot stop, leave test signing alone, sign the package, stage it, switch no unit |
+| `/FAKEUNITS=x8p=UAD2Pcie,twinx=apollo,other=000F1A00` | with `/SANDBOXTEST=1` only: pretend these units are connected (`x8p2=` for two x8ps; the value is the driver service), to see the units page and the ready list where no unit exists; ignored otherwise |
 
 A silent uninstall (`unins000.exe /VERYSILENT`) leaves test signing on.
 
 ## apollo-helper
 
-`C:\Program Files\Avium\Apollo\apollo-helper.exe <command>`. Source in `installer\helper\`
-(C++, EWDK, /W4 /WX). Exit codes: 0 done, 1 error, 2 no x8p (staged only) or the named unit is not
-connected, 3 still in use, 4 needs elevation, 5 stopped before changing anything (another unit would lose
-its driver, or runs another driver build), 3010 restart needed.
+`C:\Program Files\Avium\Apollo\apollo-helper.exe <command>`. Source in `installer\helper\` (C++, EWDK, /W4 /WX).
+Exit codes: 0 done, 1 error, 2 none of the named units connected (staged only) or the named unit is not connected,
+3 still in use, 4 needs elevation, 5 stopped before changing anything (a unit would lose its driver, or run another
+driver build), 3010 restart needed. `U` below: `x8p`, `twinx`, `x8p,twinx`, `all` (the default) or `none`.
 
 | Command | Admin | Does |
 |---|---|---|
-| `check` | no (more detail when elevated) | JSON: OS build, Secure Boot, test signing (this boot and next boot), BitLocker on the Windows drive, `x8p` (as before), `units`: every connected UA device with its kind (`x8p`, `twinx`, `other`), exact hardware ID, driver (`apollo`, `ua`, `other`, `none`), INF and version, and for units on our driver what the driver says (`GET_INFO`: model, Mode in effect, observe/active, unit key); `remembered_on_apollo`; `unit_settings` (`Parameters\Models\*` and `Units\*` Mode values); our packages (and whether a unit uses each); UA's packages and signer; UAD, WebView2 |
-| `bind <inf> [--stage-only]` | yes | force the driver onto the x8p's exact hardware ID, or stage it if no x8p is connected; stops (5) if another unit on our driver runs a different build |
-| `unbind` | yes | hand every other unit on our driver back to UA's driver (stops with 5 if UA's driver for one is missing), then remove all Avium `apollo.inf` packages, rescan, report |
-| `unbind --unit x8p\|twinx` | yes | that unit only back to UA's driver; our package stays (`revert-unit.ps1`). Run `idle-wait` first for the x8p |
+| `check` | no (more detail when elevated) | JSON: OS build, Secure Boot, test signing (this boot and next boot), BitLocker, `units`: every connected UA device with its kind (`x8p`, `twinx`, `other`), `supported`, exact hardware ID, driver (`apollo`, `ua`, `other`, `none`), INF and version, and for units on our driver what the driver says (`GET_INFO`: model, Mode, observe/active, unit key); `remembered_on_apollo`; `unit_settings`; `apollo_loaded_image` (the loaded `apollo.sys`); our packages; UA's packages and signer; UAD; WebView2 |
+| `bind <inf> [--units U] [--stage-only]` | yes | stage the package, then force it onto each named connected unit (x8p first); one `Unit:` line per unit; restart (3010) when a unit or the loaded image needs one |
+| `unbind` | yes | hand every unit other than the x8p on our driver back to UA's driver (stops with 5 if UA's driver for one is missing), then remove all Avium `apollo.inf` packages, rescan, report |
+| `unbind --unit x8p\|twinx` | yes | that unit only back to UA's driver; our package stays (`revert-unit.ps1`). Run `idle-wait --units <it>` first |
 | `defaults save <file>` / `defaults restore <file> [--passes N]` | no | the default endpoints, through IPolicyConfig |
-| `idle-wait <seconds> [--ask]` | no | wait until nothing uses the x8p (driver IOCTLs `GET_ENDPOINTS`/`GET_ENGINE_STATS` on the x8p's interface only, audio sessions on its endpoints, the tools) |
-| `quit-ua` | no | close UA's apps, only while the x8p is on UA's driver and no other connected unit is |
-| `regdefaults <defaults.json>` | yes | write the Parameters values |
-| `cert add <cer> [--expect <sha1>] [--record <file>]` / `cert remove <cer> [--record <file>]` | yes | LocalMachine Root + TrustedPublisher |
+| `idle-wait <seconds> [--ask] [--units U]` | no | wait until nothing uses the named units |
+| `quit-ua [--units U]` | no | close UA's apps, only while a named unit is on UA's driver and no unit that stays is |
+| `regdefaults <defaults.json>` | yes | write the Parameters values and subkeys |
+| `cert remove-local <local-cert.txt>` | yes | remove the per-PC certificates listed there (Root, TrustedPublisher, My with its key), by thumbprint |
+| `cert add <cer> [--expect <sha1>] [--record <file>]` / `cert remove <cer> [--record <file>]` | yes | a certificate file (installs before Nov 16 2026); `remove --record` touches only the stores the record lists |
 | `connect` | asks | the Start-menu shortcut |
 
-`installer\helper\ioctl_check.cpp` compiles against the packaged driver's own `apollo_ioctl.h` and fails
-the build if the IOCTL codes, struct sizes or offsets the helper reads ever change (`GET_INFO`'s unit fields
-only from IOCTL version 6 on; a version 5 driver reports no Mode). `installer\helper\test_units.cpp` tests
-the unit logic in `units.cpp` (which unit is which, quit-ua, the uninstall hand-back, the one-image rule)
+`installer\helper\ioctl_check.cpp` compiles against the packaged driver's own `apollo_ioctl.h` and fails the build if
+the IOCTL codes, struct sizes or offsets the helper reads ever change. `installer\helper\test_units.cpp` tests the
+unit logic in `units.cpp` (which unit is which, `--units` lists, quit-ua with targets, the uninstall hand-back, the
+one-image rule, the loaded-image comparison) and `defaults_plan.cpp` (defaults.json, plus the release's own file)
 without hardware; `helper\build.cmd` runs it and fails on any failed check.
 
-## Building a release
+## Building
+
+### A public release: `installer\release.cmd`
 
 From a plain command prompt, with the EWDK ISO mounted (default `D:`):
 
 ```
-installer\build.cmd [frozen build folder] [EWDK drive]
-installer\build.cmd ..\builds\2026-11-14-combined D:
+installer\release.cmd [release folder] [EWDK drive]
+installer\release.cmd C:\apollo-release D:
 ```
 
-The frozen build folder must have the usual layout: `package\` (apollo.inf/.sys/.cat), `bin\`
-(apollo-diag.exe, loopback-test.exe, wasapi-loop.exe, asio-test.exe, avium-asio.dll) and
-`src\include\apollo_ioctl.h`. The app comes from `app\bin\` (exe + `ui\`), the documents from `docs\`,
-the certificate from `driver\x64\Release\apollo.cer`. Nothing outside `installer\` is built or written.
+1. Copies `driver include app asio tools dsp installer third_party docs` into `<release folder>\src` (default
+   `C:\apollo-release`, refused under `C:\Users` or inside the source tree). Never copied: build outputs, logs,
+   per-PC captures (`*.defaults.json`, `*.used`, `*.aggconfig.bin`), `tools\bin`, and `builds`, `reference`,
+   `ua-files`, `plugins`.
+2. Copies `installer\tools\inno-6.7.4` there (nothing is downloaded).
+3. Puts `release-nosign.targets` there as `Directory.Build.targets`: the WDK test-signs nothing in that tree.
+4. Runs `tools\build-all.cmd` there (every offline suite), then `installer\build.cmd <that tree> <EWDK> release`.
+5. Copies `ApolloSetup-<DriverVer>.exe` and `.sha256` to `installer\out\release\` here.
 
-What `build.cmd` does:
+Binaries embed their PDB paths; built in the release folder they name it, never a user folder. The leak scan
+(`scan-release.ps1`) then reads every byte of the payload and of Setup, as ASCII and UTF-16, for any path into the
+Users folder of drive C, the profile path, the user name as a path part, the PC name, the WDK's developer test certificate name, and the unit
+keys and Universal Audio device instance IDs this PC has seen (read from the registry at run time), and fails the
+release build on any hit. Any build (release or not) fails if a payload file or Setup carries a signature.
 
-1. Fetches Inno Setup **6.7.4** into `installer\tools\inno-6.7.4\` if missing (`get-inno.ps1`): the file
-   jrsoftware.org links to (jrsoftware's GitHub release), checked against the pinned SHA-256 from
-   jrsoftware's signed `.issig` and an Authenticode signature by "Pyrsys B.V.", installed per-user and
-   portable (`/CURRENTUSER /PORTABLE=1`: no admin, no registry, no uninstaller).
-2. Sets up the EWDK (`SetupBuildEnv.cmd amd64`).
-3. Builds `apollo-helper.exe` at /W4 /WX with CFG, /sdl and System32-only DLL loading, after running
-   the offline unit test (`test_units`).
-4. Signs the helper with the test certificate if its private key is in `CurrentUser\My` or
-   `PrivateCertStore` (otherwise Setup is built unsigned and the build says so).
-5. Stages the payload in `out\stage\` (`stage.ps1`): checks the certificate's thumbprint, that it signed
-   `apollo.cat` and `apollo.sys`, that the INF's provider is "Avium", that it lists the x8p's hardware ID
-   and no UA ID other than the x8p's and the Twin X Gen 1's exact ones; writes `payload-manifest.sha256`.
-6. Compiles `ApolloSetup.iss` (signing Setup and its uninstaller when possible). Log:
-   `out\iscc-<DriverVer>.log`; Inno's own list of compiled files: `out\ApolloSetup-<DriverVer>-files.txt`.
-7. Verifies (`verify.ps1`) that the files compiled into Setup are exactly the payload manifest, with the
-   same SHA-256 each, then prints the output's size and SHA-256 and writes `<exe>.sha256`.
+### A test build: `installer\build.cmd`
 
-Output: `installer\out\ApolloSetup-<DriverVer>.exe`, where DriverVer is the INF's (e.g. `12.36.20.8`).
+```
+installer\build.cmd [build folder] [EWDK drive] [release]
+```
 
-**Per-release settings:** edit `installer\defaults.json`, or put a `defaults.json` in the frozen build's
-root (it wins). A number is a REG_DWORD; `{ "type": "dword", "data": "0xFF" }` or `"sz"` for other forms;
-`"overwrite": true` on one value forces it over what an earlier install left.
+The build folder is a built source tree (`driver\x64\Release\apollo\`, `tools\*\`, `asio\bin\`, `include\`; the
+default is this tree, as `tools\build-all.cmd` left it) or a frozen build (`package\`, `bin\`, `src\include\`). The
+app comes from `app\bin\` (exe + `ui\`). Nothing outside `installer\` is built or written.
 
-**New Inno Setup version:** change the version, URL and SHA-256 at the top of `get-inno.ps1` (take the
-SHA-256 from `https://files.jrsoftware.org/is/6/innosetup-<ver>.exe.issig`) and `INNO_VER` in `build.cmd`.
+1. Inno Setup **6.7.4** in `installer\tools\inno-6.7.4\` (fetched by `get-inno.ps1` if missing: the file
+   jrsoftware.org links to, checked against the pinned SHA-256 from jrsoftware's signed `.issig` and an Authenticode
+   signature by "Pyrsys B.V.", installed per-user and portable).
+2. The EWDK environment (`SetupBuildEnv.cmd amd64`).
+3. `apollo-helper.exe` at /W4 /WX with CFG, /sdl, System32-only DLL loading and only the PDB's file name embedded,
+   after the offline test (`test_units`, including the release's `defaults.json`).
+4. The payload in `out\stage\` (`stage.ps1`): the INF's provider is "Avium", it names `apollo.cat`, it lists exactly
+   the x8p's and the Twin X Gen 1's IDs and no other UA ID; `apollo.sys` loses any signature (`signtool remove /s`),
+   `apollo.cat` is made again by Inf2Cat (`/os:10_x64,10_NI_X64 /uselocaltime`), both are checked `NotSigned`, and no
+   staged file may carry any signature or be a certificate file; `payload-manifest.sha256`. The EWDK's `signtool`
+   (x64) and `Inf2Cat` (x86) come from the EWDK environment, else the newest kit version under the EWDK drive.
+5. `ApolloSetup.iss` compiled (unsigned). Log: `out\iscc-<DriverVer>.log`; Inno's list of compiled files:
+   `out\ApolloSetup-<DriverVer>-files.txt`.
+6. `verify.ps1`: the files compiled into Setup are exactly the payload manifest, same SHA-256 each; Setup carries no
+   signature. Prints the size and SHA-256 and writes `<exe>.sha256`.
+7. `scan-release.ps1` on the payload and Setup: fatal in release mode, a warning otherwise (a test build from a tree
+   under `C:\Users` names it; never publish one).
+
+Output: `installer\out\ApolloSetup-<DriverVer>.exe`, where DriverVer is the INF's.
+
+**New Inno Setup version:** change the version, URL and SHA-256 at the top of `get-inno.ps1` (take the SHA-256 from
+`https://files.jrsoftware.org/is/6/innosetup-<ver>.exe.issig`) and `INNO_VER` in `build.cmd` and `release.cmd`.
 
 ## Testing it safely
 
-Kernel drivers cannot load in Windows Sandbox, and no test of this installer should run on the
-development PC with the x8p (the uninstaller would remove the developer's own test certificate only if
-Setup added it, but it does unbind and remove every Avium apollo.inf package).
+Kernel drivers cannot load in Windows Sandbox, and no test of this installer should run on a development PC with
+live units (the uninstaller unbinds them and removes every Avium `apollo.inf` package).
 
-1. **Static (every build):** `build.cmd` already checks the helper (/W4 /WX), the IOCTL layout, the
-   certificate, the compile, and the file list against the manifest.
-2. **Windows Sandbox: layout, UI and uninstall.** Copy the exe into `%USERPROFILE%\Sandbox\installers`
-   (mapped read-only), open `Test Sandbox.wsb`, and in the sandbox run:
+1. **Static (every build):** the helper (/W4 /WX), its offline tests, the IOCTL layout, the INF's IDs, the unsigned
+   payload, the compile, the file list against the manifest, the leak scan.
+2. **Windows Sandbox: wizard, layout, signing, uninstall.** Copy the exe into the folder your Sandbox `.wsb` maps
+   read-only, open the sandbox, and in it run:
 
    ```
-   Desktop\installers\ApolloSetup-12.36.20.8.exe /SANDBOXTEST=1 /LOG="%USERPROFILE%\Desktop\setup.log"
+   Desktop\installers\ApolloSetup-<DriverVer>.exe /SANDBOXTEST=1 /LOG="%USERPROFILE%\Desktop\setup.log"
    ```
 
-   `/SANDBOXTEST=1` continues past the Secure Boot stop (the sandbox VM may report Secure Boot on),
-   leaves test signing alone and only stages the driver (no x8p there anyway). Check: the pages and
-   texts; `C:\Program Files\Avium\Apollo` against `payload-manifest.sha256`; the Start-menu shortcuts;
-   `certlm.msc` (Trusted Root and Trusted Publishers); `pnputil /enum-drivers` (an "Avium" apollo.inf);
-   `reg query HKLM\SYSTEM\CurrentControlSet\Services\apollo\Parameters`; the ASIO key under
-   `HKLM\SOFTWARE\ASIO`; `apollo-helper check` (x8p absent, UAD absent). Then uninstall from Settings and
-   check that all of it is gone (the Results page and the log say what each step did).
-3. **A spare test PC with an x8p** (Secure Boot off, BitLocker recovery key at hand): install, restart,
-   confirm "Test Mode", `apollo-helper check` (x8p `on_apollo_driver: true`), Apollo Control, the default
-   devices unchanged, then uninstall and confirm the x8p is back on UA's driver after a power cycle.
-   Also try: install with the x8p unplugged, plug it in, run "Connect x8p to Apollo driver".
+   `/SANDBOXTEST=1` continues past the Secure Boot stop, leaves test signing alone, runs the per-PC signing (the
+   sandbox has its own certificate stores) and only stages the driver (there is no unit there anyway). Check: the
+   pages and texts; `C:\Program Files\Avium\Apollo` against `payload-manifest.sha256` (all but `apollo.sys` and
+   `apollo.cat`, which are signed now); `state\local-cert.txt`; `certlm.msc` (the "Apollo driver (signed on ...)"
+   certificate in Trusted Root and Trusted Publishers, none in Personal); `Get-AuthenticodeSignature` on the two
+   driver files (Valid); `pnputil /enum-drivers` (an "Avium" apollo.inf); `reg query
+   HKLM\SYSTEM\CurrentControlSet\Services\apollo\Parameters /s`; the ASIO keys under `HKLM\SOFTWARE\ASIO`; the
+   Start-menu shortcuts. Then uninstall from Settings and check that all of it is gone, the certificate included.
+3. **A spare test PC with the units** (Secure Boot off, BitLocker recovery key at hand):
+   - fresh install with both units on UA's driver, both ticked: restart, "Test Mode", `apollo-helper check` (both
+     `on_apollo_driver: true`, Twin X `mode: 2`), Apollo Control, the default devices unchanged, the strips;
+   - one unit unticked (UA's apps must stay open, that unit unchanged);
+   - install with no unit connected, then "Connect Apollo units";
+   - Setup run again over the install (repair): a second thumbprint in `local-cert.txt`, both units on the new
+     package, and the restart the shared image asks for;
+   - uninstall: both units back on UA's driver after a power cycle, no "Apollo driver (signed on ...)" certificate
+     left in `certlm.msc`; and uninstall with UA's driver removed (it must stop with nothing removed).
 
-What has **not** been exercised yet: every path that needs real hardware or a real install (bind,
-unbind, unbind --unit, quit-ua, IPolicyConfig restore, idle-wait against a running driver, the
-BCD/BitLocker WMI reads, the wizard itself). The build checks are static, plus the offline unit test.
-`apollo-helper check` (read-only) has run on the development PC with the x8p and a Twin X both on the
-Apollo driver (Nov 14 2026, g3 build): both units, their Modes (x8p 2, Twin X 1), the unit keys and UA's
-package (`uad2pcie.inf`, Microsoft-signed, listing both IDs) were reported correctly.
-With two units, also test on the spare PC: Twin X on UA's driver (Setup must leave UA's apps open and the
-Twin X unchanged), Twin X on the Apollo driver (uninstall moves it back first), and uninstall with UA's
-driver removed (it must stop with nothing removed).
+What has **not** been exercised on hardware yet: every path that changes a real unit (bind of either or both units,
+unbind, unbind --unit, quit-ua, the loaded-image check after a two-unit update, IPolicyConfig restore, idle-wait
+against running streams), the BCD and BitLocker paths, and the wizard on a PC with units. `sign-local.ps1` itself
+signed an unsigned package that the kernel loaded on both units in test mode (Nov 16 2026).
 
 ## Files in this folder
 
 | File | Role |
 |---|---|
-| `build.cmd` | the build (above) |
+| `build.cmd` | the installer build (above) |
+| `release.cmd` | a public release, built in a neutral folder |
+| `release-nosign.targets` | becomes `Directory.Build.targets` in the release tree: no WDK test signing there |
 | `ApolloSetup.iss` | the Inno Setup script: wizard, install and uninstall logic |
-| `defaults.json` | driver registry defaults for the release |
+| `sign-local.ps1` | per-PC signing, run by Setup (shipped) |
+| `defaults.json` | driver registry values for the release |
+| `stage.ps1` | payload, unsigned driver package, checks, manifest |
+| `verify.ps1` | compiled Setup against the manifest, unsigned |
+| `scan-release.ps1` | the leak scan |
 | `get-inno.ps1` | fetch and verify the pinned Inno Setup |
-| `stage.ps1`, `verify.ps1`, `find-signing-cert.ps1` | staging + manifest, output check, signing-key lookup |
+| `RELEASE-NOTES.md` | the text for the GitHub release (shipped) |
 | `helper\` | apollo-helper sources and `build.cmd` |
 | `tools\` | downloaded Inno Setup (not source) |
-| `out\` | build output (not source) |
+| `out\` | build output (not source); `out\release\` holds what release.cmd made |

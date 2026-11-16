@@ -20,7 +20,7 @@ hardware: cables, the x8p's power switch, the mic.
 ## Paths
 
 - `<package>` = `apollo-win\driver\x64\Release\apollo\` (apollo.sys, apollo.inf, apollo.cat)
-- Test certificate = `apollo-win\driver\x64\Release\apollo.cer` ("WDKTestCert aaron", valid to 2036)
+- Test certificate = `apollo-win\driver\x64\Release\apollo.cer` ("WDKTestCert <developer>", valid to 2036)
 - Tool = `apollo-win\tools\apollo-diag\apollo-diag.exe`
 - `devcon.exe` is copied to `apollo-win\tools\bin\`. The crash-dump debugger (`kd.exe`/`cdb.exe`)
   is on the EWDK ISO under `Program Files\Windows Kits\10\Debuggers\x64\` (the ISO unmounts at
